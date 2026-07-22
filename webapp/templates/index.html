@@ -312,6 +312,12 @@ async function enviarPipeline() {
     }
     html += `</div>`;
 
+    if (d.memoria_atualizada) {
+      html += `<div class="step"><h3>5. Memória atualizada</h3>
+        <p class="kv"><b>Nova versão:</b> ${d.memoria_atualizada}</p>
+      </div>`;
+    }
+
     resultadoEl.innerHTML = html;
   } catch (e) {
     resultadoEl.innerHTML = `<div class="erro-box">Erro inesperado: ${e}</div>`;

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 
+from motor_ia.atualizador_memoria import atualizar_memoria
 from motor_ia.auditor import auditar
 from motor_ia.classificador import classificar
 from motor_ia.conexao import CORE_DB, DOMAIN_DB, conectar
@@ -130,6 +131,10 @@ def pipeline():
         cliente_nome = (dados.get("cliente") or {}).get("nome", "Cliente")
         resposta = redigir(dados, cliente_nome=cliente_nome)
         resultado = auditar(resposta, dados, cliente_nome, plano)
+
+        memoria_id = None
+        if resultado.acao == "enviar":
+            memoria_id = atualizar_memoria(cliente_id, classificacao, dados, resposta)
     except Exception as e:
         traceback.print_exc()
         return jsonify(erro=f"{type(e).__name__}: {e}"), 500
@@ -145,6 +150,7 @@ def pipeline():
         dados=dados,
         resposta_gerada=resposta,
         auditoria=resultado.model_dump(),
+        memoria_atualizada=memoria_id,
     )
 
 
