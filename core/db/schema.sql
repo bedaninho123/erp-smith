@@ -40,7 +40,7 @@ CREATE TABLE caso (
     status                  TEXT NOT NULL,
     fase                    TEXT,
     prioridade              TEXT NOT NULL,
-    responsavel_id          TEXT,                    -- sem FK ainda; tabela usuario pendente
+    responsavel_id          TEXT REFERENCES usuario(usuario_id),
     equipe_responsavel      TEXT,
     sessao_principal_id     TEXT REFERENCES sessao(sessao_id),
     memoria_id              TEXT REFERENCES memoria_ia(memoria_id),
@@ -90,7 +90,7 @@ CREATE TABLE processo (
     data_abertura     TEXT NOT NULL,                     -- ISO 8601
     prazo_estimado    TEXT,                               -- ISO 8601
     proxima_acao      TEXT,
-    responsavel       TEXT,                               -- texto livre por enquanto
+    responsavel_id    TEXT REFERENCES usuario(usuario_id),
     ultima_atualizacao TEXT NOT NULL,                     -- ISO 8601
     observacoes       TEXT
 );
@@ -115,7 +115,7 @@ CREATE TABLE documento (
     status            TEXT NOT NULL,
     data_envio        TEXT,                              -- ISO 8601
     data_validade     TEXT,                              -- ISO 8601
-    revisado_por      TEXT,                               -- texto livre por enquanto
+    revisado_por_id   TEXT REFERENCES usuario(usuario_id),
     observacoes       TEXT,
     CHECK (caso_id IS NOT NULL OR processo_id IS NOT NULL)
 );
@@ -147,7 +147,7 @@ CREATE TABLE sessao (
     ultima_interacao_em        TEXT NOT NULL,              -- ISO 8601
     expira_em                  TEXT,                        -- ISO 8601
     encaminhada_humano         TEXT,                        -- Sim/Não, texto livre
-    responsavel                TEXT,                        -- texto livre por enquanto
+    responsavel_id             TEXT REFERENCES usuario(usuario_id),
     conversa_id_origem         TEXT,                        -- sem FK ainda; tabela conversa pendente
     ativo                      TEXT NOT NULL DEFAULT 'Sim',
     observacoes                TEXT
@@ -188,3 +188,55 @@ CREATE INDEX idx_memoria_ia_cliente_id ON memoria_ia(cliente_id);
 -- significa inativar a antiga (ativo='Não') e criar uma linha nova,
 -- preservando histórico.
 CREATE UNIQUE INDEX idx_memoria_ia_cliente_ativo ON memoria_ia(cliente_id) WHERE ativo = 'Sim';
+
+-- Fonte: docs/schema_historico_log_usuario.md.
+-- Diferente das tabelas anteriores, não existe aba própria na planilha
+-- para usuario/historico/log_ia — desenhadas a partir de 91_Padrao_IDs,
+-- 92_Matriz_Dependencias e 95_Regras_Casos. Minima de propósito: login e
+-- permissões de verdade ficam para a Fase 6 (Produto) do PROJETO_1.md.
+CREATE TABLE usuario (
+    usuario_id    TEXT PRIMARY KEY,                  -- USR-000001
+    nome          TEXT NOT NULL,
+    email         TEXT NOT NULL UNIQUE,
+    papel         TEXT NOT NULL,                       -- texto livre (ex.: Despachante, Atendimento, Gestor)
+    equipe        TEXT,
+    ativo         TEXT NOT NULL DEFAULT 'Sim',
+    criado_em     TEXT NOT NULL                         -- ISO 8601
+);
+
+-- Log de eventos de negócio do caso — append-only (só INSERT, nunca
+-- UPDATE/DELETE). RCA-007: toda troca de responsável gera registro aqui.
+-- 96_Relacionamentos_Casos: "todo evento do caso deve apontar para o
+-- caso"; "nunca excluir".
+CREATE TABLE historico (
+    historico_id     TEXT PRIMARY KEY,                 -- HIS-000001
+    caso_id          TEXT NOT NULL REFERENCES caso(caso_id),
+    tipo_evento      TEXT NOT NULL CHECK (tipo_evento IN ('criacao', 'mudanca_status', 'troca_responsavel', 'encerramento', 'outro')),
+    descricao        TEXT,
+    valor_anterior   TEXT,
+    valor_novo       TEXT,
+    criado_em        TEXT NOT NULL,                      -- ISO 8601
+    criado_por       TEXT NOT NULL
+);
+
+CREATE INDEX idx_historico_caso_id ON historico(caso_id);
+
+-- Log técnico de execução da IA (uma linha por chamada relevante ao
+-- modelo). Fonte: 92_Matriz_Dependencias, linha "Auditoria IA".
+-- Diferente de historico: aqui é auditoria técnica, não evento de negócio.
+CREATE TABLE log_ia (
+    log_id                    TEXT PRIMARY KEY,          -- LOG-000001
+    caso_id                   TEXT REFERENCES caso(caso_id),
+    sessao_id                 TEXT REFERENCES sessao(sessao_id),
+    prompt_key                TEXT NOT NULL,               -- ex.: CLASSIFICADOR (ver 21_Prompts.prompt_key)
+    modelo                    TEXT NOT NULL,                -- ex.: gpt-5-mini
+    tokens_entrada             INTEGER,
+    tokens_saida                INTEGER,
+    tempo_processamento_ms      INTEGER,
+    resultado                    TEXT NOT NULL CHECK (resultado IN ('Sucesso', 'Erro')),
+    erro                          TEXT,
+    criado_em                     TEXT NOT NULL              -- ISO 8601
+);
+
+CREATE INDEX idx_log_ia_caso_id ON log_ia(caso_id);
+CREATE INDEX idx_log_ia_sessao_id ON log_ia(sessao_id);
