@@ -16,7 +16,7 @@ def _carregar_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
 
 
-def _montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
+def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
     linhas = [f"Cliente: {cliente_nome}"]
 
     cliente = dados.get("cliente")
@@ -66,7 +66,7 @@ def _montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
 
 def redigir(dados: dict, cliente_nome: str) -> str:
     config = obter_configuracoes()
-    bloco = _montar_bloco_dados(dados, cliente_nome, config)
+    bloco = montar_bloco_dados(dados, cliente_nome, config)
     modelo = config.get("modelo_openai", "gpt-5-mini")
 
     client = OpenAI(api_key=OPENAI_API_KEY)
