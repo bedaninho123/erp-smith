@@ -7,6 +7,10 @@ para core/db/erp_smith.db. Decisões desta migração (aprovadas com o usuário 
     foram criados 2 Casos sintéticos (CAS-000002, CAS-000003) para viabilizar a migração.
   - Usuários USR-000001 (Felipe) e USR-000002 (Ana) foram criados a partir dos nomes
     soltos em processo.responsavel/documento.revisado_por; não existe aba Usuários na planilha.
+  - conversa.iniciada_em/ultima_mensagem_em reconstruídos (planilha tinha texto
+    literal "data atual", não uma data real).
+  - template: os 7 campos de texto-padrão tirados de servico (2ª rodada) viram
+    7 linhas de template (4 fixas + 3 com marcador {campo}).
 """
 import sqlite3
 from datetime import datetime, timedelta
@@ -86,7 +90,7 @@ def main():
          "Cliente solicitou informações sobre documentos para renovação do CR. "
          "Existe processo vinculado em análise.",
          "Aberta", excel_to_iso(46221.625), excel_to_iso(46221.62847222222),
-         excel_to_iso(46222.62847222222), "Não", None, "CON-000001", "Sim",
+         excel_to_iso(46222.62847222222), "Não", None, None, "Sim",
          "Registro de exemplo migrado da planilha. Campo responsavel original era "
          "\"IA Smith\" (não é usuário humano, por isso ficou vazio)."),
     )
@@ -194,11 +198,55 @@ def main():
         ],
     )
 
+    # 11) conversa — planilha tinha iniciada_em/ultima_mensagem_em como texto
+    #     literal "data atual" (não uma data de verdade); reconstruído a partir
+    #     de sessao.iniciada_em, do mesmo cenário de teste.
+    cur.execute(
+        "INSERT INTO conversa VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("CON-000001", "CLI-000001", "CAS-000001", "SES-000001", "Webhook",
+         "Sistema", "Aberta", "Novo Atendimento",
+         excel_to_iso(46221.625), excel_to_iso(46221.625), None, None, "Não", 1,
+         "make", "make", 1, "Sim",
+         "Conversa criada automaticamente. iniciada_em/ultima_mensagem_em "
+         "reconstruídos (planilha tinha texto literal \"data atual\")."),
+    )
+
+    # 12) fecha o ciclo sessao <-> conversa, agora que conversa existe
+    cur.execute(
+        "UPDATE sessao SET conversa_id_origem = ? WHERE sessao_id = ?",
+        ("CON-000001", "SES-000001"),
+    )
+
+    # 13) template — recupera os 7 campos tirados de servico na 2ª rodada.
+    cur.executemany(
+        "INSERT INTO template VALUES (?,?,?,?,?,?,?,?)",
+        [
+            ("TPL-000001", "resposta_sem_processo", "Resposta: sem processo",
+             "processo", "Não localizei processo vinculado.", None, "Sim", None),
+            ("TPL-000002", "resposta_em_analise", "Resposta: em análise",
+             "processo", "Processo em análise.", None, "Sim", None),
+            ("TPL-000003", "resposta_documento_pendente",
+             "Resposta: documento pendente", "processo",
+             "Documentação pendente.", None, "Sim", None),
+            ("TPL-000004", "resposta_concluido", "Resposta: concluído",
+             "processo", "Processo concluído.", None, "Sim", None),
+            ("TPL-000005", "mensagem_padrao_servico", "Mensagem padrão de serviço",
+             "servico", "Localizei o serviço de {nome_servico}.", None, "Sim",
+             None),
+            ("TPL-000006", "prazo_texto_servico", "Texto de prazo do serviço",
+             "servico", "Prazo médio de {prazo_estimado_dias} dias.", None,
+             "Sim", None),
+            ("TPL-000007", "valor_texto_servico", "Texto de valor do serviço",
+             "servico", "Valor de referência: R$ {valor_referencia}.", None,
+             "Sim", None),
+        ],
+    )
+
     con.commit()
 
     print("Migração concluída. Contagem de linhas por tabela:")
     for tabela in ["cliente", "usuario", "servico", "caso", "processo",
-                   "documento", "sessao", "memoria_ia"]:
+                   "documento", "sessao", "memoria_ia", "conversa", "template"]:
         n = cur.execute(f"SELECT COUNT(*) FROM {tabela}").fetchone()[0]
         print(f"  {tabela}: {n}")
 

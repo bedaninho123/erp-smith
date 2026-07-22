@@ -148,7 +148,7 @@ CREATE TABLE sessao (
     expira_em                  TEXT,                        -- ISO 8601
     encaminhada_humano         TEXT,                        -- Sim/Não, texto livre
     responsavel_id             TEXT REFERENCES usuario(usuario_id),
-    conversa_id_origem         TEXT,                        -- sem FK ainda; tabela conversa pendente
+    conversa_id_origem         TEXT REFERENCES conversa(conversa_id),
     ativo                      TEXT NOT NULL DEFAULT 'Sim',
     observacoes                TEXT
 );
@@ -240,3 +240,47 @@ CREATE TABLE log_ia (
 
 CREATE INDEX idx_log_ia_caso_id ON log_ia(caso_id);
 CREATE INDEX idx_log_ia_sessao_id ON log_ia(sessao_id);
+
+-- Fonte: docs/schema_conversa_template.md (07_Conversas, 96_Relacionamentos_Casos).
+-- "Envelope" de um atendimento; as mensagens individuais (06_Mensagens)
+-- ficam para uma tabela mensagem numa próxima rodada.
+CREATE TABLE conversa (
+    conversa_id           TEXT PRIMARY KEY,             -- CON-000001
+    cliente_id             TEXT NOT NULL REFERENCES cliente(cliente_id),
+    caso_id                 TEXT REFERENCES caso(caso_id),
+    sessao_id               TEXT REFERENCES sessao(sessao_id),
+    canal                    TEXT NOT NULL,
+    origem                   TEXT NOT NULL,
+    status                   TEXT NOT NULL,
+    assunto_principal        TEXT,
+    iniciada_em              TEXT NOT NULL,               -- ISO 8601
+    ultima_mensagem_em       TEXT NOT NULL,                -- ISO 8601
+    encerrada_em             TEXT,                          -- ISO 8601
+    responsavel_id           TEXT REFERENCES usuario(usuario_id),
+    precisa_humano           TEXT,                          -- Sim/Não, texto livre
+    total_mensagens          INTEGER NOT NULL DEFAULT 0,
+    criado_por                TEXT NOT NULL,
+    atualizado_por             TEXT NOT NULL,
+    versao                     INTEGER NOT NULL DEFAULT 1,
+    ativo                       TEXT NOT NULL DEFAULT 'Sim',
+    observacoes                 TEXT
+);
+
+CREATE INDEX idx_conversa_cliente_id ON conversa(cliente_id);
+CREATE INDEX idx_conversa_caso_id ON conversa(caso_id);
+CREATE INDEX idx_conversa_sessao_id ON conversa(sessao_id);
+
+-- Fonte: docs/schema_conversa_template.md. Recupera os 7 campos tirados
+-- de servico na 2ª rodada. Diferente de 21_Prompts (que fica para a Fase
+-- 2 do PROJETO_1.md): template é texto pronto de resposta, prompt é
+-- instrução para o modelo pensar.
+CREATE TABLE template (
+    template_id     TEXT PRIMARY KEY,                    -- TPL-000001
+    template_key    TEXT NOT NULL UNIQUE,
+    nome            TEXT NOT NULL,
+    categoria       TEXT,
+    conteudo        TEXT NOT NULL,                         -- pode ter marcadores {campo}
+    canal           TEXT,                                    -- Email, WhatsApp, ou vazio = qualquer canal
+    ativo           TEXT NOT NULL DEFAULT 'Sim',
+    observacoes     TEXT
+);
