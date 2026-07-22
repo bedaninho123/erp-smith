@@ -15,8 +15,18 @@ def consultar(
 ) -> dict:
     con = conectar()
     try:
-        resultado = {}
+        # O cliente já foi identificado antes da classificação acontecer
+        # (fluxo real: Identificar cliente -> Classificar intenção), então
+        # os dados básicos dele não dependem de plano.fontes -- toda
+        # resposta precisa saber com quem está falando.
+        linha_cliente = con.execute(
+            "SELECT * FROM VW_CLIENTE WHERE cliente_id = ?", (cliente_id,)
+        ).fetchone()
+        resultado = {"cliente": dict(linha_cliente) if linha_cliente else None}
+
         for fonte in plano.fontes:
+            if fonte == "VW_CLIENTE":
+                continue  # já buscado acima, sempre
             if fonte == "VW_SERVICO":
                 servico_mencionado = (
                     classificacao.servico_mencionado if classificacao else None
@@ -46,11 +56,6 @@ def consultar(
                         "SELECT * FROM VW_PROCESSO WHERE cliente_id = ?", (cliente_id,)
                     ).fetchall()
                 resultado["processos"] = [dict(r) for r in linhas]
-            elif fonte == "VW_CLIENTE":
-                linha = con.execute(
-                    "SELECT * FROM VW_CLIENTE WHERE cliente_id = ?", (cliente_id,)
-                ).fetchone()
-                resultado["cliente"] = dict(linha) if linha else None
             elif fonte == "conhecimento":
                 resultado["conhecimento"] = [
                     dict(r) for r in con.execute(
