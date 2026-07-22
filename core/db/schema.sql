@@ -42,8 +42,8 @@ CREATE TABLE caso (
     prioridade              TEXT NOT NULL,
     responsavel_id          TEXT,                    -- sem FK ainda; tabela usuario pendente
     equipe_responsavel      TEXT,
-    sessao_principal_id     TEXT,                    -- sem FK ainda; tabela sessao pendente
-    memoria_id              TEXT,                    -- sem FK ainda; tabela memoria_ia pendente
+    sessao_principal_id     TEXT REFERENCES sessao(sessao_id),
+    memoria_id              TEXT REFERENCES memoria_ia(memoria_id),
     criado_em               TEXT NOT NULL,            -- ISO 8601, imutável
     atualizado_em           TEXT NOT NULL,            -- ISO 8601
     prazo_previsto          TEXT,
@@ -156,3 +156,35 @@ CREATE TABLE sessao (
 CREATE INDEX idx_sessao_cliente_id ON sessao(cliente_id);
 CREATE INDEX idx_sessao_caso_id ON sessao(caso_id);
 CREATE INDEX idx_sessao_status_sessao ON sessao(status_sessao);
+
+-- Fonte: docs/schema_memoria_ia.md (09_Memoria_IA).
+-- servicos_recentes/processos_recentes/assuntos_recentes ficam texto
+-- livre de propósito: são resumo em linguagem natural reescrito pelo
+-- Motor de Memória, não registro transacional normalizado.
+-- memoria_id não constava em 91_Padrao_IDs, mesma observação de sessao_id.
+CREATE TABLE memoria_ia (
+    memoria_id                TEXT PRIMARY KEY,          -- MEM-000001
+    cliente_id                 TEXT NOT NULL REFERENCES cliente(cliente_id),
+    resumo_cliente              TEXT,
+    assuntos_recentes           TEXT,
+    servicos_recentes           TEXT,
+    processos_recentes          TEXT,
+    ultima_intencao              TEXT,
+    preferencia_canal            TEXT,
+    tom_recomendado              TEXT,
+    informacoes_importantes      TEXT,
+    restricoes_atendimento       TEXT,
+    ultima_sessao_id             TEXT REFERENCES sessao(sessao_id),
+    atualizada_em                TEXT NOT NULL,            -- ISO 8601
+    atualizada_por               TEXT NOT NULL,
+    versao                       INTEGER NOT NULL DEFAULT 1,
+    ativo                        TEXT NOT NULL DEFAULT 'Sim',
+    observacoes                  TEXT
+);
+
+CREATE INDEX idx_memoria_ia_cliente_id ON memoria_ia(cliente_id);
+
+-- Garante uma única memória "vigente" por cliente: trocar a memória
+-- significa inativar a antiga (ativo='Não') e criar uma linha nova,
+-- preservando histórico.
+CREATE UNIQUE INDEX idx_memoria_ia_cliente_ativo ON memoria_ia(cliente_id) WHERE ativo = 'Sim';
