@@ -284,3 +284,36 @@ CREATE TABLE template (
     ativo           TEXT NOT NULL DEFAULT 'Sim',
     observacoes     TEXT
 );
+
+-- Fonte: docs/schema_mensagem.md (06_Mensagens). Última tabela do Core
+-- mínimo. protocolo foi removido (redundante com processo.protocolo).
+-- mensagem (corpo do texto) é opcional: um dos registros reais migrados
+-- tinha esse campo corrompido na origem (bug de serialização XML no Make).
+CREATE TABLE mensagem (
+    mensagem_id             TEXT PRIMARY KEY,             -- MSG-000001
+    cliente_id                TEXT NOT NULL REFERENCES cliente(cliente_id),
+    caso_id                    TEXT REFERENCES caso(caso_id),
+    conversa_id                TEXT REFERENCES conversa(conversa_id),
+    processo_id                 TEXT REFERENCES processo(processo_id),
+    canal                        TEXT NOT NULL,
+    data_hora                     TEXT NOT NULL,             -- ISO 8601
+    origem                         TEXT NOT NULL,
+    email_remetente                 TEXT,
+    assunto                          TEXT,
+    mensagem                          TEXT,
+    intent                             TEXT,
+    resumo_ia                          TEXT,
+    precisa_humano                      TEXT,                -- Sim/Não, texto livre
+    status_processamento                 TEXT NOT NULL,
+    id_externo                            TEXT,
+    resposta_ia                            TEXT,
+    responsavel_id                          TEXT REFERENCES usuario(usuario_id),
+    tempo_processamento_ms                   INTEGER,
+    modelo_ia                                 TEXT,
+    observacoes_ia                             TEXT
+);
+
+CREATE INDEX idx_mensagem_cliente_id ON mensagem(cliente_id);
+CREATE INDEX idx_mensagem_caso_id ON mensagem(caso_id);
+CREATE INDEX idx_mensagem_conversa_id ON mensagem(conversa_id);
+CREATE INDEX idx_mensagem_processo_id ON mensagem(processo_id);

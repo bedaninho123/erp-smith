@@ -242,11 +242,62 @@ def main():
         ],
     )
 
+    # 14) mensagem — a linha "TEMP" (sem cliente_id, mensagem corrompida) foi
+    #     descartada, mesmo padrão do TEMP-000001 em Casos. As 2 linhas reais
+    #     tinham mensagem_id/caso_id/conversa_id/processo_id vazios ou ausentes
+    #     na origem; preenchidos por inferência lógica (ver docs/schema_mensagem.md).
+    resposta_ia_msg1 = (
+        "Olá, Felipe Bedani.\n\n"
+        "Localizei seu processo e seguem as informações atualizadas:\n\n"
+        "Serviço: Renovação do CR\n"
+        "Protocolo: PROTO-2026-001\n"
+        "Status atual: Em análise\n"
+        "Data de abertura: 25/06/2026\n"
+        "Prazo estimado: 09/08/2026\n"
+        "Próxima ação: Aguardar retorno do órgão\n"
+        "Responsável: Felipe\n"
+        "Última atualização: 12/07/2026 às 16:20\n"
+        "Observações: Sem pendências registradas.\n\n"
+        "O processo permanece em análise. No momento não é necessária nenhuma "
+        "ação de sua parte; estamos aguardando o retorno do órgão responsável e "
+        "acompanharemos a evolução até a próxima atualização.\n\n"
+        "Caso tenha qualquer dúvida ou precise de novas informações sobre seu "
+        "processo, estou à disposição para ajudar.\n\n"
+        "Atenciosamente,\n\nEquipe Smith Clube de Tiro"
+    )
+    cur.executemany(
+        "INSERT INTO mensagem VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            ("MSG-000001", "CLI-000001", "CAS-000001", "CON-000001",
+             "PRO-000001", "Email", "2026-07-17T22:15:29Z", "Cliente",
+             "bedaninho123@gmail.com", "Teste Update Row", None,
+             "consulta_processo",
+             "Cliente solicita consulta de status de processo. "
+             "CPF informado: 12345678900.",
+             "Não", "Respondido", "19f7225fa87214da", resposta_ia_msg1,
+             "USR-000001", None, "gpt-5-mini",
+             "Corpo original da mensagem estava corrompido no Make (texto "
+             "literal \"System.Xml.XmlElement\", bug de serialização). "
+             "precisa_humano normalizado de \"0\" para \"Não\". caso_id/"
+             "conversa_id inferidos (único caso/conversa do cliente)."),
+            ("MSG-000002", "CLI-000002", "CAS-000002", None, "PRO-000002",
+             "Email", excel_to_iso(46213.604166666664), "Sistema",
+             "sistema@example.com", "Documento pendente",
+             "Precisamos do comprovante de residência atualizado.",
+             "envio_documento", "Solicitação automática de documento pendente.",
+             "Não", "Enviado", "gmail-test-002", None, None, None, None,
+             "caso_id/processo_id inferidos: assunto e conteúdo batem "
+             "exatamente com PRO-000002 (pendência de comprovante de "
+             "residência)."),
+        ],
+    )
+
     con.commit()
 
     print("Migração concluída. Contagem de linhas por tabela:")
     for tabela in ["cliente", "usuario", "servico", "caso", "processo",
-                   "documento", "sessao", "memoria_ia", "conversa", "template"]:
+                   "documento", "sessao", "memoria_ia", "conversa", "template",
+                   "mensagem"]:
         n = cur.execute(f"SELECT COUNT(*) FROM {tabela}").fetchone()[0]
         print(f"  {tabela}: {n}")
 
