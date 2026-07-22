@@ -4,6 +4,7 @@ explícito nele. O prompt de instrução vive em motor_ia/prompts/classificador.
 (versionado como arquivo, não hardcoded); modelo e temperatura vêm da
 tabela configuracoes do Core, não fixos no código.
 """
+import sqlite3
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 
 from core.configuracoes import obter_configuracoes
 from motor_ia.config import OPENAI_API_KEY
+from motor_ia.conexao import CORE_DB
 
 PROMPT_PATH = Path(__file__).parent / "prompts" / "classificador.md"
 
@@ -29,21 +31,37 @@ class ResultadoClassificacao(BaseModel):
     resumo: str
     cpf_mencionado: Optional[str] = None
     protocolo_mencionado: Optional[str] = None
+    servico_mencionado: Optional[str] = None
     precisa_humano: bool
 
 
-def _carregar_prompt() -> str:
-    return PROMPT_PATH.read_text(encoding="utf-8")
+def _carregar_servicos_ativos() -> list[str]:
+    con = sqlite3.connect(CORE_DB)
+    try:
+        return [
+            r[0] for r in con.execute(
+                "SELECT nome_servico FROM VW_SERVICO WHERE ativo = 'Sim'"
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+
+
+def _carregar_prompt(servicos: list[str]) -> str:
+    texto = PROMPT_PATH.read_text(encoding="utf-8")
+    lista = "\n".join(f"- {s}" for s in servicos)
+    return texto.replace("{lista_servicos}", lista)
 
 
 def classificar(mensagem: str) -> ResultadoClassificacao:
     config = obter_configuracoes()
     modelo = config.get("modelo_openai", "gpt-5-mini")
     temperatura = float(config.get("temperatura_ia", 0.2))
+    servicos = _carregar_servicos_ativos()
 
     client = OpenAI(api_key=OPENAI_API_KEY)
     mensagens = [
-        {"role": "system", "content": _carregar_prompt()},
+        {"role": "system", "content": _carregar_prompt(servicos)},
         {"role": "user", "content": mensagem},
     ]
     try:

@@ -13,4 +13,9 @@ Além da categoria, extraia (quando existirem explicitamente no texto, nunca inv
 - um resumo curto e objetivo do que o cliente quer;
 - CPF mencionado, se houver;
 - número de protocolo mencionado, se houver;
-- se a mensagem indica que precisa de atendimento humano (mesmo que a categoria escolhida não seja ATENDIMENTO_HUMANO — por exemplo, um cliente irritado pedindo status de processo).
+- se a mensagem indica que precisa de atendimento humano (mesmo que a categoria escolhida não seja ATENDIMENTO_HUMANO — por exemplo, um cliente irritado pedindo status de processo);
+- qual serviço específico o cliente está perguntando (campo servico_mencionado), escolhendo **exatamente um destes nomes cadastrados**, sem alterar nem abreviar o texto:
+
+{lista_servicos}
+
+Se a pergunta for genérica sobre todos os serviços (ex.: "quais serviços vocês têm?"), ou não deixar claro qual serviço é, deixe servico_mencionado vazio — não escolha um serviço no chute.

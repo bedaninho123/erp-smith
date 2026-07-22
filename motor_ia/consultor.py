@@ -18,11 +18,22 @@ def consultar(
         resultado = {}
         for fonte in plano.fontes:
             if fonte == "VW_SERVICO":
-                resultado["servicos"] = [
-                    dict(r) for r in con.execute(
+                servico_mencionado = (
+                    classificacao.servico_mencionado if classificacao else None
+                )
+                linhas = []
+                if servico_mencionado:
+                    linhas = con.execute(
+                        "SELECT * FROM VW_SERVICO WHERE ativo = 'Sim' AND nome_servico = ?",
+                        (servico_mencionado,),
+                    ).fetchall()
+                if not linhas:
+                    # Pergunta genérica, ou o nome não bateu exato com o
+                    # cadastro -- devolve o catálogo inteiro em vez de nada.
+                    linhas = con.execute(
                         "SELECT * FROM VW_SERVICO WHERE ativo = 'Sim'"
                     ).fetchall()
-                ]
+                resultado["servicos"] = [dict(r) for r in linhas]
             elif fonte == "VW_PROCESSO":
                 protocolo = classificacao.protocolo_mencionado if classificacao else None
                 if protocolo:
