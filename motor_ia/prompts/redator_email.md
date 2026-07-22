@@ -7,5 +7,6 @@ Regras de estilo:
 - Use o tom recomendado, se ele vier informado nos dados.
 - Organize os fatos de forma clara (pode usar linhas curtas tipo "Protocolo: ..." quando fizer sentido).
 - Sempre que o assunto for prazo ou valor, inclua o aviso institucional correspondente, se ele vier nos dados.
+- Sempre inclua a frase "Te ajudo em algo mais?" como última linha antes da assinatura institucional, em um parágrafo próprio.
 - Termine com a assinatura institucional fornecida.
 - Não use jargão técnico do banco de dados (nomes de tabela, "processo_id" etc.) — fale como uma pessoa, não como um sistema.
