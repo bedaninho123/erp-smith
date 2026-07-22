@@ -292,12 +292,97 @@ def main():
         ],
     )
 
+    # 15) configuracoes — 20_Configuracoes tinha 28 linhas, mas 2 chaves
+    #     duplicadas (mesmo valor, config_id diferente); migradas uma única
+    #     vez cada (permitir_valores_referencia, permitir_prazos_referencia).
+    cur.executemany(
+        "INSERT INTO configuracoes VALUES (?,?,?,?,?,?)",
+        [
+            ("CFG-000001", "nome_empresa", "Smith Clube de Tiro", "empresa",
+             "Nome utilizado nas mensagens", "Sim"),
+            ("CFG-000002", "nome_assistente", "Assistente Virtual Smith", "ia",
+             "Nome do atendente virtual", "Sim"),
+            ("CFG-000003", "cidade", "Marília", "empresa",
+             "Cidade da empresa", "Sim"),
+            ("CFG-000004", "estado", "SP", "empresa", "Estado da empresa",
+             "Sim"),
+            ("CFG-000005", "telefone", "(14)99805-9500 / (14) 99815-7890",
+             "contato", "Telefone principal", "Sim"),
+            ("CFG-000006", "whatsapp", "(14)99805-9500 / (14) 99815-7890",
+             "contato", "WhatsApp de atendimento", "Sim"),
+            ("CFG-000007", "email_atendimento", "smithclube@gmail.com",
+             "contato", "E-mail de atendimento", "Sim"),
+            ("CFG-000008", "site", "www.smithloja.com.br", "contato",
+             "Site oficial", "Não"),
+            ("CFG-000009", "horario_semana",
+             "Terça e Sexta: 9h as 18h / Quarta 14h as 21h / Quinta 13h as 20h",
+             "atendimento", "Horário de atendimento semanal", "Sim"),
+            ("CFG-000010", "horario_sabado", "Sábado, das 9h às 17h",
+             "atendimento", "Horário de sábado", "Sim"),
+            ("CFG-000011", "horario_domingo", "Fechado", "atendimento",
+             "Horário de domingo", "Sim"),
+            ("CFG-000012", "saudacao_padrao", "Olá! Como podemos ajudar?",
+             "mensagens", "Saudação inicial", "Sim"),
+            ("CFG-000013", "mensagem_fora_horario",
+             "Recebemos sua mensagem fora do nosso horário de atendimento. "
+             "Retornaremos assim que possível.", "mensagens",
+             "Resposta fora do expediente", "Sim"),
+            ("CFG-000014", "mensagem_encaminhamento_humano",
+             "Sua solicitação será encaminhada para um de nossos atendentes.",
+             "mensagens", "Aviso de transferência", "Sim"),
+            ("CFG-000015", "assinatura_email", "Equipe Smith Clube de Tiro",
+             "mensagens", "Assinatura dos e-mails", "Sim"),
+            ("CFG-000016", "prazo_resposta_humano", "Em até 1 dia útil",
+             "atendimento", "Prazo estimado para resposta humana", "Sim"),
+            ("CFG-000017", "moeda", "BRL", "sistema",
+             "Moeda utilizada nos valores", "Sim"),
+            ("CFG-000018", "idioma", "pt-BR", "sistema",
+             "Idioma das respostas", "Sim"),
+            ("CFG-000019", "permitir_valores_referencia", "Sim", "ia",
+             "Permite informar valores cadastrados", "Sim"),
+            ("CFG-000020", "permitir_prazos_referencia", "Sim", "ia",
+             "Permite informar prazos cadastrados", "Sim"),
+            ("CFG-000021", "aviso_valor",
+             "Os valores informados são referências e podem variar conforme "
+             "o serviço e as particularidades do caso.", "mensagens",
+             "Aviso utilizado junto aos valores", "Sim"),
+            ("CFG-000022", "aviso_prazo",
+             "Os prazos informados são estimativas e podem variar conforme "
+             "a análise do órgão competente.", "mensagens",
+             "Aviso utilizado junto aos prazos", "Sim"),
+            ("CFG-000023", "temperatura_ia", "0.2", "ia",
+             "Criatividade das respostas", "Sim"),
+            ("CFG-000024", "max_tokens", "1200", "ia",
+             "Máximo de tokens das respostas", "Sim"),
+            ("CFG-000025", "modelo_openai", "gpt-5-mini", "ia",
+             "Modelo utilizado", "Sim"),
+            ("CFG-000026", "idioma_resposta", "pt-BR", "ia",
+             "Idioma padrão das respostas", "Sim"),
+        ],
+    )
+
+    # 16) tarefas — caso_id (campo novo) inferido via processo_id.
+    cur.executemany(
+        "INSERT INTO tarefas VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            ("TAR-000001", "CAS-000002", "CLI-000002", "PRO-000002",
+             "Cobrar documento",
+             "Solicitar comprovante de residência atualizado.", "USR-000001",
+             excel_to_iso(46218.0), "Alta", "Pendente", None,
+             "Enviar lembrete por e-mail."),
+            ("TAR-000002", "CAS-000001", "CLI-000001", "PRO-000001",
+             "Consultar andamento",
+             "Verificar atualização no órgão responsável.", "USR-000001",
+             excel_to_iso(46223.0), "Normal", "Pendente", None, None),
+        ],
+    )
+
     con.commit()
 
     print("Migração concluída. Contagem de linhas por tabela:")
     for tabela in ["cliente", "usuario", "servico", "caso", "processo",
                    "documento", "sessao", "memoria_ia", "conversa", "template",
-                   "mensagem"]:
+                   "mensagem", "configuracoes", "tarefas"]:
         n = cur.execute(f"SELECT COUNT(*) FROM {tabela}").fetchone()[0]
         print(f"  {tabela}: {n}")
 

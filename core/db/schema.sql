@@ -317,3 +317,38 @@ CREATE INDEX idx_mensagem_cliente_id ON mensagem(cliente_id);
 CREATE INDEX idx_mensagem_caso_id ON mensagem(caso_id);
 CREATE INDEX idx_mensagem_conversa_id ON mensagem(conversa_id);
 CREATE INDEX idx_mensagem_processo_id ON mensagem(processo_id);
+
+-- Fonte: docs/schema_configuracoes_tarefas.md (20_Configuracoes). Aba mais
+-- limpa até agora; só 2 chaves duplicadas (mesmo valor, config_id diferente)
+-- descartadas na migração.
+CREATE TABLE configuracoes (
+    config_id     TEXT PRIMARY KEY,                  -- CFG-000001
+    chave         TEXT NOT NULL UNIQUE,
+    valor         TEXT NOT NULL,                       -- sempre texto, mesmo quando é número
+    categoria     TEXT NOT NULL,
+    descricao     TEXT,
+    ativo         TEXT NOT NULL DEFAULT 'Sim'
+);
+
+-- Fonte: docs/schema_configuracoes_tarefas.md (07_Tarefas,
+-- 96_Relacionamentos_Casos). tarefa.caso_id é campo novo (mesma situação
+-- de processo.caso_id): não existia na planilha, mas toda tarefa de
+-- atendimento deve pertencer a um caso.
+CREATE TABLE tarefas (
+    tarefa_id        TEXT PRIMARY KEY,                -- TAR-000001
+    caso_id          TEXT NOT NULL REFERENCES caso(caso_id),
+    cliente_id       TEXT NOT NULL REFERENCES cliente(cliente_id),
+    processo_id      TEXT REFERENCES processo(processo_id),
+    tipo             TEXT NOT NULL,
+    descricao        TEXT,
+    responsavel_id   TEXT REFERENCES usuario(usuario_id),
+    prazo            TEXT,                             -- ISO 8601
+    prioridade       TEXT NOT NULL,
+    status           TEXT NOT NULL,
+    data_conclusao   TEXT,                              -- ISO 8601
+    observacoes      TEXT
+);
+
+CREATE INDEX idx_tarefas_caso_id ON tarefas(caso_id);
+CREATE INDEX idx_tarefas_cliente_id ON tarefas(cliente_id);
+CREATE INDEX idx_tarefas_processo_id ON tarefas(processo_id);
