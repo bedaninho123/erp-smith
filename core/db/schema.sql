@@ -99,3 +99,60 @@ CREATE INDEX idx_processo_caso_id ON processo(caso_id);
 CREATE INDEX idx_processo_cliente_id ON processo(cliente_id);
 CREATE INDEX idx_processo_servico_id ON processo(servico_id);
 CREATE INDEX idx_processo_status ON processo(status);
+
+-- Fonte: docs/schema_documento_sessao.md (05_Documentos, 96_Relacionamentos_Casos).
+-- documento.caso_id é campo novo (não existia na planilha).
+-- CHECK abaixo garante que todo documento tem contexto: pertence a um
+-- caso e/ou a um processo, nunca solto sem nenhum dos dois.
+CREATE TABLE documento (
+    documento_id      TEXT PRIMARY KEY,                 -- DOC-000001
+    cliente_id        TEXT NOT NULL REFERENCES cliente(cliente_id),
+    caso_id           TEXT REFERENCES caso(caso_id),
+    processo_id       TEXT REFERENCES processo(processo_id),
+    tipo_documento    TEXT NOT NULL,
+    nome_arquivo      TEXT,
+    link_arquivo      TEXT,
+    status            TEXT NOT NULL,
+    data_envio        TEXT,                              -- ISO 8601
+    data_validade     TEXT,                              -- ISO 8601
+    revisado_por      TEXT,                               -- texto livre por enquanto
+    observacoes       TEXT,
+    CHECK (caso_id IS NOT NULL OR processo_id IS NOT NULL)
+);
+
+CREATE INDEX idx_documento_cliente_id ON documento(cliente_id);
+CREATE INDEX idx_documento_caso_id ON documento(caso_id);
+CREATE INDEX idx_documento_processo_id ON documento(processo_id);
+
+-- Fonte: docs/schema_documento_sessao.md (08_Sessoes, 40_Listas_Auxiliares).
+-- sessao.caso_id é campo novo e opcional: "uma sessão pode iniciar sem
+-- caso e ser vinculada após classificação" (96_Relacionamentos_Casos).
+-- sessao_id não constava em 91_Padrao_IDs, mas os dados de exemplo já
+-- seguem o padrão de 6 dígitos (SES-000001) — vale completar a planilha depois.
+CREATE TABLE sessao (
+    sessao_id                TEXT PRIMARY KEY,           -- SES-000001
+    cliente_id                TEXT NOT NULL REFERENCES cliente(cliente_id),
+    caso_id                    TEXT REFERENCES caso(caso_id),
+    canal                      TEXT NOT NULL,
+    identificador_canal        TEXT,
+    assunto_atual              TEXT,
+    ultima_intencao            TEXT,
+    ultimo_servico_id          TEXT REFERENCES servico(service_id),
+    ultimo_processo_id         TEXT REFERENCES processo(processo_id),
+    ultima_mensagem_cliente    TEXT,
+    ultima_resposta_ia         TEXT,
+    resumo_sessao              TEXT,
+    status_sessao              TEXT NOT NULL,
+    iniciada_em                TEXT NOT NULL,             -- ISO 8601
+    ultima_interacao_em        TEXT NOT NULL,              -- ISO 8601
+    expira_em                  TEXT,                        -- ISO 8601
+    encaminhada_humano         TEXT,                        -- Sim/Não, texto livre
+    responsavel                TEXT,                        -- texto livre por enquanto
+    conversa_id_origem         TEXT,                        -- sem FK ainda; tabela conversa pendente
+    ativo                      TEXT NOT NULL DEFAULT 'Sim',
+    observacoes                TEXT
+);
+
+CREATE INDEX idx_sessao_cliente_id ON sessao(cliente_id);
+CREATE INDEX idx_sessao_caso_id ON sessao(caso_id);
+CREATE INDEX idx_sessao_status_sessao ON sessao(status_sessao);
