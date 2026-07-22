@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ERP Smith — Painel de Desenvolvimento</title>
+<style>
+  :root {
+    --bg: #EEF0E8; --surface: #F8F9F3; --surface-2: #E4E7DA; --ink: #1E231C;
+    --muted: #5B6154; --accent: #A8402A; --accent-soft: #A8402A1a;
+    --accent-2: #35695F; --accent-2-soft: #35695F1a; --line: #C9CDBD;
+    --good: #2F6B4C; --good-soft: #2F6B4C1a; --bad: #A8402A; --bad-soft: #A8402A1a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14160F; --surface: #1C1F16; --surface-2: #262A1C; --ink: #E9E7DA;
+      --muted: #A2A594; --accent: #E08361; --accent-soft: #E083612a;
+      --accent-2: #82BAAD; --accent-2-soft: #82BAAD22; --line: #33372A;
+      --good: #7FCB9E; --good-soft: #7FCB9E22; --bad: #E08361; --bad-soft: #E083612a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+    line-height: 1.5; margin: 0;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .page { max-width: 980px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+  h1 {
+    font-family: Georgia, serif; font-weight: 400; font-size: 1.9rem;
+    margin: 0 0 0.3rem;
+  }
+  .subtitle { color: var(--muted); margin: 0 0 1.8rem; font-size: 0.95rem; }
+
+  .tabs { display: flex; gap: 0.4rem; margin-bottom: 1.6rem; border-bottom: 1px solid var(--line); }
+  .tab {
+    background: none; border: none; cursor: pointer; font-size: 0.92rem;
+    padding: 0.6rem 1rem; color: var(--muted); border-bottom: 2px solid transparent;
+    font-family: inherit;
+  }
+  .tab.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line);
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 1.8rem; }
+  .stat { background: var(--surface); padding: 1rem; }
+  .stat .n { font-family: Georgia, serif; font-size: 1.6rem; font-variant-numeric: tabular-nums; display: block; }
+  .stat .l { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1.2rem 1.4rem; margin-bottom: 1.4rem; }
+  .panel h2 { font-family: Georgia, serif; font-weight: 400; font-size: 1.15rem; margin: 0 0 1rem; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem;
+    text-transform: uppercase; letter-spacing: 0.05em; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--line); }
+  td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px;
+    background: var(--surface-2); color: var(--muted); }
+
+  .modulo-lista { display: flex; flex-direction: column; gap: 0.5rem; }
+  .modulo { display: flex; align-items: center; gap: 0.6rem; font-size: 0.9rem; }
+  .check { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center;
+    justify-content: center; font-size: 0.7rem; flex: none; }
+  .check.sim { background: var(--good-soft); color: var(--good); }
+  .check.nao { background: var(--surface-2); color: var(--muted); }
+
+  .timeline { border-left: 2px solid var(--line); margin-left: 0.3rem; padding-left: 1.1rem; max-height: 340px; overflow-y: auto; }
+  .tl-item { position: relative; padding-bottom: 0.9rem; font-size: 0.85rem; }
+  .tl-item::before { content: ""; position: absolute; left: -1.5rem; top: 0.3rem; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--accent-2); }
+  .tl-hash { font-size: 0.72rem; color: var(--accent-2); background: var(--accent-2-soft); border-radius: 5px;
+    padding: 0.03rem 0.35rem; margin-right: 0.4rem; }
+  .tl-data { font-size: 0.72rem; color: var(--muted); display: block; margin-top: 0.1rem; }
+
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.3rem; }
+  select, textarea {
+    width: 100%; font-family: inherit; font-size: 0.92rem; padding: 0.55rem 0.7rem;
+    border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  textarea { resize: vertical; min-height: 4.5rem; }
+  .form-row { margin-bottom: 0.9rem; }
+  button.primary {
+    background: var(--accent); color: #F8F5EF; border: none; border-radius: 8px;
+    padding: 0.6rem 1.3rem; font-size: 0.92rem; cursor: pointer; font-family: inherit;
+  }
+  button.primary:disabled { opacity: 0.55; cursor: default; }
+
+  .resultado { margin-top: 1.4rem; display: none; }
+  .step { border-left: 3px solid var(--line); padding: 0.2rem 0 0.2rem 0.9rem; margin-bottom: 1rem; }
+  .step h3 { font-family: Georgia, serif; font-weight: 400; font-size: 1rem; margin: 0 0 0.4rem; }
+  .kv { font-size: 0.85rem; margin: 0.15rem 0; }
+  .kv b { color: var(--muted); font-weight: 600; }
+  .pill { display: inline-block; font-size: 0.72rem; padding: 0.12rem 0.55rem; border-radius: 999px; font-weight: 600; }
+  .pill.enviar { background: var(--good-soft); color: var(--good); }
+  .pill.encaminhar_humano, .pill.revisar { background: var(--bad-soft); color: var(--bad); }
+  .resposta-box { background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 0.9rem 1rem; white-space: pre-wrap; font-size: 0.88rem; margin-top: 0.4rem; }
+  .erro-box { background: var(--bad-soft); color: var(--bad); border-radius: 8px; padding: 0.8rem 1rem; font-size: 0.88rem; }
+  .loading { color: var(--muted); font-size: 0.88rem; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>ERP Smith — Painel de Desenvolvimento</h1>
+  <p class="subtitle">Ferramenta local pra acompanhar o progresso do projeto e testar o Motor IA ao vivo.</p>
+
+  <div class="tabs">
+    <button class="tab active" data-view="status">Status do Projeto</button>
+    <button class="tab" data-view="testar">Testar Pipeline</button>
+  </div>
+
+  <div id="view-status" class="view active">
+    <div class="stat-row" id="stat-row"></div>
+
+    <div class="panel">
+      <h2>Módulos do Motor IA</h2>
+      <div class="modulo-lista" id="modulos"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Tabelas do banco</h2>
+      <table>
+        <thead><tr><th>Tabela</th><th>Camada</th><th style="text-align:right">Linhas</th></tr></thead>
+        <tbody id="tabelas-body"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Histórico de commits</h2>
+      <div class="timeline" id="commits"></div>
+    </div>
+  </div>
+
+  <div id="view-testar" class="view">
+    <div class="panel">
+      <h2>Enviar uma mensagem de teste</h2>
+      <div class="form-row">
+        <label for="cliente">Cliente</label>
+        <select id="cliente"></select>
+      </div>
+      <div class="form-row">
+        <label for="mensagem">Mensagem do cliente</label>
+        <textarea id="mensagem" placeholder="Ex.: Quais documentos preciso para renovar meu CR?"></textarea>
+      </div>
+      <button class="primary" id="enviar">Enviar pelo pipeline</button>
+      <div id="resultado" class="resultado"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    btn.classList.add("active");
+    $("#view-" + btn.dataset.view).classList.add("active");
+  });
+});
+
+async function carregarStatus() {
+  const r = await fetch("/api/status");
+  const d = await r.json();
+
+  const totalLinhas = d.tabelas.reduce((s, t) => s + t.linhas, 0);
+  const modulosProntos = d.modulos.filter(m => m.existe).length;
+  $("#stat-row").innerHTML = `
+    <div class="stat"><span class="n">${d.tabelas.length}</span><span class="l">Tabelas</span></div>
+    <div class="stat"><span class="n">${d.commits.length}</span><span class="l">Commits</span></div>
+    <div class="stat"><span class="n">${modulosProntos}/${d.modulos.length}</span><span class="l">Módulos Motor IA</span></div>
+  `;
+
+  $("#modulos").innerHTML = d.modulos.map(m => `
+    <div class="modulo">
+      <span class="check ${m.existe ? 'sim' : 'nao'}">${m.existe ? '✓' : '·'}</span>
+      <span>${m.nome}</span>
+    </div>
+  `).join("");
+
+  $("#tabelas-body").innerHTML = d.tabelas.map(t => `
+    <tr>
+      <td class="mono">${t.nome}</td>
+      <td><span class="badge">${t.camada}</span></td>
+      <td style="text-align:right">${t.linhas}</td>
+    </tr>
+  `).join("");
+
+  $("#commits").innerHTML = d.commits.map(c => `
+    <div class="tl-item">
+      <span class="tl-hash mono">${c.hash}</span>${c.mensagem}
+      <span class="tl-data">${c.data}</span>
+    </div>
+  `).join("");
+}
+
+async function carregarClientes() {
+  const r = await fetch("/api/clientes");
+  const clientes = await r.json();
+  $("#cliente").innerHTML = clientes.map(c => `<option value="${c.cliente_id}">${c.nome}</option>`).join("");
+}
+
+function badgeAcao(acao) {
+  const nomes = { enviar: "enviar ao cliente", encaminhar_humano: "encaminhar a humano", revisar: "reter para revisão" };
+  return `<span class="pill ${acao}">${nomes[acao] || acao}</span>`;
+}
+
+async function enviarPipeline() {
+  const mensagem = $("#mensagem").value.trim();
+  const cliente_id = $("#cliente").value;
+  const resultadoEl = $("#resultado");
+  const botao = $("#enviar");
+
+  if (!mensagem || !cliente_id) { alert("Escolha um cliente e escreva uma mensagem."); return; }
+
+  botao.disabled = true;
+  resultadoEl.style.display = "block";
+  resultadoEl.innerHTML = `<p class="loading">Rodando Classificador → Planejador → Consultor → Redator → Auditor…</p>`;
+
+  try {
+    const r = await fetch("/api/pipeline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mensagem, cliente_id }),
+    });
+    const d = await r.json();
+
+    if (!r.ok) {
+      resultadoEl.innerHTML = `<div class="erro-box">${d.erro}</div>`;
+      return;
+    }
+
+    const c = d.classificacao;
+    let html = "";
+
+    html += `<div class="step"><h3>1. Classificação</h3>
+      <p class="kv"><b>Intenção:</b> ${c.intencao} ${c.precisa_humano ? '<span class="badge">precisa_humano</span>' : ''}</p>
+      <p class="kv"><b>Resumo:</b> ${c.resumo}</p>
+      ${c.cpf_mencionado ? `<p class="kv"><b>CPF mencionado:</b> ${c.cpf_mencionado}</p>` : ''}
+      ${c.protocolo_mencionado ? `<p class="kv"><b>Protocolo mencionado:</b> ${c.protocolo_mencionado}</p>` : ''}
+      ${c.servico_mencionado ? `<p class="kv"><b>Serviço mencionado:</b> ${c.servico_mencionado}</p>` : ''}
+    </div>`;
+
+    html += `<div class="step"><h3>2. Plano</h3>
+      <p class="kv"><b>Fontes consultadas:</b> ${d.plano.fontes.join(", ") || "(nenhuma)"}</p>
+      <p class="kv"><b>Encaminhar humano:</b> ${d.plano.encaminhar_humano ? "sim" : "não"}${d.plano.motivo_humano ? " — " + d.plano.motivo_humano : ""}</p>
+    </div>`;
+
+    html += `<div class="step"><h3>3. Auditoria</h3>
+      <p class="kv">${badgeAcao(d.auditoria.acao)} ${d.auditoria.motivo ? "— " + d.auditoria.motivo : ""}</p>
+    </div>`;
+
+    html += `<div class="step"><h3>4. Resultado final</h3>`;
+    if (d.auditoria.acao === "enviar") {
+      html += `<p class="kv">Resposta enviada ao cliente:</p><div class="resposta-box">${d.resposta_gerada}</div>`;
+    } else if (d.auditoria.acao === "encaminhar_humano") {
+      html += `<p class="kv">Resposta da IA descartada. Encaminhado para atendimento humano.</p>`;
+    } else {
+      html += `<p class="kv">Resposta retida para revisão (não enviada):</p><div class="resposta-box">${d.resposta_gerada}</div>`;
+    }
+    html += `</div>`;
+
+    resultadoEl.innerHTML = html;
+  } catch (e) {
+    resultadoEl.innerHTML = `<div class="erro-box">Erro inesperado: ${e}</div>`;
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+$("#enviar").addEventListener("click", enviarPipeline);
+
+carregarStatus();
+carregarClientes();
+</script>
+</body>
+</html>
