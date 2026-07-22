@@ -13,12 +13,14 @@ from motor_ia.auditor import auditar
 from motor_ia.classificador import classificar
 from motor_ia.conexao import CORE_DB, DOMAIN_DB, conectar
 from motor_ia.consultor import consultar
+from motor_ia.identificador_cliente import identificar_cliente
 from motor_ia.planejador import planejar
 from motor_ia.redator import redigir
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 MODULOS_MOTOR_IA = [
+    ("Identificador de Cliente", "motor_ia/identificador_cliente.py"),
     ("Classificador", "motor_ia/classificador.py"),
     ("Planejador", "motor_ia/planejador.py"),
     ("Consultor", "motor_ia/consultor.py"),
@@ -87,6 +89,29 @@ def clientes():
     ).fetchall()
     con.close()
     return jsonify([{"cliente_id": r[0], "nome": r[1]} for r in linhas])
+
+
+@app.route("/api/identificar_cliente", methods=["POST"])
+def identificar():
+    corpo = request.get_json(force=True)
+    nome = (corpo.get("nome") or "").strip() or None
+    cpf = (corpo.get("cpf") or "").strip() or None
+    email = (corpo.get("email") or "").strip() or None
+
+    if not (nome or cpf or email):
+        return jsonify(erro="Informe nome, CPF ou e-mail."), 400
+
+    cliente = identificar_cliente(nome=nome, cpf=cpf, email=email)
+    if not cliente:
+        return jsonify(encontrado=False), 200
+
+    return jsonify(
+        encontrado=True,
+        cliente_id=cliente["cliente_id"],
+        nome=cliente["nome"],
+        cpf=cliente["cpf"],
+        email=cliente["email"],
+    )
 
 
 @app.route("/api/pipeline", methods=["POST"])

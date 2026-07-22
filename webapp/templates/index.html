@@ -77,7 +77,7 @@
   .tl-data { font-size: 0.72rem; color: var(--muted); display: block; margin-top: 0.1rem; }
 
   label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.3rem; }
-  select, textarea {
+  select, textarea, input[type="text"] {
     width: 100%; font-family: inherit; font-size: 0.92rem; padding: 0.55rem 0.7rem;
     border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
   }
@@ -137,6 +137,18 @@
 
   <div id="view-testar" class="view">
     <div class="panel">
+      <h2>Identificar cliente (por nome, CPF ou e-mail)</h2>
+      <p class="subtitle" style="margin-bottom:0.9rem">Simula o passo "Identificar cliente" do fluxo real, que acontece antes de classificar a mensagem. Preencha um dos três campos.</p>
+      <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.7rem;">
+        <div><label for="busca-nome">Nome</label><input id="busca-nome" type="text" placeholder="Ex.: Maria Oliveira"></div>
+        <div><label for="busca-cpf">CPF</label><input id="busca-cpf" type="text" placeholder="Ex.: 123.456.789-00"></div>
+        <div><label for="busca-email">E-mail</label><input id="busca-email" type="text" placeholder="Ex.: cliente@email.com"></div>
+      </div>
+      <button class="primary" id="buscar-cliente">Buscar</button>
+      <div id="resultado-busca" style="margin-top:0.8rem"></div>
+    </div>
+
+    <div class="panel">
       <h2>Enviar uma mensagem de teste</h2>
       <div class="form-row">
         <label for="cliente">Cliente</label>
@@ -163,6 +175,41 @@ document.querySelectorAll(".tab").forEach(btn => {
     $("#view-" + btn.dataset.view).classList.add("active");
   });
 });
+
+async function buscarCliente() {
+  const nome = $("#busca-nome").value.trim();
+  const cpf = $("#busca-cpf").value.trim();
+  const email = $("#busca-email").value.trim();
+  const resultadoEl = $("#resultado-busca");
+
+  if (!nome && !cpf && !email) {
+    resultadoEl.innerHTML = `<div class="erro-box">Preencha nome, CPF ou e-mail.</div>`;
+    return;
+  }
+
+  resultadoEl.innerHTML = `<p class="loading">Buscando…</p>`;
+  const r = await fetch("/api/identificar_cliente", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nome, cpf, email }),
+  });
+  const d = await r.json();
+
+  if (!d.encontrado) {
+    resultadoEl.innerHTML = `<div class="erro-box">Nenhum cliente encontrado com esses dados.</div>`;
+    return;
+  }
+
+  resultadoEl.innerHTML = `<p class="kv"><span class="badge">encontrado</span> ${d.nome} (${d.cliente_id}) — CPF ${d.cpf} — ${d.email || 'sem e-mail'}</p>`;
+
+  // Seleciona o cliente encontrado no dropdown do teste de pipeline.
+  const select = $("#cliente");
+  if ([...select.options].some(o => o.value === d.cliente_id)) {
+    select.value = d.cliente_id;
+  }
+}
+
+$("#buscar-cliente").addEventListener("click", buscarCliente);
 
 async function carregarStatus() {
   const r = await fetch("/api/status");
