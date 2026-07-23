@@ -6,10 +6,12 @@ projeto (baixado do Google Cloud Console -- veja o passo a passo que o
 Claude te explicou no chat).
 
 O que acontece ao rodar:
-  1. Abre uma aba no seu navegador pedindo para você logar no Google e
-     autorizar o acesso (só permissão de ENVIAR e-mail, nada de ler).
-  2. Depois de você clicar em "Permitir", salva um arquivo token.json
-     na raiz do projeto -- é esse arquivo que os outros módulos usam
+  1. O terminal mostra um link. Copie e cole esse link no seu navegador
+     (não depende de abrir sozinho -- mais confiável em qualquer
+     máquina). Faça login no Google e autorize o acesso (só permissão
+     de ENVIAR e-mail, nada de ler).
+  2. Depois de clicar em "Permitir", salva um arquivo token.json na
+     raiz do projeto -- é esse arquivo que os outros módulos usam
      depois, sem precisar repetir esse processo.
 
 token.json nunca é commitado (está no .gitignore).
@@ -34,10 +36,14 @@ def main():
         return
 
     flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_PATH), SCOPES)
-    creds = flow.run_local_server(port=0)
+    # open_browser=False força a biblioteca a sempre IMPRIMIR o link em
+    # vez de só tentar abrir sozinha -- evita ficar travado em silêncio
+    # quando o navegador padrão não abre automaticamente.
+    print("Copie o link abaixo e cole no seu navegador para autorizar:\n")
+    creds = flow.run_local_server(port=0, open_browser=False)
 
     TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
-    print(f"Autorização concluída. Token salvo em {TOKEN_PATH}.")
+    print(f"\nAutorização concluída. Token salvo em {TOKEN_PATH}.")
     print("Agora os outros módulos já podem enviar e-mail pela sua conta.")
 
 
