@@ -15,6 +15,7 @@ import sys
 import time
 
 from integracoes.gmail import gmail_configurado, listar_mensagens_nao_lidas, marcar_como_lida
+from atendimento.alertas import alertar_excecao, alertar_falha
 from atendimento.processar import processar_mensagem
 
 INTERVALO_SEGUNDOS = 60
@@ -25,21 +26,45 @@ def verificar_uma_vez() -> int:
         print("Gmail ainda não autorizado -- nada para verificar.")
         return 0
 
-    mensagens = listar_mensagens_nao_lidas()
+    try:
+        mensagens = listar_mensagens_nao_lidas()
+    except Exception as e:
+        alertar_excecao("Falha ao consultar a caixa de entrada", e)
+        raise
+
     for msg in mensagens:
         print(f"Processando e-mail de {msg['remetente_email']}: {msg['assunto']!r}")
-        resultado = processar_mensagem(
-            texto=msg["corpo"],
-            canal="Email",
-            assunto=msg["assunto"],
-            remetente_email=msg["remetente_email"],
-            remetente_nome=msg.get("remetente_nome"),
-        )
+        try:
+            resultado = processar_mensagem(
+                texto=msg["corpo"],
+                canal="Email",
+                assunto=msg["assunto"],
+                remetente_email=msg["remetente_email"],
+                remetente_nome=msg.get("remetente_nome"),
+            )
+        except Exception as e:
+            alertar_excecao(
+                f"Falha ao processar e-mail de {msg['remetente_email']}", e
+            )
+            # Não marca como lida -- fica pra tentar de novo na próxima
+            # rodada, em vez de perder a mensagem por causa de uma
+            # falha temporária (ex.: OpenAI fora do ar por um instante).
+            continue
+
         if resultado.get("erro"):
             print(f"  -> erro: {resultado['erro']}")
+            alertar_falha(
+                f"Erro ao responder e-mail de {msg['remetente_email']}",
+                resultado["erro"],
+            )
         else:
             print(f"  -> intenção: {resultado.get('intencao')}, ação: {resultado.get('acao')}, "
                   f"enviado: {resultado.get('email_enviado')}")
+            if resultado.get("erro_envio"):
+                alertar_falha(
+                    "Resposta gerada mas falhou ao enviar",
+                    f"Cliente {resultado.get('cliente_id')}: {resultado['erro_envio']}",
+                )
 
         marcar_como_lida(msg["id"])
 
@@ -49,9 +74,15 @@ def verificar_uma_vez() -> int:
 def loop():
     print(f"Verificando e-mails novos a cada {INTERVALO_SEGUNDOS}s. Ctrl+C para parar.")
     while True:
-        n = verificar_uma_vez()
-        if n:
-            print(f"{n} mensagem(ns) processada(s) nesta rodada.")
+        try:
+            n = verificar_uma_vez()
+            if n:
+                print(f"{n} mensagem(ns) processada(s) nesta rodada.")
+        except Exception as e:
+            # Uma falha numa rodada não deve derrubar o loop pra sempre
+            # -- o alerta já foi enviado dentro de verificar_uma_vez();
+            # aqui só evita que o processo morra e pare de tentar.
+            print(f"Falha nesta rodada, tentando de novo em {INTERVALO_SEGUNDOS}s: {e}")
         time.sleep(INTERVALO_SEGUNDOS)
 
 
