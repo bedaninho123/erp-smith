@@ -1,8 +1,10 @@
 """Busca de fato os dados que o Planejador apontou como necessários
-(plano.fontes) -- só consulta as views do Core e a tabela conhecimento do
-Domínio, nunca decide nada sobre o conteúdo."""
+(plano.fontes) -- só consulta as views do Core, a tabela conhecimento do
+Domínio e integrações externas (Shooting House), nunca decide nada sobre
+o conteúdo."""
 from typing import Optional
 
+from integracoes.shooting_house import consultar_habitualidade
 from motor_ia.classificador import ResultadoClassificacao
 from motor_ia.conexao import conectar
 from motor_ia.planejador import Plano
@@ -63,6 +65,11 @@ def consultar(
                         "WHERE aprovado = 'Sim' AND ativo = 'Sim'"
                     ).fetchall()
                 ]
+            elif fonte == "SHOOTING_HOUSE_HABITUALIDADE":
+                cpf_cliente = (resultado.get("cliente") or {}).get("cpf")
+                resultado["habitualidade"] = (
+                    consultar_habitualidade(cpf_cliente) if cpf_cliente else None
+                )
             else:
                 raise ValueError(f"Fonte desconhecida: {fonte}")
         return resultado

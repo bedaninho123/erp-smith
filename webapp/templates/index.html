@@ -122,6 +122,11 @@
     </div>
 
     <div class="panel">
+      <h2>Integrações externas</h2>
+      <div class="modulo-lista" id="integracoes"></div>
+    </div>
+
+    <div class="panel">
       <h2>Tabelas do banco</h2>
       <table>
         <thead><tr><th>Tabela</th><th>Camada</th><th style="text-align:right">Linhas</th></tr></thead>
@@ -227,6 +232,13 @@ async function carregarStatus() {
     <div class="modulo">
       <span class="check ${m.existe ? 'sim' : 'nao'}">${m.existe ? '✓' : '·'}</span>
       <span>${m.nome}</span>
+    </div>
+  `).join("");
+
+  $("#integracoes").innerHTML = d.integracoes.map(i => `
+    <div class="modulo">
+      <span class="check ${i.configurado ? 'sim' : 'nao'}">${i.configurado ? '✓' : '·'}</span>
+      <span>${i.nome}${i.configurado ? '' : ' <span class="badge">modo simulado</span>'}</span>
     </div>
   `).join("");
 

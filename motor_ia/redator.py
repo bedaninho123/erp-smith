@@ -52,6 +52,19 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
         linhas.append(s["valor_texto"])
         linhas.append(f"Documentos necessários: {s['documentos_obrigatorios']}")
 
+    habitualidade = dados.get("habitualidade")
+    if habitualidade:
+        linhas.append("--- Habitualidade (Shooting House) ---")
+        if habitualidade.get("simulado"):
+            linhas.append(
+                "(Aviso interno, não repetir ao cliente: dado de habitualidade é "
+                "simulado -- credencial do Shooting House ainda não configurada.)"
+            )
+        for grupo, info in (habitualidade.get("habitualidades") or {}).items():
+            linhas.append(f"Grupo {grupo}: {info.get('count', '?')} participação(ões) registrada(s).")
+            for evento in info.get("eventos", []):
+                linhas.append("  - " + "; ".join(f"{k}: {v}" for k, v in evento.items()))
+
     for k in dados.get("conhecimento", []):
         linhas.append(f"Conhecimento institucional: {k['pergunta']} -> {k['resposta']}")
 

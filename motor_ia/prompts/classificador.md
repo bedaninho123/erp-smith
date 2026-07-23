@@ -6,6 +6,7 @@ Classifique em uma destas categorias:
 - CONSULTA_DOCUMENTOS: o cliente quer saber quais documentos, prazo ou valor de um serviço.
 - CONSULTA_PROCESSO: o cliente quer saber o andamento/status de um processo já aberto.
 - CONSULTA_CLIENTE: o cliente quer confirmar ou atualizar seu próprio cadastro.
+- CONSULTA_HABITUALIDADE: o cliente quer saber sobre sua habitualidade (frequência de treino/participação exigida para renovação de CR/CRAF), ou sobre suas armas registradas.
 - ATENDIMENTO_GERAL: dúvida geral que não se encaixa nas anteriores.
 - ATENDIMENTO_HUMANO: o cliente pede explicitamente para falar com uma pessoa, ou a mensagem tem reclamação/situação sensível.
 

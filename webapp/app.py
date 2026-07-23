@@ -9,6 +9,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 
+from integracoes.config import shooting_house_configurado
 from motor_ia.atualizador_memoria import atualizar_memoria
 from motor_ia.auditor import auditar
 from motor_ia.classificador import classificar
@@ -79,7 +80,11 @@ def status():
         for nome, caminho in MODULOS_MOTOR_IA
     ]
 
-    return jsonify(tabelas=tabelas, commits=commits, modulos=modulos)
+    integracoes = [
+        {"nome": "Shooting House (habitualidade)", "configurado": shooting_house_configurado()},
+    ]
+
+    return jsonify(tabelas=tabelas, commits=commits, modulos=modulos, integracoes=integracoes)
 
 
 @app.route("/api/clientes")
