@@ -1,14 +1,16 @@
-"""Envio de respostas por e-mail via API do Gmail (fecha a Fase 4 do
-PROJETO_1.md: substitui a necessidade do Make para enviar a resposta de
-volta ao cliente).
+"""Envio e leitura de e-mails via API do Gmail (fecha a Fase 4 do
+PROJETO_1.md: substitui a necessidade do Make tanto para enviar quanto
+para receber mensagens).
 
 Requer duas coisas que só o usuário pode configurar (login do Google,
 não é uma chave simples):
   1. credentials.json na raiz do projeto -- baixado do Google Cloud
      Console (ver integracoes/gmail_autorizar.py para o passo a passo).
-  2. token.json na raiz do projeto -- gerado uma única vez rodando
+  2. token.json na raiz do projeto -- gerado rodando
      `python -m integracoes.gmail_autorizar`, que abre o navegador para
-     você autorizar o acesso à sua conta.
+     você autorizar o acesso à sua conta. Se o escopo mudou desde a
+     última vez (ex.: agora inclui leitura), é preciso rodar de novo --
+     o token antigo não tem a permissão nova.
 
 Nenhum dos dois arquivos é commitado (estão no .gitignore).
 """
@@ -20,7 +22,10 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.modify",
+]
 TOKEN_PATH = Path(__file__).resolve().parent.parent / "token.json"
 
 
@@ -58,6 +63,79 @@ def enviar_email(destinatario: str, assunto: str, corpo: str, em_resposta_a: str
     raw = base64.urlsafe_b64encode(mensagem.as_bytes()).decode("utf-8")
     enviado = service.users().messages().send(userId="me", body={"raw": raw}).execute()
     return enviado["id"]
+
+
+def _extrair_corpo(payload: dict) -> str:
+    """Extrai o texto simples de uma mensagem, mesmo quando ela vem em
+    partes (multipart/alternative com HTML + texto, anexos etc.)."""
+    if payload.get("mimeType") == "text/plain" and payload.get("body", {}).get("data"):
+        return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
+
+    for parte in payload.get("parts", []) or []:
+        texto = _extrair_corpo(parte)
+        if texto:
+            return texto
+    return ""
+
+
+def _cabecalho(headers: list[dict], nome: str) -> str:
+    for h in headers:
+        if h["name"].lower() == nome.lower():
+            return h["value"]
+    return ""
+
+
+def obter_email_proprio() -> str:
+    creds = _obter_credenciais()
+    service = build("gmail", "v1", credentials=creds)
+    return service.users().getProfile(userId="me").execute()["emailAddress"].lower()
+
+
+def listar_mensagens_nao_lidas(max_resultados: int = 10) -> list[dict]:
+    """Lista mensagens não lidas na caixa de entrada, já com remetente,
+    assunto e corpo extraídos -- prontas para o orquestrador processar.
+
+    Mensagens vindas do próprio e-mail da conta (ex.: uma resposta
+    automática que caiu na própria caixa de entrada, comum só em teste
+    onde remetente e destinatário são a mesma conta) são ignoradas e
+    marcadas como lidas sem processar -- evita loop de auto-resposta.
+    """
+    creds = _obter_credenciais()
+    service = build("gmail", "v1", credentials=creds)
+    email_proprio = obter_email_proprio()
+
+    resultado = service.users().messages().list(
+        userId="me", q="is:unread in:inbox", maxResults=max_resultados
+    ).execute()
+
+    mensagens = []
+    for item in resultado.get("messages", []):
+        msg = service.users().messages().get(userId="me", id=item["id"], format="full").execute()
+        headers = msg["payload"].get("headers", [])
+        remetente_bruto = _cabecalho(headers, "From")
+        # "Nome Sobrenome <email@dominio.com>" -> só o e-mail
+        email = remetente_bruto.split("<")[-1].replace(">", "").strip() if "<" in remetente_bruto else remetente_bruto.strip()
+
+        if email.lower() == email_proprio:
+            marcar_como_lida(msg["id"])
+            continue
+
+        mensagens.append({
+            "id": msg["id"],
+            "thread_id": msg["threadId"],
+            "remetente_email": email,
+            "assunto": _cabecalho(headers, "Subject"),
+            "corpo": _extrair_corpo(msg["payload"]).strip(),
+        })
+    return mensagens
+
+
+def marcar_como_lida(message_id: str) -> None:
+    creds = _obter_credenciais()
+    service = build("gmail", "v1", credentials=creds)
+    service.users().messages().modify(
+        userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
+    ).execute()
 
 
 if __name__ == "__main__":
