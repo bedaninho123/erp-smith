@@ -328,7 +328,7 @@ def main():
              "Retornaremos assim que possível.", "mensagens",
              "Resposta fora do expediente", "Sim"),
             ("CFG-000014", "mensagem_encaminhamento_humano",
-             "Sua solicitação será encaminhada para um de nossos atendentes.",
+             "Sua solicitação será encaminhada para nossa equipe de atendimento.",
              "mensagens", "Aviso de transferência", "Sim"),
             ("CFG-000015", "assinatura_email", "Equipe Smith Clube de Tiro",
              "mensagens", "Assinatura dos e-mails", "Sim"),

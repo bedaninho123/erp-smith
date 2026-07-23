@@ -74,10 +74,13 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
         linhas.append(f"Conhecimento institucional: {k['pergunta']} -> {k['resposta']}")
 
     linhas.append("--- Configurações institucionais ---")
+    # prazo_resposta_humano fica de fora de propósito -- só é relevante
+    # quando o caso é encaminhado a um humano (isso é tratado à parte,
+    # em atendimento/processar.py), não em toda resposta automática.
     for chave in (
         "nome_empresa", "telefone", "whatsapp", "email_atendimento", "site",
         "horario_semana", "horario_sabado", "horario_domingo",
-        "prazo_resposta_humano", "aviso_valor", "aviso_prazo", "assinatura_email",
+        "aviso_valor", "aviso_prazo", "assinatura_email",
     ):
         if config.get(chave):
             linhas.append(f"{chave}: {config[chave]}")
