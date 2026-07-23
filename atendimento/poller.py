@@ -33,6 +33,7 @@ def verificar_uma_vez() -> int:
             canal="Email",
             assunto=msg["assunto"],
             remetente_email=msg["remetente_email"],
+            remetente_nome=msg.get("remetente_nome"),
         )
         if resultado.get("erro"):
             print(f"  -> erro: {resultado['erro']}")

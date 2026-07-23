@@ -113,8 +113,13 @@ def listar_mensagens_nao_lidas(max_resultados: int = 10) -> list[dict]:
         msg = service.users().messages().get(userId="me", id=item["id"], format="full").execute()
         headers = msg["payload"].get("headers", [])
         remetente_bruto = _cabecalho(headers, "From")
-        # "Nome Sobrenome <email@dominio.com>" -> só o e-mail
-        email = remetente_bruto.split("<")[-1].replace(">", "").strip() if "<" in remetente_bruto else remetente_bruto.strip()
+        # "Nome Sobrenome <email@dominio.com>" -> nome e e-mail separados
+        if "<" in remetente_bruto:
+            nome = remetente_bruto.split("<")[0].strip().strip('"') or None
+            email = remetente_bruto.split("<")[-1].replace(">", "").strip()
+        else:
+            nome = None
+            email = remetente_bruto.strip()
 
         if email.lower() == email_proprio:
             marcar_como_lida(msg["id"])
@@ -124,6 +129,7 @@ def listar_mensagens_nao_lidas(max_resultados: int = 10) -> list[dict]:
             "id": msg["id"],
             "thread_id": msg["threadId"],
             "remetente_email": email,
+            "remetente_nome": nome,
             "assunto": _cabecalho(headers, "Subject"),
             "corpo": _extrair_corpo(msg["payload"]).strip(),
         })
