@@ -6,6 +6,7 @@ mesma função, sem duplicar lógica.
 import traceback
 from typing import Optional
 
+from core.configuracoes import obter_configuracoes
 from integracoes.gmail import enviar_email, gmail_configurado
 from motor_ia.orquestrador import atender_mensagem
 
@@ -46,8 +47,20 @@ def processar_mensagem(
     if "erro" in resultado:
         return {"identificado": False, "erro": resultado["erro"]}
 
-    pode_enviar = resultado["auditoria"].acao == "enviar"
-    resposta_texto = resultado["resposta"] if pode_enviar else None
+    acao = resultado["auditoria"].acao
+    # "revisar" fica de propósito sem resposta automática -- o Auditor
+    # encontrou uma inconsistência e isso precisa de olho humano antes
+    # de qualquer coisa sair. "encaminhar_humano" e "enviar" sempre
+    # geram alguma resposta -- silêncio total nunca é a resposta certa.
+    pode_enviar = acao in ("enviar", "encaminhar_humano")
+    if acao == "encaminhar_humano":
+        config = obter_configuracoes()
+        resposta_texto = config.get(
+            "mensagem_encaminhamento_humano",
+            "Sua solicitação será encaminhada para um de nossos atendentes.",
+        )
+    else:
+        resposta_texto = resultado["resposta"] if pode_enviar else None
 
     saida = {
         "identificado": True,

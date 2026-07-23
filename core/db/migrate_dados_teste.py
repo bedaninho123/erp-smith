@@ -358,6 +358,15 @@ def main():
              "Modelo utilizado", "Sim"),
             ("CFG-000026", "idioma_resposta", "pt-BR", "ia",
              "Idioma padrão das respostas", "Sim"),
+            ("CFG-000027", "mensagem_cliente_nao_encontrado",
+             "Não localizamos um cadastro com esses dados em nosso sistema. "
+             "Se você já é nosso cliente, poderia nos informar seu CPF para "
+             "localizarmos seu cadastro? Caso ainda não seja cliente, "
+             "ficaremos felizes em ajudar -- conte um pouco mais sobre o que "
+             "você precisa.",
+             "mensagens",
+             "Resposta para remetente não identificado como cliente cadastrado",
+             "Sim"),
         ],
     )
 
