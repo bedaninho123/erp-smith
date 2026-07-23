@@ -1,0 +1,146 @@
+"""Motor de Casos: localiza/cria e atualiza o status de um caso. Estado
+do Core -- regra de negócio, não Motor IA. A IA nunca decide sozinha
+encerrar/cancelar/mudar prioridade de um caso (RCA-009); este módulo
+garante que toda mudança de status segue a lista controlada
+(RCA-003) e fica registrada em historico -- quem decide chamar
+continua sendo o orquestrador do Core, não uma decisão livre da IA.
+"""
+from datetime import datetime, timezone
+from typing import Optional
+
+from core.conexao import conectar
+
+STATUS_VALIDOS = {
+    "Aberto", "Em triagem", "Em andamento", "Aguardando cliente",
+    "Aguardando terceiro", "Suspenso", "Encerrado", "Cancelado",
+}
+
+
+def _agora_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _proximo_id(con, tabela: str, coluna_id: str, prefixo: str) -> str:
+    maior = con.execute(
+        f"SELECT MAX(CAST(SUBSTR({coluna_id}, {len(prefixo) + 2}) AS INTEGER)) FROM {tabela}"
+    ).fetchone()[0] or 0
+    return f"{prefixo}-{maior + 1:06d}"
+
+
+def _registrar_historico(
+    con, caso_id: str, tipo_evento: str, descricao: str,
+    valor_anterior: Optional[str] = None, valor_novo: Optional[str] = None,
+    criado_por: str = "Motor de Casos",
+) -> None:
+    novo_id = _proximo_id(con, "historico", "historico_id", "HIS")
+    con.execute(
+        "INSERT INTO historico VALUES (?,?,?,?,?,?,?,?)",
+        (novo_id, caso_id, tipo_evento, descricao, valor_anterior, valor_novo, _agora_iso(), criado_por),
+    )
+
+
+def localizar_caso_aberto(cliente_id: str, categoria: Optional[str] = None) -> Optional[str]:
+    con = conectar()
+    try:
+        query = (
+            "SELECT caso_id FROM caso WHERE cliente_id = ? AND ativo = 'Sim' "
+            "AND status NOT IN ('Encerrado', 'Cancelado')"
+        )
+        params: list = [cliente_id]
+        if categoria:
+            query += " AND categoria = ?"
+            params.append(categoria)
+        query += " ORDER BY atualizado_em DESC LIMIT 1"
+        linha = con.execute(query, params).fetchone()
+        return linha["caso_id"] if linha else None
+    finally:
+        con.close()
+
+
+def criar_caso(
+    cliente_id: str, titulo: str, categoria: str,
+    tipo_caso: str = "Solicitação", origem: str = "Atendimento",
+    canal_origem: str = "Email", criado_por: str = "Motor IA",
+) -> str:
+    con = conectar()
+    try:
+        novo_id = _proximo_id(con, "caso", "caso_id", "CAS")
+        agora = _agora_iso()
+        con.execute(
+            "INSERT INTO caso VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                novo_id, cliente_id, titulo, None, categoria, tipo_caso, origem,
+                canal_origem, "Aberto", "Triagem", "Normal", None, None, None, None,
+                agora, agora, None, None, criado_por, criado_por, 1, "Sim", None, None,
+            ),
+        )
+        _registrar_historico(con, novo_id, "criacao", f"Caso criado: {titulo}", criado_por=criado_por)
+        con.commit()
+        return novo_id
+    finally:
+        con.close()
+
+
+def localizar_ou_criar_caso(cliente_id: str, titulo: str, categoria: str, **kwargs) -> str:
+    existente = localizar_caso_aberto(cliente_id, categoria=categoria)
+    if existente:
+        return existente
+    return criar_caso(cliente_id, titulo, categoria, **kwargs)
+
+
+def atualizar_status(
+    caso_id: str, novo_status: str, motivo: Optional[str] = None,
+    alterado_por: str = "Motor de Casos",
+) -> None:
+    if novo_status not in STATUS_VALIDOS:
+        raise ValueError(f"Status inválido: {novo_status}. Use um de {sorted(STATUS_VALIDOS)}")
+
+    con = conectar()
+    try:
+        linha = con.execute(
+            "SELECT status, versao FROM caso WHERE caso_id = ?", (caso_id,)
+        ).fetchone()
+        if not linha:
+            raise ValueError(f"Caso não encontrado: {caso_id}")
+        status_antigo = linha["status"]
+
+        con.execute(
+            "UPDATE caso SET status = ?, atualizado_em = ?, alterado_por = ?, versao = versao + 1 "
+            "WHERE caso_id = ?",
+            (novo_status, _agora_iso(), alterado_por, caso_id),
+        )
+        _registrar_historico(
+            con, caso_id, "mudanca_status",
+            motivo or f"Status alterado de {status_antigo} para {novo_status}",
+            valor_anterior=status_antigo, valor_novo=novo_status, criado_por=alterado_por,
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+if __name__ == "__main__":
+    caso_id = localizar_ou_criar_caso(
+        "CLI-000002", titulo="Dúvida sobre transferência de arma",
+        categoria="Transferência",
+    )
+    print(f"Caso localizado/criado: {caso_id}")
+
+    # Chamando de novo com a mesma categoria -- deve reaproveitar o mesmo caso.
+    caso_id_2 = localizar_ou_criar_caso(
+        "CLI-000002", titulo="Outra pergunta sobre transferência",
+        categoria="Transferência",
+    )
+    print(f"Segunda chamada (deve ser igual): {caso_id_2}")
+
+    atualizar_status(caso_id, "Em andamento", motivo="Cliente respondeu com os documentos.")
+    print("Status atualizado.")
+
+    con = conectar()
+    print("--- caso ---")
+    for row in con.execute("SELECT caso_id, status, versao FROM caso WHERE caso_id = ?", (caso_id,)):
+        print(dict(row))
+    print("--- historico ---")
+    for row in con.execute("SELECT * FROM historico WHERE caso_id = ? ORDER BY criado_em", (caso_id,)):
+        print(dict(row))
+    con.close()

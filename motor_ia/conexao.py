@@ -1,9 +1,10 @@
 """Conexão compartilhada com o banco do Core, já com o banco de Domínio
-anexado (ATTACH DATABASE) -- usada por qualquer módulo que precise ler
-Core e Domínio juntos, na mesma consulta."""
+anexado (ATTACH DATABASE) -- usada por qualquer módulo do Motor IA que
+precise ler Core e Domínio juntos, na mesma consulta."""
 import sqlite3
 
-CORE_DB = "core/db/erp_smith.db"
+from core.conexao import CORE_DB
+
 DOMAIN_DB = "domain/clube_tiro/db/dominio_clube_tiro.db"
 
 
