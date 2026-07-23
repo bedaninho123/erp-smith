@@ -4,3 +4,5 @@ __pycache__/
 .claude/settings.local.json
 .venv/
 .env
+credentials.json
+token.json
