@@ -6,6 +6,12 @@
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": ["-m", "webapp.app"],
       "port": 5000
+    },
+    {
+      "name": "webhook-atendimento",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "atendimento.webhook"],
+      "port": 5001
     }
   ]
 }
