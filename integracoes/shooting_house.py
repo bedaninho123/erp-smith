@@ -27,24 +27,48 @@ def _limpar_cpf(cpf: str) -> str:
     return re.sub(r"\D", "", cpf)
 
 
+# Perfis variados para teste (ver core/db/gerar_clientes_ficticios.py) --
+# CPF -> lista de eventos. Sem credencial de verdade, não dá pra saber o
+# histórico real de ninguém, então cada CPF conhecido aqui simula um
+# comportamento diferente (em dia / irregular / sem registro), para o
+# pipeline poder ser testado contra respostas variadas, não sempre a mesma.
+_PERFIS_HABITUALIDADE_TESTE = {
+    "10000000006": [  # Helena Costa -- em dia
+        {"data_participacao": "10/02/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "14/04/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "09/06/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+    ],
+    "10000000014": [  # Vanessa Teixeira -- em dia
+        {"data_participacao": "05/01/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "03/03/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "07/05/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "12/07/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília"},
+    ],
+    "10000000015": [  # William Cardoso -- irregular, só 1 participação
+        {"data_participacao": "22/06/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+    ],
+    "10000000020": [],  # Larissa Barbosa -- sem nenhum registro
+}
+
+_EVENTOS_PADRAO = [
+    {"data_participacao": "15/01/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+    {"data_participacao": "12/03/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+    {"data_participacao": "20/05/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+    {"data_participacao": "18/07/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+]
+
+
 def _habitualidade_simulada(cpf: str) -> dict:
+    eventos = _PERFIS_HABITUALIDADE_TESTE.get(cpf, _EVENTOS_PADRAO)
     return {
         "simulado": True,
         "idatirador": 0,
         "atirador": "(dado simulado -- credencial do Shooting House ainda não configurada)",
         "cpf": cpf,
         "cr": None,
-        "habitualidades": {
-            "ACLP": {
-                "count": 4,
-                "eventos": [
-                    {"data_participacao": "15/01/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-                    {"data_participacao": "12/03/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-                    {"data_participacao": "20/05/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-                    {"data_participacao": "18/07/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-                ],
-            }
-        },
+        "habitualidades": (
+            {"ACLP": {"count": len(eventos), "eventos": eventos}} if eventos else {}
+        ),
     }
 
 

@@ -54,13 +54,18 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
 
     habitualidade = dados.get("habitualidade")
     if habitualidade:
-        linhas.append("--- Habitualidade (Shooting House) ---")
+        # Título sem nome de fornecedor/sistema interno -- já vimos a IA
+        # copiar rótulos como "(Shooting House)" pro texto do cliente.
+        linhas.append("--- Registros de participação em treinos ---")
         if habitualidade.get("simulado"):
             linhas.append(
-                "(Aviso interno, não repetir ao cliente: dado de habitualidade é "
-                "simulado -- credencial do Shooting House ainda não configurada.)"
+                "(Aviso interno, não repetir ao cliente nem mencionar nome de "
+                "sistema algum: estes dados de participação são de teste.)"
             )
-        for grupo, info in (habitualidade.get("habitualidades") or {}).items():
+        grupos = habitualidade.get("habitualidades") or {}
+        if not grupos:
+            linhas.append("Nenhuma participação registrada no período consultado.")
+        for grupo, info in grupos.items():
             linhas.append(f"Grupo {grupo}: {info.get('count', '?')} participação(ões) registrada(s).")
             for evento in info.get("eventos", []):
                 linhas.append("  - " + "; ".join(f"{k}: {v}" for k, v in evento.items()))
