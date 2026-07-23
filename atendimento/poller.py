@@ -11,6 +11,7 @@ duas vezes -- mesmo quando o resultado foi "encaminhar a humano" ou
 "revisar" (nesses casos a mensagem já foi registrada no caso/sessão;
 alguém ainda precisa olhar, mas não faz sentido o robô ficar reprocessando).
 """
+import sys
 import time
 
 from integracoes.gmail import gmail_configurado, listar_mensagens_nao_lidas, marcar_como_lida
@@ -54,4 +55,13 @@ def loop():
 
 
 if __name__ == "__main__":
-    loop()
+    # --uma-vez: verifica uma vez e sai (usado pela Tarefa Agendada do
+    # Windows, que já cuida de repetir a cada N minutos sozinha -- rodar
+    # o loop() infinito dentro de uma tarefa agendada duplicaria a
+    # repetição). Sem esse argumento, roda o loop contínuo (uso manual,
+    # terminal aberto).
+    if "--uma-vez" in sys.argv:
+        n = verificar_uma_vez()
+        print(f"{n} mensagem(ns) processada(s).")
+    else:
+        loop()
