@@ -1,13 +1,19 @@
-"""Painel local para acompanhar o desenvolvimento do ERP Smith: status do
-banco/módulos e um testador interativo do pipeline do Motor IA. Ferramenta
-de desenvolvimento, não faz parte do ERP em si.
+"""Painel administrativo do ERP Smith: status do banco/módulos, testador
+do pipeline do Motor IA, e fila de aprovações pendentes. Protegido por
+login (usuario.senha_hash) -- ver webapp/definir_senha.py para cadastrar
+a senha de um usuário antes do primeiro acesso.
 """
+import os
+import secrets
 import sqlite3
 import subprocess
 import traceback
+from functools import wraps
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from dotenv import load_dotenv, set_key
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash
 
 from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
 from core import motor_mensagens
@@ -22,6 +28,7 @@ from motor_ia.planejador import planejar
 from motor_ia.redator import redigir
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+ENV_PATH = BASE_DIR / ".env"
 
 MODULOS_MOTOR_IA = [
     ("Identificador de Cliente", "motor_ia/identificador_cliente.py"),
@@ -34,15 +41,65 @@ MODULOS_MOTOR_IA = [
     ("Atualizador de Memória", "motor_ia/atualizador_memoria.py"),
 ]
 
+load_dotenv(ENV_PATH)
+if not os.getenv("WEBAPP_SECRET_KEY"):
+    # Primeira vez rodando o painel -- gera a chave de sessão sozinho e
+    # salva no .env, sem precisar que ninguém digite nada.
+    _chave = secrets.token_hex(32)
+    set_key(str(ENV_PATH), "WEBAPP_SECRET_KEY", _chave)
+    os.environ["WEBAPP_SECRET_KEY"] = _chave
+
 app = Flask(__name__)
+app.secret_key = os.environ["WEBAPP_SECRET_KEY"]
+
+
+def login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("usuario_id"):
+            if request.path.startswith("/api/"):
+                return jsonify(erro="Não autenticado."), 401
+            return redirect(url_for("login", proximo=request.path))
+        return f(*args, **kwargs)
+    return wrapper
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    erro = None
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        senha = request.form.get("senha") or ""
+        con = sqlite3.connect(CORE_DB)
+        con.row_factory = sqlite3.Row
+        linha = con.execute(
+            "SELECT usuario_id, nome, senha_hash FROM usuario "
+            "WHERE lower(email) = ? AND ativo = 'Sim'",
+            (email,),
+        ).fetchone()
+        con.close()
+        if linha and linha["senha_hash"] and check_password_hash(linha["senha_hash"], senha):
+            session["usuario_id"] = linha["usuario_id"]
+            session["usuario_nome"] = linha["nome"]
+            return redirect(request.args.get("proximo") or url_for("index"))
+        erro = "E-mail ou senha incorretos."
+    return render_template("login.html", erro=erro)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 @app.route("/")
+@login_required
 def index():
-    return render_template("index.html")
+    return render_template("index.html", usuario_nome=session.get("usuario_nome"))
 
 
 @app.route("/api/status")
+@login_required
 def status():
     con = sqlite3.connect(CORE_DB)
     tabelas_core = [
@@ -115,6 +172,7 @@ def status():
 
 
 @app.route("/api/clientes")
+@login_required
 def clientes():
     con = sqlite3.connect(CORE_DB)
     linhas = con.execute(
@@ -125,6 +183,7 @@ def clientes():
 
 
 @app.route("/api/identificar_cliente", methods=["POST"])
+@login_required
 def identificar():
     corpo = request.get_json(force=True)
     nome = (corpo.get("nome") or "").strip() or None
@@ -148,6 +207,7 @@ def identificar():
 
 
 @app.route("/api/pipeline", methods=["POST"])
+@login_required
 def pipeline():
     corpo = request.get_json(force=True)
     mensagem = (corpo.get("mensagem") or "").strip()
@@ -187,23 +247,28 @@ def pipeline():
 
 
 @app.route("/api/pendentes")
+@login_required
 def pendentes():
     return jsonify(motor_mensagens.listar_pendentes())
 
 
 @app.route("/api/pendentes/<mensagem_id>/aprovar", methods=["POST"])
+@login_required
 def aprovar(mensagem_id):
     corpo = request.get_json(silent=True) or {}
     texto_final = corpo.get("texto")
-    resultado = aprovar_mensagem_pendente(mensagem_id, texto_final=texto_final)
+    resultado = aprovar_mensagem_pendente(
+        mensagem_id, texto_final=texto_final, responsavel_id=session.get("usuario_id")
+    )
     if "erro" in resultado:
         return jsonify(resultado), 400
     return jsonify(resultado)
 
 
 @app.route("/api/pendentes/<mensagem_id>/rejeitar", methods=["POST"])
+@login_required
 def rejeitar(mensagem_id):
-    resultado = rejeitar_mensagem_pendente(mensagem_id)
+    resultado = rejeitar_mensagem_pendente(mensagem_id, responsavel_id=session.get("usuario_id"))
     if "erro" in resultado:
         return jsonify(resultado), 400
     return jsonify(resultado)

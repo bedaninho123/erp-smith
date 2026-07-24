@@ -32,6 +32,9 @@
     margin: 0 0 0.3rem;
   }
   .subtitle { color: var(--muted); margin: 0 0 1.8rem; font-size: 0.95rem; }
+  .topbar { display: flex; justify-content: space-between; align-items: flex-start; }
+  .topbar a { color: var(--muted); font-size: 0.85rem; text-decoration: none; }
+  .topbar a:hover { color: var(--ink); text-decoration: underline; }
 
   .tabs { display: flex; gap: 0.4rem; margin-bottom: 1.6rem; border-bottom: 1px solid var(--line); }
   .tab {
@@ -111,8 +114,13 @@
 </head>
 <body>
 <div class="page">
-  <h1>ERP Smith — Painel de Desenvolvimento</h1>
-  <p class="subtitle">Ferramenta local pra acompanhar o progresso do projeto e testar o Motor IA ao vivo.</p>
+  <div class="topbar">
+    <div>
+      <h1>ERP Smith — Painel Administrativo</h1>
+      <p class="subtitle">Acompanhe o atendimento, aprove respostas pendentes e veja o status do sistema.</p>
+    </div>
+    <a href="/logout">{{ usuario_nome }} — sair</a>
+  </div>
 
   <div class="tabs">
     <button class="tab active" data-view="status">Status do Projeto</button>

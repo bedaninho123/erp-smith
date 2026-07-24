@@ -201,7 +201,8 @@ CREATE TABLE usuario (
     papel         TEXT NOT NULL,                       -- texto livre (ex.: Despachante, Atendimento, Gestor)
     equipe        TEXT,
     ativo         TEXT NOT NULL DEFAULT 'Sim',
-    criado_em     TEXT NOT NULL                         -- ISO 8601
+    criado_em     TEXT NOT NULL,                        -- ISO 8601
+    senha_hash    TEXT                                  -- hash (werkzeug), nunca a senha em texto puro; NULL = login ainda não configurado, ver webapp/definir_senha.py
 );
 
 -- Log de eventos de negócio do caso — append-only (só INSERT, nunca
