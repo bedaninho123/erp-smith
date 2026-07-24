@@ -756,7 +756,7 @@ async function carregarPendentes() {
         <textarea id="texto-${p.mensagem_id}" class="form-control resposta-edit">${escapeHtml(p.resposta_ia)}</textarea>
         <div class="mt-3 d-flex align-items-center" style="gap:0.6rem">
           <button class="btn btn-success" onclick="aprovarPendente('${p.mensagem_id}')">Aprovar e enviar</button>
-          <button class="btn btn-outline-secondary" onclick="rejeitarPendente('${p.mensagem_id}')">Rejeitar</button>
+          <button class="btn btn-outline-secondary" onclick="rejeitarPendente('${p.mensagem_id}', this)">Rejeitar</button>
           <span class="text-muted" id="status-${p.mensagem_id}"></span>
         </div>
       </div>
@@ -782,8 +782,27 @@ async function aprovarPendente(mensagemId) {
   await carregarPendentes();
 }
 
-async function rejeitarPendente(mensagemId) {
-  if (!confirm("Rejeitar essa resposta? Ela não será enviada.")) return;
+async function rejeitarPendente(mensagemId, botao) {
+  // Confirmação de "clicar de novo" em vez do confirm() nativo do
+  // navegador -- o confirm() bloqueante estava impedindo o clique de
+  // completar a ação de forma confiável (usuário reportou botão "não
+  // funcionando").
+  if (!botao.dataset.confirmando) {
+    botao.dataset.confirmando = "1";
+    botao.dataset.textoOriginal = botao.textContent;
+    botao.textContent = "Clique de novo para confirmar";
+    botao.classList.remove("btn-outline-secondary");
+    botao.classList.add("btn-danger");
+    botao.dataset.timeoutId = setTimeout(() => {
+      botao.textContent = botao.dataset.textoOriginal;
+      botao.classList.remove("btn-danger");
+      botao.classList.add("btn-outline-secondary");
+      delete botao.dataset.confirmando;
+    }, 4000);
+    return;
+  }
+
+  clearTimeout(Number(botao.dataset.timeoutId));
   const statusEl = $("#status-" + mensagemId);
   statusEl.textContent = "Rejeitando…";
   const r = await fetch(`/api/pendentes/${mensagemId}/rejeitar`, { method: "POST" });

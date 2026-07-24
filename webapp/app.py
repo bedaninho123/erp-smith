@@ -52,6 +52,13 @@ if not os.getenv("WEBAPP_SECRET_KEY"):
 
 app = Flask(__name__)
 app.secret_key = os.environ["WEBAPP_SECRET_KEY"]
+# Recarrega o template (.html) a cada requisição mesmo sem o modo debug
+# do Flask ligado -- TEMPLATES_AUTO_RELOAD por padrão segue app.debug, e
+# desligamos debug (ver comentário no app.run() no fim do arquivo) pelo
+# risco do debugger interativo. Isso aqui é só cache de template, não
+# reabre esse risco -- sem isso, editar index.html/login.html exige
+# reiniciar o servidor pra fazer efeito.
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 
 def login_required(f):
