@@ -127,6 +127,7 @@
 
   <div class="tabs">
     <button class="tab active" data-view="casos">Casos</button>
+    <button class="tab" data-view="clientes">Clientes</button>
     <button class="tab" data-view="status">Status do Projeto</button>
     <button class="tab" data-view="testar">Testar Pipeline</button>
     <button class="tab" data-view="pendentes">Aprovações Pendentes<span class="tab-badge" id="badge-pendentes" style="display:none"></span></button>
@@ -204,6 +205,37 @@
     <div class="panel">
       <h2>Histórico</h2>
       <div class="timeline" id="caso-historico"></div>
+    </div>
+  </div>
+
+  <div id="view-clientes" class="view">
+    <div class="panel">
+      <label for="busca-cliente-lista">Buscar por nome, CPF ou e-mail</label>
+      <input id="busca-cliente-lista" type="text" placeholder="Ex.: Maria, 123.456.789-00, maria@email.com">
+    </div>
+    <div class="panel">
+      <table>
+        <thead><tr>
+          <th>Nome</th><th>CPF</th><th>E-mail</th><th>Cidade</th>
+          <th>Status</th><th style="text-align:right">Casos abertos</th>
+        </tr></thead>
+        <tbody id="clientes-lista-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="view-cliente-detalhe" class="view">
+    <button class="secondary" id="voltar-clientes" style="margin-bottom:1.2rem">&larr; Voltar para Clientes</button>
+    <div class="panel" id="cliente-cabecalho"></div>
+    <div class="panel">
+      <h2>Casos deste cliente</h2>
+      <table>
+        <thead><tr>
+          <th>Caso</th><th>Categoria</th><th>Status</th><th>Prioridade</th>
+          <th>Responsável</th><th>Atualizado em</th>
+        </tr></thead>
+        <tbody id="cliente-casos-body"></tbody>
+      </table>
     </div>
   </div>
 
@@ -288,6 +320,7 @@ document.querySelectorAll(".tab").forEach(btn => {
     btn.classList.add("active");
     $("#view-" + btn.dataset.view).classList.add("active");
     if (btn.dataset.view === "pendentes") carregarPendentes();
+    if (btn.dataset.view === "clientes") carregarClientesLista();
   });
 });
 
@@ -465,6 +498,80 @@ $("#salvar-caso").addEventListener("click", salvarCasoEdicao);
 $("#voltar-casos").addEventListener("click", () => {
   mostrarView("casos");
   carregarCasos();
+});
+
+async function carregarClientesLista() {
+  const busca = $("#busca-cliente-lista").value.trim();
+  const params = new URLSearchParams();
+  if (busca) params.set("busca", busca);
+
+  const r = await fetch("/api/clientes/lista?" + params.toString());
+  const d = await r.json();
+
+  $("#clientes-lista-body").innerHTML = d.clientes.length ? d.clientes.map(c => `
+    <tr class="linha-cliente" data-cliente-id="${c.cliente_id}" style="cursor:pointer">
+      <td>${escapeHtml(c.nome)}</td>
+      <td class="mono">${c.cpf || '—'}</td>
+      <td>${escapeHtml(c.email || '—')}</td>
+      <td>${escapeHtml(c.cidade || '—')}</td>
+      <td><span class="badge ${c.status === 'Ativo' ? 'good' : ''}">${escapeHtml(c.status)}</span></td>
+      <td style="text-align:right">${c.casos_abertos}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="6" class="loading">Nenhum cliente encontrado.</td></tr>`;
+
+  $("#clientes-lista-body").querySelectorAll(".linha-cliente").forEach(tr => {
+    tr.addEventListener("click", () => abrirCliente(tr.dataset.clienteId));
+  });
+}
+
+let buscaClienteTimeout;
+$("#busca-cliente-lista").addEventListener("input", () => {
+  clearTimeout(buscaClienteTimeout);
+  buscaClienteTimeout = setTimeout(carregarClientesLista, 300);
+});
+
+async function abrirCliente(clienteId) {
+  mostrarView("cliente-detalhe");
+  $("#cliente-cabecalho").innerHTML = `<p class="loading">Carregando…</p>`;
+
+  const r = await fetch(`/api/clientes/${clienteId}`);
+  const d = await r.json();
+  if (!r.ok) {
+    $("#cliente-cabecalho").innerHTML = `<div class="erro-box">${d.erro}</div>`;
+    return;
+  }
+
+  const c = d.cliente;
+  $("#cliente-cabecalho").innerHTML = `
+    <h2>${escapeHtml(c.nome)} <span class="badge">${c.cliente_id}</span></h2>
+    <p class="kv"><span class="badge ${c.status === 'Ativo' ? 'good' : ''}">${escapeHtml(c.status)}</span></p>
+    <p class="kv"><b>CPF:</b> ${c.cpf || 'não informado'}</p>
+    <p class="kv"><b>E-mail:</b> ${escapeHtml(c.email || 'não informado')}</p>
+    <p class="kv"><b>Telefone:</b> ${escapeHtml(c.telefone || 'não informado')}</p>
+    <p class="kv"><b>Cidade:</b> ${escapeHtml(c.cidade || 'não informada')}</p>
+    <p class="kv"><b>Cliente desde:</b> ${c.data_cadastro} ${c.ultima_interacao ? `&nbsp; <b>Última interação:</b> ${c.ultima_interacao}` : ''}</p>
+    ${c.observacoes ? `<p class="kv"><b>Observações:</b> ${escapeHtml(c.observacoes)}</p>` : ''}
+  `;
+
+  $("#cliente-casos-body").innerHTML = d.casos.length ? d.casos.map(caso => `
+    <tr class="linha-caso" data-caso-id="${caso.caso_id}" style="cursor:pointer">
+      <td class="mono">${caso.caso_id}</td>
+      <td>${escapeHtml(caso.categoria)}</td>
+      <td><span class="badge ${badgesStatus[caso.status] || ''}">${escapeHtml(caso.status)}</span></td>
+      <td>${escapeHtml(caso.prioridade)}</td>
+      <td>${escapeHtml(caso.responsavel_nome || 'não atribuído')}</td>
+      <td>${caso.atualizado_em}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="6" class="loading">Nenhum caso para este cliente.</td></tr>`;
+
+  $("#cliente-casos-body").querySelectorAll(".linha-caso").forEach(tr => {
+    tr.addEventListener("click", () => abrirCaso(tr.dataset.casoId));
+  });
+}
+
+$("#voltar-clientes").addEventListener("click", () => {
+  mostrarView("clientes");
+  carregarClientesLista();
 });
 
 function escapeHtml(s) {

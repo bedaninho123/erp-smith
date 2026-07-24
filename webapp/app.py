@@ -321,6 +321,57 @@ def clientes():
     return jsonify([{"cliente_id": r[0], "nome": r[1]} for r in linhas])
 
 
+@app.route("/api/clientes/lista")
+@login_required
+def clientes_lista():
+    busca = (request.args.get("busca") or "").strip()
+
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+    query = (
+        "SELECT cl.cliente_id, cl.nome, cl.cpf, cl.email, cl.telefone, cl.cidade, "
+        "cl.status, cl.data_cadastro, cl.ultima_interacao, "
+        "(SELECT COUNT(*) FROM caso c WHERE c.cliente_id = cl.cliente_id "
+        " AND c.ativo = 'Sim' AND c.status NOT IN ('Encerrado', 'Cancelado')) AS casos_abertos "
+        "FROM cliente cl"
+    )
+    params = []
+    if busca:
+        query += " WHERE cl.nome LIKE ? OR cl.cpf LIKE ? OR cl.email LIKE ?"
+        curinga = f"%{busca}%"
+        params += [curinga, curinga, curinga]
+    query += " ORDER BY cl.nome"
+
+    clientes = [dict(r) for r in con.execute(query, params).fetchall()]
+    con.close()
+    return jsonify(clientes=clientes)
+
+
+@app.route("/api/clientes/<cliente_id>")
+@login_required
+def cliente_detalhe(cliente_id):
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+
+    cliente = con.execute(
+        "SELECT * FROM cliente WHERE cliente_id = ?", (cliente_id,)
+    ).fetchone()
+    if not cliente:
+        con.close()
+        return jsonify(erro=f"Cliente não encontrado: {cliente_id}"), 404
+
+    casos = con.execute(
+        "SELECT c.caso_id, c.titulo, c.categoria, c.status, c.prioridade, "
+        "c.atualizado_em, u.nome AS responsavel_nome "
+        "FROM caso c LEFT JOIN usuario u ON u.usuario_id = c.responsavel_id "
+        "WHERE c.cliente_id = ? AND c.ativo = 'Sim' ORDER BY c.atualizado_em DESC",
+        (cliente_id,),
+    ).fetchall()
+
+    con.close()
+    return jsonify(cliente=dict(cliente), casos=[dict(r) for r in casos])
+
+
 @app.route("/api/identificar_cliente", methods=["POST"])
 @login_required
 def identificar():
