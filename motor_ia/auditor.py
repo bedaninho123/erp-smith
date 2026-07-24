@@ -4,6 +4,7 @@ atendimento deveria ter sido encaminhado a humano em vez de respondido
 automaticamente. Não decide regra de negócio -- só valida o que já foi
 produzido pelos outros módulos.
 """
+import time
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -11,6 +12,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from core.configuracoes import obter_configuracoes
+from core.motor_log_ia import registrar_log
 from motor_ia.config import OPENAI_API_KEY
 from motor_ia.planejador import Plano
 from motor_ia.redator import montar_bloco_dados
@@ -33,28 +35,51 @@ class ResultadoAuditoria(BaseModel):
     motivo: Optional[str] = None
 
 
-def _auditar_consistencia_factual(resposta: str, bloco_dados: str) -> ResultadoAuditoriaFactual:
-    config = obter_configuracoes()
-    modelo = config.get("modelo_openai", "gpt-5-mini")
+def _auditar_consistencia_factual(
+    resposta: str, bloco_dados: str, modelo: str,
+    caso_id: Optional[str], sessao_id: Optional[str],
+) -> ResultadoAuditoriaFactual:
     client = OpenAI(api_key=OPENAI_API_KEY)
-    completude = client.chat.completions.parse(
-        model=modelo,
-        messages=[
-            {"role": "system", "content": _carregar_prompt()},
-            {"role": "user", "content": (
-                f"DADOS DISPONÍVEIS:\n{bloco_dados}\n\n"
-                f"RESPOSTA GERADA:\n{resposta}"
-            )},
-        ],
-        response_format=ResultadoAuditoriaFactual,
+    inicio = time.monotonic()
+    try:
+        completude = client.chat.completions.parse(
+            model=modelo,
+            messages=[
+                {"role": "system", "content": _carregar_prompt()},
+                {"role": "user", "content": (
+                    f"DADOS DISPONÍVEIS:\n{bloco_dados}\n\n"
+                    f"RESPOSTA GERADA:\n{resposta}"
+                )},
+            ],
+            response_format=ResultadoAuditoriaFactual,
+        )
+    except Exception as e:
+        registrar_log(
+            prompt_key="AUDITOR", modelo=modelo, resultado="Erro",
+            tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
+            caso_id=caso_id, sessao_id=sessao_id, erro=f"{type(e).__name__}: {e}",
+        )
+        raise
+
+    uso = completude.usage
+    registrar_log(
+        prompt_key="AUDITOR", modelo=modelo, resultado="Sucesso",
+        tokens_entrada=uso.prompt_tokens if uso else None,
+        tokens_saida=uso.completion_tokens if uso else None,
+        tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
+        caso_id=caso_id, sessao_id=sessao_id,
     )
     return completude.choices[0].message.parsed
 
 
-def auditar(resposta: str, dados: dict, cliente_nome: str, plano: Plano) -> ResultadoAuditoria:
+def auditar(
+    resposta: str, dados: dict, cliente_nome: str, plano: Plano,
+    caso_id: Optional[str] = None, sessao_id: Optional[str] = None,
+) -> ResultadoAuditoria:
     # Regra determinística primeiro, sem gastar chamada de IA: se o
     # Planejador já sinalizou que precisa de humano, a resposta gerada
     # nunca deve ser enviada automaticamente, não importa o que diga.
+    # Sem chamada à OpenAI aqui, então não há nada pra registrar em log_ia.
     if plano.encaminhar_humano:
         return ResultadoAuditoria(
             aprovado=False,
@@ -63,8 +88,11 @@ def auditar(resposta: str, dados: dict, cliente_nome: str, plano: Plano) -> Resu
         )
 
     config = obter_configuracoes()
+    modelo = config.get("modelo_openai", "gpt-5-mini")
     bloco_dados = montar_bloco_dados(dados, cliente_nome, config)
-    resultado_factual = _auditar_consistencia_factual(resposta, bloco_dados)
+    resultado_factual = _auditar_consistencia_factual(
+        resposta, bloco_dados, modelo, caso_id, sessao_id
+    )
 
     if not resultado_factual.consistente:
         return ResultadoAuditoria(

@@ -86,7 +86,32 @@ def status():
         {"nome": "Shooting House (habitualidade)", "configurado": shooting_house_configurado()},
     ]
 
-    return jsonify(tabelas=tabelas, commits=commits, modulos=modulos, integracoes=integracoes)
+    con_log = sqlite3.connect(CORE_DB)
+    con_log.row_factory = sqlite3.Row
+    por_modulo = [
+        dict(r) for r in con_log.execute(
+            "SELECT prompt_key, COUNT(*) AS chamadas, "
+            "SUM(tokens_entrada) AS tokens_entrada, SUM(tokens_saida) AS tokens_saida, "
+            "SUM(CASE WHEN resultado = 'Erro' THEN 1 ELSE 0 END) AS erros "
+            "FROM log_ia GROUP BY prompt_key ORDER BY prompt_key"
+        ).fetchall()
+    ]
+    totais = con_log.execute(
+        "SELECT COUNT(*) AS chamadas, SUM(tokens_entrada) AS tokens_entrada, "
+        "SUM(tokens_saida) AS tokens_saida FROM log_ia"
+    ).fetchone()
+    con_log.close()
+    log_ia_resumo = {
+        "total_chamadas": totais["chamadas"] or 0,
+        "total_tokens_entrada": totais["tokens_entrada"] or 0,
+        "total_tokens_saida": totais["tokens_saida"] or 0,
+        "por_modulo": por_modulo,
+    }
+
+    return jsonify(
+        tabelas=tabelas, commits=commits, modulos=modulos, integracoes=integracoes,
+        log_ia=log_ia_resumo,
+    )
 
 
 @app.route("/api/clientes")

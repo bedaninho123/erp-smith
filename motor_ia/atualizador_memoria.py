@@ -4,6 +4,7 @@ inativa ela (ativo='Não') e cria uma nova (versao+1), preservando
 histórico, mesmo padrão já usado em caso.ativo. Não decide regra de
 negócio: só resume o que já é sabido (memória anterior + interação atual).
 """
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -12,6 +13,7 @@ from openai import BadRequestError, OpenAI
 from pydantic import BaseModel
 
 from core.configuracoes import obter_configuracoes
+from core.motor_log_ia import registrar_log
 from motor_ia.classificador import ResultadoClassificacao
 from motor_ia.conexao import conectar
 from motor_ia.config import OPENAI_API_KEY
@@ -33,6 +35,8 @@ def _gerar_resumo(
     memoria_antiga: Optional[dict],
     classificacao: ResultadoClassificacao,
     resposta_enviada: str,
+    caso_id: Optional[str] = None,
+    sessao_id: Optional[str] = None,
 ) -> ResumoMemoria:
     config = obter_configuracoes()
     modelo = config.get("modelo_openai", "gpt-5-mini")
@@ -59,16 +63,34 @@ def _gerar_resumo(
         {"role": "system", "content": _carregar_prompt()},
         {"role": "user", "content": entrada},
     ]
+    inicio = time.monotonic()
     try:
-        resposta = client.chat.completions.parse(
-            model=modelo, messages=mensagens, response_format=ResumoMemoria,
+        try:
+            resposta = client.chat.completions.parse(
+                model=modelo, messages=mensagens, response_format=ResumoMemoria,
+            )
+        except BadRequestError as e:
+            if "temperature" not in str(e):
+                raise
+            resposta = client.chat.completions.parse(
+                model=modelo, messages=mensagens, response_format=ResumoMemoria,
+            )
+    except Exception as e:
+        registrar_log(
+            prompt_key="ATUALIZADOR_MEMORIA", modelo=modelo, resultado="Erro",
+            tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
+            caso_id=caso_id, sessao_id=sessao_id, erro=f"{type(e).__name__}: {e}",
         )
-    except BadRequestError as e:
-        if "temperature" not in str(e):
-            raise
-        resposta = client.chat.completions.parse(
-            model=modelo, messages=mensagens, response_format=ResumoMemoria,
-        )
+        raise
+
+    uso = resposta.usage
+    registrar_log(
+        prompt_key="ATUALIZADOR_MEMORIA", modelo=modelo, resultado="Sucesso",
+        tokens_entrada=uso.prompt_tokens if uso else None,
+        tokens_saida=uso.completion_tokens if uso else None,
+        tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
+        caso_id=caso_id, sessao_id=sessao_id,
+    )
     return resposta.choices[0].message.parsed
 
 
@@ -84,6 +106,8 @@ def atualizar_memoria(
     classificacao: ResultadoClassificacao,
     dados: dict,
     resposta_enviada: str,
+    caso_id: Optional[str] = None,
+    sessao_id: Optional[str] = None,
 ) -> str:
     con = conectar()
     try:
@@ -93,7 +117,7 @@ def atualizar_memoria(
         ).fetchone()
         memoria_antiga = dict(linha) if linha else None
 
-        resumo = _gerar_resumo(memoria_antiga, classificacao, resposta_enviada)
+        resumo = _gerar_resumo(memoria_antiga, classificacao, resposta_enviada, caso_id, sessao_id)
 
         servicos_recentes = "; ".join(
             f"{s['service_id']} - {s['nome_servico']}" for s in dados.get("servicos", [])

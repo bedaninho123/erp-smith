@@ -13,10 +13,6 @@ são respondidas normalmente, sem sessão/caso/memória (essas exigem
 cliente_id no banco). Perguntas que exigem identidade (CONSULTA_PROCESSO,
 CONSULTA_CLIENTE, CONSULTA_HABITUALIDADE) recebem a mensagem
 institucional pedindo CPF, em vez de silêncio.
-
-Gap conhecido: ainda não registra em log_ia (auditoria técnica de cada
-chamada à OpenAI) -- os módulos individuais não expõem tokens/custo de
-forma fácil de propagar ainda. Fica para uma próxima rodada.
 """
 from typing import Optional
 
@@ -118,8 +114,10 @@ def atender_mensagem(
 
     dados = consultar(plano, cliente_id=cliente_id, classificacao=classificacao)
     cliente_nome = (dados.get("cliente") or {}).get("nome") or (nome or "Cliente")
-    resposta = redigir(dados, cliente_nome=cliente_nome)
-    resultado_auditoria = auditar(resposta, dados, cliente_nome, plano)
+    resposta = redigir(dados, cliente_nome=cliente_nome, caso_id=caso_id, sessao_id=sessao_id)
+    resultado_auditoria = auditar(
+        resposta, dados, cliente_nome, plano, caso_id=caso_id, sessao_id=sessao_id
+    )
 
     memoria_id = None
     if cliente_id and resultado_auditoria.acao == "enviar":
@@ -131,7 +129,10 @@ def atender_mensagem(
             ultima_resposta_ia=resposta,
             resumo_sessao=classificacao.resumo,
         )
-        memoria_id = atualizar_memoria(cliente_id, classificacao, dados, resposta)
+        memoria_id = atualizar_memoria(
+            cliente_id, classificacao, dados, resposta,
+            caso_id=caso_id, sessao_id=sessao_id,
+        )
 
     return {
         "cliente_id": cliente_id,

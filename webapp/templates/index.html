@@ -134,6 +134,16 @@
     </div>
 
     <div class="panel">
+      <h2>Uso da IA (log_ia)</h2>
+      <p class="subtitle" style="margin-bottom:0.9rem">Cada chamada à OpenAI feita pelo Motor IA (Classificador, Redator, Auditor, Atualizador de Memória) fica registrada aqui -- tokens e sucesso/erro, pra dar visibilidade de custo e uso.</p>
+      <div class="stat-row" id="stat-row-log-ia" style="margin-bottom:1.2rem"></div>
+      <table>
+        <thead><tr><th>Módulo</th><th style="text-align:right">Chamadas</th><th style="text-align:right">Tokens entrada</th><th style="text-align:right">Tokens saída</th><th style="text-align:right">Erros</th></tr></thead>
+        <tbody id="log-ia-body"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
       <h2>Tabelas do banco</h2>
       <table>
         <thead><tr><th>Tabela</th><th>Camada</th><th style="text-align:right">Linhas</th></tr></thead>
@@ -324,6 +334,22 @@ async function carregarStatus() {
       <span>${i.nome}${i.configurado ? '' : ' <span class="badge">modo simulado</span>'}</span>
     </div>
   `).join("");
+
+  const logIa = d.log_ia;
+  $("#stat-row-log-ia").innerHTML = `
+    <div class="stat"><span class="n">${logIa.total_chamadas}</span><span class="l">Chamadas à IA</span></div>
+    <div class="stat"><span class="n">${logIa.total_tokens_entrada.toLocaleString('pt-BR')}</span><span class="l">Tokens entrada</span></div>
+    <div class="stat"><span class="n">${logIa.total_tokens_saida.toLocaleString('pt-BR')}</span><span class="l">Tokens saída</span></div>
+  `;
+  $("#log-ia-body").innerHTML = logIa.por_modulo.length ? logIa.por_modulo.map(m => `
+    <tr>
+      <td class="mono">${m.prompt_key}</td>
+      <td style="text-align:right">${m.chamadas}</td>
+      <td style="text-align:right">${(m.tokens_entrada || 0).toLocaleString('pt-BR')}</td>
+      <td style="text-align:right">${(m.tokens_saida || 0).toLocaleString('pt-BR')}</td>
+      <td style="text-align:right">${m.erros || 0}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="5" class="loading">Nenhuma chamada registrada ainda.</td></tr>`;
 
   $("#tabelas-body").innerHTML = d.tabelas.map(t => `
     <tr>

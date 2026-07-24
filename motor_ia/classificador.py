@@ -5,6 +5,7 @@ explícito nele. O prompt de instrução vive em motor_ia/prompts/classificador.
 tabela configuracoes do Core, não fixos no código.
 """
 import sqlite3
+import time
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -12,6 +13,7 @@ from openai import BadRequestError, OpenAI
 from pydantic import BaseModel
 
 from core.configuracoes import obter_configuracoes
+from core.motor_log_ia import registrar_log
 from motor_ia.config import OPENAI_API_KEY
 from motor_ia.conexao import CORE_DB
 
@@ -86,20 +88,40 @@ def classificar(mensagem: str) -> ResultadoClassificacao:
         {"role": "system", "content": _carregar_prompt(servicos, categorias_conhecimento)},
         {"role": "user", "content": mensagem},
     ]
+    inicio = time.monotonic()
     try:
-        resposta = client.chat.completions.parse(
-            model=modelo, temperature=temperatura, messages=mensagens,
-            response_format=ResultadoClassificacao,
+        try:
+            resposta = client.chat.completions.parse(
+                model=modelo, temperature=temperatura, messages=mensagens,
+                response_format=ResultadoClassificacao,
+            )
+        except BadRequestError as e:
+            # Modelos da família "raciocínio" (ex.: gpt-5-mini) só aceitam a
+            # temperatura padrão -- tenta de novo sem o parâmetro.
+            if "temperature" not in str(e):
+                raise
+            resposta = client.chat.completions.parse(
+                model=modelo, messages=mensagens,
+                response_format=ResultadoClassificacao,
+            )
+    except Exception as e:
+        registrar_log(
+            prompt_key="CLASSIFICADOR", modelo=modelo, resultado="Erro",
+            tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
+            erro=f"{type(e).__name__}: {e}",
         )
-    except BadRequestError as e:
-        # Modelos da família "raciocínio" (ex.: gpt-5-mini) só aceitam a
-        # temperatura padrão -- tenta de novo sem o parâmetro.
-        if "temperature" not in str(e):
-            raise
-        resposta = client.chat.completions.parse(
-            model=modelo, messages=mensagens,
-            response_format=ResultadoClassificacao,
-        )
+        raise
+
+    uso = resposta.usage
+    # caso_id/sessao_id ainda não existem neste ponto do fluxo -- a
+    # classificação acontece antes de qualquer um dos dois ser
+    # localizado/criado no orquestrador.
+    registrar_log(
+        prompt_key="CLASSIFICADOR", modelo=modelo, resultado="Sucesso",
+        tokens_entrada=uso.prompt_tokens if uso else None,
+        tokens_saida=uso.completion_tokens if uso else None,
+        tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
+    )
     return resposta.choices[0].message.parsed
 
 
