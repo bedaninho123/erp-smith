@@ -367,6 +367,13 @@ def main():
              "mensagens",
              "Resposta para remetente não identificado como cliente cadastrado",
              "Sim"),
+            ("CFG-000028", "revisao_humana_ativa", "Sim", "atendimento",
+             "Enquanto 'Sim', respostas que a IA mesma escreveu (ação "
+             "'enviar') ficam pendentes de aprovação humana antes de sair "
+             "de verdade -- modo de segurança temporário para a fase de "
+             "validação. Desligar (mudar para 'Não') quando o sistema "
+             "estiver validado o suficiente para enviar 100% automático.",
+             "Sim"),
         ],
     )
 

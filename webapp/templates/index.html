@@ -88,6 +88,12 @@
     padding: 0.6rem 1.3rem; font-size: 0.92rem; cursor: pointer; font-family: inherit;
   }
   button.primary:disabled { opacity: 0.55; cursor: default; }
+  button.secondary {
+    background: none; color: var(--muted); border: 1px solid var(--line); border-radius: 8px;
+    padding: 0.6rem 1.3rem; font-size: 0.92rem; cursor: pointer; font-family: inherit;
+  }
+  .tab-badge { display: inline-block; font-size: 0.7rem; padding: 0.05rem 0.4rem; border-radius: 999px;
+    background: var(--accent); color: #F8F5EF; margin-left: 0.3rem; }
 
   .resultado { margin-top: 1.4rem; display: none; }
   .step { border-left: 3px solid var(--line); padding: 0.2rem 0 0.2rem 0.9rem; margin-bottom: 1rem; }
@@ -111,6 +117,7 @@
   <div class="tabs">
     <button class="tab active" data-view="status">Status do Projeto</button>
     <button class="tab" data-view="testar">Testar Pipeline</button>
+    <button class="tab" data-view="pendentes">Aprovações Pendentes<span class="tab-badge" id="badge-pendentes" style="display:none"></span></button>
   </div>
 
   <div id="view-status" class="view active">
@@ -167,6 +174,11 @@
       <div id="resultado" class="resultado"></div>
     </div>
   </div>
+
+  <div id="view-pendentes" class="view">
+    <p class="subtitle">Respostas que a IA escreveu e estão esperando aprovação antes de sair de verdade pro cliente — porque o modo de revisão está ligado (configuracoes.revisao_humana_ativa) ou porque o Auditor encontrou uma inconsistência e pediu revisão. Pode editar o texto antes de aprovar.</p>
+    <div id="lista-pendentes"><p class="loading">Carregando…</p></div>
+  </div>
 </div>
 
 <script>
@@ -178,8 +190,79 @@ document.querySelectorAll(".tab").forEach(btn => {
     document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
     btn.classList.add("active");
     $("#view-" + btn.dataset.view).classList.add("active");
+    if (btn.dataset.view === "pendentes") carregarPendentes();
   });
 });
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s || "";
+  return d.innerHTML;
+}
+
+async function carregarPendentes() {
+  const r = await fetch("/api/pendentes");
+  const pendentes = await r.json();
+  const el = $("#lista-pendentes");
+  const badge = $("#badge-pendentes");
+
+  if (pendentes.length === 0) {
+    badge.style.display = "none";
+    el.innerHTML = `<p class="loading">Nenhuma aprovação pendente no momento.</p>`;
+    return;
+  }
+
+  badge.style.display = "inline-block";
+  badge.textContent = pendentes.length;
+
+  el.innerHTML = pendentes.map(p => `
+    <div class="panel" id="card-${p.mensagem_id}">
+      <h2>${escapeHtml(p.cliente_nome)} <span class="badge">${p.cliente_id}</span>${p.intent ? ` <span class="badge">${escapeHtml(p.intent)}</span>` : ''}</h2>
+      <p class="kv"><b>Recebido:</b> ${p.data_hora}</p>
+      <p class="kv"><b>Mensagem do cliente:</b></p>
+      <div class="resposta-box">${escapeHtml(p.mensagem)}</div>
+      <p class="kv" style="margin-top:0.8rem"><b>Rascunho da resposta (pode editar antes de aprovar):</b></p>
+      <textarea id="texto-${p.mensagem_id}" style="min-height:8rem">${escapeHtml(p.resposta_ia)}</textarea>
+      <div style="margin-top:0.8rem; display:flex; gap:0.6rem; align-items:center;">
+        <button class="primary" onclick="aprovarPendente('${p.mensagem_id}')">Aprovar e enviar</button>
+        <button class="secondary" onclick="rejeitarPendente('${p.mensagem_id}')">Rejeitar</button>
+        <span class="loading" id="status-${p.mensagem_id}"></span>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function aprovarPendente(mensagemId) {
+  const texto = $("#texto-" + mensagemId).value;
+  const statusEl = $("#status-" + mensagemId);
+  statusEl.textContent = "Enviando…";
+  const r = await fetch(`/api/pendentes/${mensagemId}/aprovar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ texto }),
+  });
+  const d = await r.json();
+  if (!r.ok) {
+    statusEl.textContent = "";
+    alert("Erro ao aprovar: " + d.erro);
+    return;
+  }
+  await carregarPendentes();
+}
+
+async function rejeitarPendente(mensagemId) {
+  if (!confirm("Rejeitar essa resposta? Ela não será enviada.")) return;
+  const statusEl = $("#status-" + mensagemId);
+  statusEl.textContent = "Rejeitando…";
+  const r = await fetch(`/api/pendentes/${mensagemId}/rejeitar`, { method: "POST" });
+  const d = await r.json();
+  if (!r.ok) {
+    statusEl.textContent = "";
+    alert("Erro ao rejeitar: " + d.erro);
+    return;
+  }
+  await carregarPendentes();
+}
 
 async function buscarCliente() {
   const nome = $("#busca-nome").value.trim();
@@ -342,6 +425,7 @@ $("#enviar").addEventListener("click", enviarPipeline);
 
 carregarStatus();
 carregarClientes();
+carregarPendentes();
 </script>
 </body>
 </html>

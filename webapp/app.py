@@ -9,6 +9,8 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 
+from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
+from core import motor_mensagens
 from integracoes.config import shooting_house_configurado
 from motor_ia.atualizador_memoria import atualizar_memoria
 from motor_ia.auditor import auditar
@@ -157,6 +159,29 @@ def pipeline():
         auditoria=resultado.model_dump(),
         memoria_atualizada=memoria_id,
     )
+
+
+@app.route("/api/pendentes")
+def pendentes():
+    return jsonify(motor_mensagens.listar_pendentes())
+
+
+@app.route("/api/pendentes/<mensagem_id>/aprovar", methods=["POST"])
+def aprovar(mensagem_id):
+    corpo = request.get_json(silent=True) or {}
+    texto_final = corpo.get("texto")
+    resultado = aprovar_mensagem_pendente(mensagem_id, texto_final=texto_final)
+    if "erro" in resultado:
+        return jsonify(resultado), 400
+    return jsonify(resultado)
+
+
+@app.route("/api/pendentes/<mensagem_id>/rejeitar", methods=["POST"])
+def rejeitar(mensagem_id):
+    resultado = rejeitar_mensagem_pendente(mensagem_id)
+    if "erro" in resultado:
+        return jsonify(resultado), 400
+    return jsonify(resultado)
 
 
 if __name__ == "__main__":
