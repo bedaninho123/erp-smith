@@ -98,12 +98,17 @@ if __name__ == "__main__":
     if "--uma-vez" in sys.argv:
         # A Tarefa Agendada chama pythonw.exe diretamente (sem cmd.exe/
         # batch no meio, pra não flashar janela nenhuma) -- por isso não
-        # tem console, e sys.stdout/stderr chegam como None. Sem isso,
-        # qualquer print() aqui derrubaria o processo com AttributeError.
-        log = open(LOG_PATH, "a", encoding="utf-8", buffering=1)
-        sys.stdout = log
-        sys.stderr = log
-        print(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
+        # tem console, e sys.stdout/stderr chegam como None nesse caso.
+        # Sem desviar pro arquivo, qualquer print() derrubaria o processo
+        # com AttributeError. Quando roda manualmente num terminal de
+        # verdade (verificar_agora.bat, ou python.exe direto), sys.stdout
+        # já existe -- nesse caso deixa imprimir na tela normalmente, pra
+        # dar feedback imediato de quem está rodando na hora.
+        if sys.stdout is None:
+            log = open(LOG_PATH, "a", encoding="utf-8", buffering=1)
+            sys.stdout = log
+            sys.stderr = log
+            print(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
         n = verificar_uma_vez()
         print(f"{n} mensagem(ns) processada(s).")
     else:
