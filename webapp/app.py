@@ -17,7 +17,7 @@ from werkzeug.security import check_password_hash
 
 from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
 from core import motor_documentos, motor_mensagens
-from core.motor_casos import STATUS_VALIDOS, atualizar_responsavel, atualizar_status
+from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
 from integracoes.config import shooting_house_configurado
 from motor_ia.atualizador_memoria import atualizar_memoria
 from motor_ia.auditor import auditar
@@ -310,6 +310,21 @@ def caso_atualizar_responsavel(caso_id):
     try:
         atualizar_responsavel(
             caso_id, novo_responsavel_id,
+            alterado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
+
+
+@app.route("/api/casos/<caso_id>/descricao", methods=["POST"])
+@login_required
+def caso_atualizar_descricao(caso_id):
+    corpo = request.get_json(force=True)
+    nova_descricao = (corpo.get("descricao") or "").strip()
+    try:
+        atualizar_descricao(
+            caso_id, nova_descricao,
             alterado_por=session.get("usuario_nome", "Painel administrativo"),
         )
     except ValueError as e:

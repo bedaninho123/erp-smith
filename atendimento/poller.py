@@ -11,6 +11,7 @@ duas vezes -- mesmo quando o resultado foi "encaminhar a humano" ou
 "revisar" (nesses casos a mensagem já foi registrada no caso/sessão;
 alguém ainda precisa olhar, mas não faz sentido o robô ficar reprocessando).
 """
+import os
 import sys
 import time
 from datetime import datetime
@@ -24,6 +25,31 @@ from core.motor_documentos import salvar_documento
 
 INTERVALO_SEGUNDOS = 60
 LOG_PATH = Path(__file__).resolve().parent / "poller.log"
+LOCK_PATH = Path(__file__).resolve().parent / "poller.lock"
+# Se a Tarefa Agendada (a cada 2 min) e uma execução manual (verificar_
+# agora.bat, ou terminal aberto) coincidirem, as duas listam e-mails não
+# lidos antes de qualquer uma marcar como lido -- processam a mesma
+# mensagem duas vezes. Trava de arquivo simples evita isso; acima deste
+# tempo, considera que o processo anterior travou/morreu sem limpar e
+# libera sozinho (em vez de travar o poller pra sempre).
+TRAVA_EXPIRA_SEGUNDOS = 300
+
+
+def _adquirir_trava() -> bool:
+    if LOCK_PATH.exists():
+        idade = time.time() - LOCK_PATH.stat().st_mtime
+        if idade >= TRAVA_EXPIRA_SEGUNDOS:
+            LOCK_PATH.unlink(missing_ok=True)
+    try:
+        with open(LOCK_PATH, "x", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+        return True
+    except FileExistsError:
+        return False
+
+
+def _liberar_trava() -> None:
+    LOCK_PATH.unlink(missing_ok=True)
 
 
 def _salvar_anexos(msg: dict, resultado: dict, anexos: list) -> None:
@@ -67,6 +93,20 @@ def _salvar_anexos(msg: dict, resultado: dict, anexos: list) -> None:
 
 
 def verificar_uma_vez() -> int:
+    if not _adquirir_trava():
+        print(
+            "Outra verificação já está em andamento (Tarefa Agendada ou "
+            "outro terminal) -- pulando esta rodada pra não processar o "
+            "mesmo e-mail duas vezes."
+        )
+        return 0
+    try:
+        return _verificar_uma_vez_com_trava()
+    finally:
+        _liberar_trava()
+
+
+def _verificar_uma_vez_com_trava() -> int:
     if not gmail_configurado():
         print("Gmail ainda não autorizado -- nada para verificar.")
         return 0

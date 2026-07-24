@@ -110,7 +110,7 @@ def atender_mensagem(
         categoria = _categoria_do_caso(classificacao)
         caso_id = localizar_ou_criar_caso(
             cliente_id, titulo=classificacao.resumo[:120], categoria=categoria,
-            canal_origem=canal,
+            canal_origem=canal, descricao=classificacao.resumo,
         )
 
     dados = consultar(plano, cliente_id=cliente_id, classificacao=classificacao)

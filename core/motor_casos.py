@@ -61,6 +61,7 @@ def criar_caso(
     cliente_id: str, titulo: str, categoria: str,
     tipo_caso: str = "Solicitação", origem: str = "Atendimento",
     canal_origem: str = "Email", criado_por: str = "Motor IA",
+    descricao: Optional[str] = None,
 ) -> str:
     con = conectar()
     try:
@@ -69,7 +70,7 @@ def criar_caso(
         con.execute(
             "INSERT INTO caso VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                novo_id, cliente_id, titulo, None, categoria, tipo_caso, origem,
+                novo_id, cliente_id, titulo, descricao, categoria, tipo_caso, origem,
                 canal_origem, "Aberto", "Triagem", "Normal", None, None, None, None,
                 agora, agora, None, None, criado_por, criado_por, 1, "Sim", None, None,
             ),
@@ -148,6 +149,31 @@ def atualizar_responsavel(
             con, caso_id, "troca_responsavel",
             f"Responsável alterado de {responsavel_antigo or '(nenhum)'} para {novo_responsavel_id or '(nenhum)'}",
             valor_anterior=responsavel_antigo, valor_novo=novo_responsavel_id, criado_por=alterado_por,
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def atualizar_descricao(
+    caso_id: str, nova_descricao: str, alterado_por: str = "Motor de Casos",
+) -> None:
+    con = conectar()
+    try:
+        linha = con.execute(
+            "SELECT descricao FROM caso WHERE caso_id = ?", (caso_id,)
+        ).fetchone()
+        if not linha:
+            raise ValueError(f"Caso não encontrado: {caso_id}")
+
+        con.execute(
+            "UPDATE caso SET descricao = ?, atualizado_em = ?, alterado_por = ?, versao = versao + 1 "
+            "WHERE caso_id = ?",
+            (nova_descricao, _agora_iso(), alterado_por, caso_id),
+        )
+        _registrar_historico(
+            con, caso_id, "outro", "Descrição do caso editada.",
+            valor_anterior=linha["descricao"], valor_novo=nova_descricao, criado_por=alterado_por,
         )
         con.commit()
     finally:

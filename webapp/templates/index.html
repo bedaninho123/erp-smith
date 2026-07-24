@@ -157,6 +157,10 @@
                 <label for="editar-motivo">Motivo da mudança de status (opcional)</label>
                 <input id="editar-motivo" type="text" class="form-control" placeholder="Ex.: Cliente enviou os documentos pendentes">
               </div>
+              <div class="form-group">
+                <label for="editar-descricao">Descrição</label>
+                <textarea id="editar-descricao" class="form-control" placeholder="O que o cliente precisa neste caso"></textarea>
+              </div>
               <button class="btn btn-primary" id="salvar-caso">Salvar</button>
               <span class="text-muted ml-2" id="salvar-caso-status"></span>
             </div>
@@ -516,10 +520,12 @@ async function abrirCaso(casoId) {
   $("#editar-status").innerHTML = d.status_validos.map(s => `<option value="${s}"${s === c.status ? ' selected' : ''}>${s}</option>`).join("");
   $("#editar-responsavel").innerHTML = `<option value="">não atribuído</option>` + d.usuarios.map(u => `<option value="${u.usuario_id}"${u.usuario_id === c.responsavel_id ? ' selected' : ''}>${escapeHtml(u.nome)}</option>`).join("");
   $("#editar-motivo").value = "";
+  $("#editar-descricao").value = c.descricao || "";
   $("#salvar-caso-status").textContent = "";
   $("#salvar-caso").dataset.casoId = casoId;
   $("#salvar-caso").dataset.statusAtual = c.status;
   $("#salvar-caso").dataset.responsavelAtual = c.responsavel_id || "";
+  $("#salvar-caso").dataset.descricaoAtual = c.descricao || "";
 }
 
 async function salvarCasoEdicao() {
@@ -527,8 +533,10 @@ async function salvarCasoEdicao() {
   const casoId = botao.dataset.casoId;
   const statusAtual = botao.dataset.statusAtual;
   const responsavelAtual = botao.dataset.responsavelAtual;
+  const descricaoAtual = botao.dataset.descricaoAtual;
   const novoStatus = $("#editar-status").value;
   const novoResponsavel = $("#editar-responsavel").value;
+  const novaDescricao = $("#editar-descricao").value.trim();
   const motivo = $("#editar-motivo").value.trim();
   const statusEl = $("#salvar-caso-status");
 
@@ -543,6 +551,12 @@ async function salvarCasoEdicao() {
     chamadas.push(fetch(`/api/casos/${casoId}/responsavel`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ responsavel_id: novoResponsavel }),
+    }));
+  }
+  if (novaDescricao !== descricaoAtual) {
+    chamadas.push(fetch(`/api/casos/${casoId}/descricao`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ descricao: novaDescricao }),
     }));
   }
   if (chamadas.length === 0) {
