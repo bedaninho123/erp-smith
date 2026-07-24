@@ -13,12 +13,15 @@ alguém ainda precisa olhar, mas não faz sentido o robô ficar reprocessando).
 """
 import sys
 import time
+from datetime import datetime
+from pathlib import Path
 
 from integracoes.gmail import gmail_configurado, listar_mensagens_nao_lidas, marcar_como_lida
 from atendimento.alertas import alertar_excecao, alertar_falha
 from atendimento.processar import processar_mensagem
 
 INTERVALO_SEGUNDOS = 60
+LOG_PATH = Path(__file__).resolve().parent / "poller.log"
 
 
 def verificar_uma_vez() -> int:
@@ -93,6 +96,14 @@ if __name__ == "__main__":
     # repetição). Sem esse argumento, roda o loop contínuo (uso manual,
     # terminal aberto).
     if "--uma-vez" in sys.argv:
+        # A Tarefa Agendada chama pythonw.exe diretamente (sem cmd.exe/
+        # batch no meio, pra não flashar janela nenhuma) -- por isso não
+        # tem console, e sys.stdout/stderr chegam como None. Sem isso,
+        # qualquer print() aqui derrubaria o processo com AttributeError.
+        log = open(LOG_PATH, "a", encoding="utf-8", buffering=1)
+        sys.stdout = log
+        sys.stderr = log
+        print(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
         n = verificar_uma_vez()
         print(f"{n} mensagem(ns) processada(s).")
     else:
