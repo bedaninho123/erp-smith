@@ -16,7 +16,7 @@ from flask import Flask, jsonify, redirect, render_template, request, send_file,
 from werkzeug.security import check_password_hash
 
 from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
-from core import motor_mensagens
+from core import motor_documentos, motor_mensagens
 from core.motor_casos import STATUS_VALIDOS, atualizar_responsavel, atualizar_status
 from integracoes.config import shooting_house_configurado
 from motor_ia.atualizador_memoria import atualizar_memoria
@@ -336,7 +336,10 @@ def documento_arquivo(documento_id):
     # descarta qualquer componente de diretório antes de virar o nome de
     # download sugerido ao navegador.
     nome_sugerido = Path(doc["nome_arquivo"] or "").name or caminho.name
-    return send_file(caminho, as_attachment=True, download_name=nome_sugerido)
+    # ?inline=1 -- usado pra mostrar a foto direto no painel (ex.: prévia
+    # em Aprovações Pendentes) em vez de forçar download.
+    inline = request.args.get("inline") == "1"
+    return send_file(caminho, as_attachment=not inline, download_name=nome_sugerido)
 
 
 @app.route("/api/clientes")
@@ -508,7 +511,10 @@ def pipeline():
 @app.route("/api/pendentes")
 @login_required
 def pendentes():
-    return jsonify(motor_mensagens.listar_pendentes())
+    itens = motor_mensagens.listar_pendentes()
+    for item in itens:
+        item["documentos"] = motor_documentos.listar_por_mensagem(item["mensagem_id"])
+    return jsonify(itens)
 
 
 @app.route("/api/pendentes/<mensagem_id>/aprovar", methods=["POST"])

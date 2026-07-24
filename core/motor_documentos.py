@@ -48,6 +48,7 @@ def salvar_documento(
     processo_id: Optional[str] = None,
     tipo_documento: str = "Anexo recebido por e-mail",
     observacoes: Optional[str] = None,
+    mensagem_id: Optional[str] = None,
 ) -> str:
     if not caso_id and not processo_id:
         raise ValueError("Documento precisa de caso_id ou processo_id (restrição do banco).")
@@ -63,14 +64,26 @@ def salvar_documento(
         caminho.write_bytes(conteudo)
 
         con.execute(
-            "INSERT INTO documento VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO documento VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 documento_id, cliente_id, caso_id, processo_id, tipo_documento,
                 nome_arquivo_original, str(caminho), STATUS_RECEBIDO, _agora_iso(),
-                None, None, observacoes,
+                None, None, observacoes, mensagem_id,
             ),
         )
         con.commit()
         return documento_id
+    finally:
+        con.close()
+
+
+def listar_por_mensagem(mensagem_id: str) -> list:
+    con = conectar()
+    try:
+        linhas = con.execute(
+            "SELECT * FROM documento WHERE mensagem_id = ? ORDER BY data_envio",
+            (mensagem_id,),
+        ).fetchall()
+        return [dict(linha) for linha in linhas]
     finally:
         con.close()

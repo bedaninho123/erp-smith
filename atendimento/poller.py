@@ -58,6 +58,7 @@ def _salvar_anexos(msg: dict, resultado: dict, anexos: list) -> None:
                 conteudo=anexo["conteudo"],
                 nome_arquivo_original=anexo["nome_arquivo"],
                 caso_id=caso_id,
+                mensagem_id=resultado.get("mensagem_id"),
                 observacoes=f"Recebido por e-mail de {msg['remetente_email']} -- assunto: {msg['assunto']!r}",
             )
             print(f"  -> anexo salvo: {documento_id} ({anexo['nome_arquivo']})")

@@ -117,6 +117,7 @@ CREATE TABLE documento (
     data_validade     TEXT,                              -- ISO 8601
     revisado_por_id   TEXT REFERENCES usuario(usuario_id),
     observacoes       TEXT,
+    mensagem_id       TEXT REFERENCES mensagem(mensagem_id), -- qual mensagem trouxe este anexo (nullable -- doc migrado/antigo não tem)
     CHECK (caso_id IS NOT NULL OR processo_id IS NOT NULL)
 );
 
