@@ -19,9 +19,50 @@ from pathlib import Path
 from integracoes.gmail import gmail_configurado, listar_mensagens_nao_lidas, marcar_como_lida
 from atendimento.alertas import alertar_excecao, alertar_falha
 from atendimento.processar import processar_mensagem
+from core.motor_casos import localizar_caso_aberto
+from core.motor_documentos import salvar_documento
 
 INTERVALO_SEGUNDOS = 60
 LOG_PATH = Path(__file__).resolve().parent / "poller.log"
+
+
+def _salvar_anexos(msg: dict, resultado: dict, anexos: list) -> None:
+    """Vincula os anexos (já filtrados por foto/PDF em integracoes/gmail.py)
+    ao caso do cliente. Nunca deixa um anexo desaparecer em silêncio: se
+    não dá pra achar cliente/caso pra vincular (restrição do banco --
+    documento exige caso_id ou processo_id), alerta em vez de tentar
+    gravar e falhar, ou pior, gravar errado.
+    """
+    cliente_id = resultado.get("cliente_id")
+    nomes = ", ".join(a["nome_arquivo"] for a in anexos)
+
+    if not cliente_id:
+        alertar_falha(
+            f"Anexo recebido de remetente não identificado ({msg['remetente_email']})",
+            f"{len(anexos)} arquivo(s) não foram salvos, precisa tratar manualmente: {nomes}",
+        )
+        return
+
+    caso_id = resultado.get("caso_id") or localizar_caso_aberto(cliente_id)
+    if not caso_id:
+        alertar_falha(
+            f"Anexo recebido sem caso aberto para associar (cliente {cliente_id})",
+            f"{len(anexos)} arquivo(s) não foram salvos, precisa tratar manualmente: {nomes}",
+        )
+        return
+
+    for anexo in anexos:
+        try:
+            documento_id = salvar_documento(
+                cliente_id=cliente_id,
+                conteudo=anexo["conteudo"],
+                nome_arquivo_original=anexo["nome_arquivo"],
+                caso_id=caso_id,
+                observacoes=f"Recebido por e-mail de {msg['remetente_email']} -- assunto: {msg['assunto']!r}",
+            )
+            print(f"  -> anexo salvo: {documento_id} ({anexo['nome_arquivo']})")
+        except Exception as e:
+            alertar_excecao(f"Falha ao salvar anexo {anexo['nome_arquivo']!r} do cliente {cliente_id}", e)
 
 
 def verificar_uma_vez() -> int:
@@ -68,6 +109,9 @@ def verificar_uma_vez() -> int:
                     "Resposta gerada mas falhou ao enviar",
                     f"Cliente {resultado.get('cliente_id')}: {resultado['erro_envio']}",
                 )
+
+        if msg.get("anexos"):
+            _salvar_anexos(msg, resultado, msg["anexos"])
 
         marcar_como_lida(msg["id"])
 

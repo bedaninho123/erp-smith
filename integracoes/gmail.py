@@ -28,6 +28,13 @@ SCOPES = [
 ]
 TOKEN_PATH = Path(__file__).resolve().parent.parent / "token.json"
 
+# Processos do domínio (CR, CRAF, Aquisição, Transferência, Guia) pedem
+# documento em foto ou PDF -- essas são as extensões que tratamos como
+# "documento de verdade" ao ler anexo de e-mail. Tamanho máximo evita que
+# um anexo gigante (ou um vídeo enviado por engano) trave o poller.
+ANEXOS_EXTENSOES_ACEITAS = {".pdf", ".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp"}
+ANEXO_TAMANHO_MAXIMO = 15 * 1024 * 1024  # 15 MB
+
 
 def gmail_configurado() -> bool:
     return TOKEN_PATH.exists()
@@ -76,6 +83,35 @@ def _extrair_corpo(payload: dict) -> str:
         if texto:
             return texto
     return ""
+
+
+def _extrair_anexos(service, message_id: str, payload: dict) -> list[dict]:
+    """Percorre as partes da mensagem coletando anexos de verdade (tem
+    nome de arquivo e attachmentId -- diferente de uma imagem inline
+    embutida no corpo do e-mail). Filtra por extensão (foto ou PDF) e
+    tamanho antes de baixar o conteúdo -- evita gastar chamada de API
+    com assinatura de e-mail, logo de rodapé ou arquivo fora do que os
+    processos do domínio pedem.
+    """
+    anexos = []
+
+    def _percorrer(parte):
+        nome = parte.get("filename")
+        corpo = parte.get("body", {})
+        if nome and corpo.get("attachmentId"):
+            extensao = Path(nome).suffix.lower()
+            tamanho = corpo.get("size", 0)
+            if extensao in ANEXOS_EXTENSOES_ACEITAS and 0 < tamanho <= ANEXO_TAMANHO_MAXIMO:
+                anexo_dados = service.users().messages().attachments().get(
+                    userId="me", messageId=message_id, id=corpo["attachmentId"]
+                ).execute()
+                conteudo = base64.urlsafe_b64decode(anexo_dados["data"])
+                anexos.append({"nome_arquivo": nome, "conteudo": conteudo})
+        for sub in parte.get("parts", []) or []:
+            _percorrer(sub)
+
+    _percorrer(payload)
+    return anexos
 
 
 def _cabecalho(headers: list[dict], nome: str) -> str:
@@ -132,6 +168,7 @@ def listar_mensagens_nao_lidas(max_resultados: int = 10) -> list[dict]:
             "remetente_nome": nome,
             "assunto": _cabecalho(headers, "Subject"),
             "corpo": _extrair_corpo(msg["payload"]).strip(),
+            "anexos": _extrair_anexos(service, msg["id"], msg["payload"]),
         })
     return mensagens
 

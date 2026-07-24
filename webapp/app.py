@@ -12,7 +12,7 @@ from functools import wraps
 from pathlib import Path
 
 from dotenv import load_dotenv, set_key
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash
 
 from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
@@ -308,6 +308,35 @@ def caso_atualizar_responsavel(caso_id):
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True)
+
+
+@app.route("/api/documentos/<documento_id>/arquivo")
+@login_required
+def documento_arquivo(documento_id):
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+    doc = con.execute(
+        "SELECT nome_arquivo, link_arquivo FROM documento WHERE documento_id = ?",
+        (documento_id,),
+    ).fetchone()
+    con.close()
+
+    if not doc or not doc["link_arquivo"]:
+        return jsonify(erro="Documento não encontrado."), 404
+
+    # O caminho vem do nosso próprio banco (gravado por
+    # core/motor_documentos.py), nunca de algo que o cliente da requisição
+    # controla -- não há risco de path traversal aqui.
+    caminho = Path(doc["link_arquivo"])
+    if not caminho.is_file():
+        return jsonify(erro="Arquivo não encontrado no disco."), 404
+
+    # nome_arquivo é o nome original que o remetente usou (guardado só
+    # pra exibição) -- pode conter "../" ou coisa parecida; Path(...).name
+    # descarta qualquer componente de diretório antes de virar o nome de
+    # download sugerido ao navegador.
+    nome_sugerido = Path(doc["nome_arquivo"] or "").name or caminho.name
+    return send_file(caminho, as_attachment=True, download_name=nome_sugerido)
 
 
 @app.route("/api/clientes")

@@ -489,7 +489,9 @@ async function abrirCaso(casoId) {
   $("#caso-documentos-body").innerHTML = d.documentos.length ? d.documentos.map(doc => `
     <tr>
       <td>${escapeHtml(doc.tipo_documento)}</td>
-      <td>${escapeHtml(doc.nome_arquivo || '—')}</td>
+      <td>${doc.link_arquivo
+        ? `<a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo" target="_blank" rel="noopener">${escapeHtml(doc.nome_arquivo || 'arquivo')}</a>`
+        : escapeHtml(doc.nome_arquivo || '—')}</td>
       <td>${escapeHtml(doc.status)}</td>
       <td>${doc.data_envio || '—'}</td>
     </tr>
