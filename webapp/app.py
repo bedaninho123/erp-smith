@@ -18,6 +18,7 @@ from werkzeug.security import check_password_hash
 from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
 from core import motor_documentos, motor_mensagens
 from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
+from core.motor_processos import atualizar_processo, criar_processo
 from integracoes.config import shooting_house_configurado
 from motor_ia.atualizador_memoria import atualizar_memoria
 from motor_ia.auditor import auditar
@@ -272,6 +273,10 @@ def caso_detalhe(caso_id):
         "SELECT usuario_id, nome FROM usuario WHERE ativo = 'Sim' ORDER BY nome"
     ).fetchall()
 
+    servicos = con.execute(
+        "SELECT service_id, nome_servico FROM servico WHERE ativo = 'Sim' ORDER BY nome_servico"
+    ).fetchall()
+
     con.close()
     return jsonify(
         caso=dict(caso),
@@ -281,6 +286,7 @@ def caso_detalhe(caso_id):
         mensagens=[dict(r) for r in mensagens],
         status_validos=sorted(STATUS_VALIDOS),
         usuarios=[dict(r) for r in usuarios],
+        servicos=[dict(r) for r in servicos],
     )
 
 
@@ -325,6 +331,60 @@ def caso_atualizar_descricao(caso_id):
     try:
         atualizar_descricao(
             caso_id, nova_descricao,
+            alterado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
+
+
+@app.route("/api/casos/<caso_id>/processos", methods=["POST"])
+@login_required
+def processo_criar(caso_id):
+    corpo = request.get_json(force=True)
+    servico_id = (corpo.get("servico_id") or "").strip()
+    if not servico_id:
+        return jsonify(erro="Selecione um serviço."), 400
+
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+    caso = con.execute("SELECT cliente_id FROM caso WHERE caso_id = ?", (caso_id,)).fetchone()
+    con.close()
+    if not caso:
+        return jsonify(erro=f"Caso não encontrado: {caso_id}"), 404
+
+    try:
+        novo_id = criar_processo(
+            caso_id, caso["cliente_id"], servico_id,
+            protocolo=(corpo.get("protocolo") or "").strip() or None,
+            status=(corpo.get("status") or "Aberto").strip(),
+            prazo_estimado=(corpo.get("prazo_estimado") or "").strip() or None,
+            proxima_acao=(corpo.get("proxima_acao") or "").strip() or None,
+            responsavel_id=(corpo.get("responsavel_id") or "").strip() or None,
+            observacoes=(corpo.get("observacoes") or "").strip() or None,
+            criado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True, processo_id=novo_id)
+
+
+@app.route("/api/processos/<processo_id>", methods=["POST"])
+@login_required
+def processo_atualizar(processo_id):
+    corpo = request.get_json(force=True)
+    novo_status = (corpo.get("status") or "").strip()
+    if not novo_status:
+        return jsonify(erro="Informe o status."), 400
+    try:
+        atualizar_processo(
+            processo_id,
+            status=novo_status,
+            protocolo=(corpo.get("protocolo") or "").strip() or None,
+            prazo_estimado=(corpo.get("prazo_estimado") or "").strip() or None,
+            proxima_acao=(corpo.get("proxima_acao") or "").strip() or None,
+            responsavel_id=(corpo.get("responsavel_id") or "").strip() or None,
+            observacoes=(corpo.get("observacoes") or "").strip() or None,
             alterado_por=session.get("usuario_nome", "Painel administrativo"),
         )
     except ValueError as e:

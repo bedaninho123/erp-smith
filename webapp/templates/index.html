@@ -170,9 +170,51 @@
             <div class="card-header"><h3 class="card-title">Processos</h3></div>
             <div class="card-body table-responsive p-0">
               <table class="table table-hover text-nowrap">
-                <thead><tr><th>Serviço</th><th>Protocolo</th><th>Status</th><th>Prazo estimado</th><th>Próxima ação</th></tr></thead>
+                <thead><tr><th>Serviço</th><th>Protocolo</th><th>Status</th><th>Prazo estimado</th><th>Próxima ação</th><th></th></tr></thead>
                 <tbody id="caso-processos-body"></tbody>
               </table>
+            </div>
+            <div class="card-body border-top">
+              <h5 id="processo-form-titulo">Adicionar processo</h5>
+              <div class="row">
+                <div class="col-md-6">
+                  <label for="processo-servico">Serviço</label>
+                  <select id="processo-servico" class="form-control"></select>
+                </div>
+                <div class="col-md-6">
+                  <label for="processo-protocolo">Protocolo</label>
+                  <input id="processo-protocolo" type="text" class="form-control" placeholder="Ex.: SIGMA-2026-000123">
+                </div>
+              </div>
+              <div class="row mt-3">
+                <div class="col-md-4">
+                  <label for="processo-status">Status</label>
+                  <input id="processo-status" type="text" class="form-control" list="processo-status-opcoes" value="Aberto">
+                  <datalist id="processo-status-opcoes">
+                    <option value="Aberto"><option value="Aguardando documentos">
+                    <option value="Em análise"><option value="Concluído"><option value="Cancelado">
+                  </datalist>
+                </div>
+                <div class="col-md-4">
+                  <label for="processo-prazo">Prazo estimado</label>
+                  <input id="processo-prazo" type="date" class="form-control">
+                </div>
+                <div class="col-md-4">
+                  <label for="processo-responsavel">Responsável</label>
+                  <select id="processo-responsavel" class="form-control"><option value="">não atribuído</option></select>
+                </div>
+              </div>
+              <div class="form-group mt-3">
+                <label for="processo-proxima-acao">Próxima ação</label>
+                <input id="processo-proxima-acao" type="text" class="form-control" placeholder="Ex.: Aguardando comprovante de residência do cliente">
+              </div>
+              <div class="form-group">
+                <label for="processo-observacoes">Observações</label>
+                <textarea id="processo-observacoes" class="form-control"></textarea>
+              </div>
+              <button class="btn btn-primary" id="salvar-processo">Adicionar processo</button>
+              <button class="btn btn-outline-secondary ml-2" id="cancelar-edicao-processo" style="display:none">Cancelar edição</button>
+              <span class="text-muted ml-2" id="salvar-processo-status"></span>
             </div>
           </div>
 
@@ -481,14 +523,26 @@ async function abrirCaso(casoId) {
   `;
 
   $("#caso-processos-body").innerHTML = d.processos.length ? d.processos.map(p => `
-    <tr>
+    <tr class="linha-processo" data-processo='${JSON.stringify(p).replace(/'/g, "&#39;")}'>
       <td>${escapeHtml(p.nome_servico)}</td>
       <td class="text-monospace">${escapeHtml(p.protocolo) || '—'}</td>
       <td>${escapeHtml(p.status)}</td>
       <td>${p.prazo_estimado || '—'}</td>
       <td>${escapeHtml(p.proxima_acao || '—')}</td>
+      <td><button class="btn btn-outline-secondary btn-sm btn-editar-processo">Editar</button></td>
     </tr>
-  `).join("") : `<tr><td colspan="5" class="text-muted">Nenhum processo neste caso.</td></tr>`;
+  `).join("") : `<tr><td colspan="6" class="text-muted">Nenhum processo neste caso.</td></tr>`;
+
+  $("#caso-processos-body").querySelectorAll(".btn-editar-processo").forEach(btn => {
+    btn.addEventListener("click", (ev) => {
+      const tr = ev.target.closest(".linha-processo");
+      editarProcesso(JSON.parse(tr.dataset.processo));
+    });
+  });
+
+  $("#processo-servico").innerHTML = d.servicos.map(s => `<option value="${s.service_id}">${escapeHtml(s.nome_servico)}</option>`).join("");
+  $("#processo-responsavel").innerHTML = `<option value="">não atribuído</option>` + d.usuarios.map(u => `<option value="${u.usuario_id}">${escapeHtml(u.nome)}</option>`).join("");
+  resetFormularioProcesso(casoId);
 
   $("#caso-documentos-body").innerHTML = d.documentos.length ? d.documentos.map(doc => `
     <tr>
@@ -584,6 +638,80 @@ async function salvarCasoEdicao() {
 }
 
 $("#salvar-caso").addEventListener("click", salvarCasoEdicao);
+
+function resetFormularioProcesso(casoId) {
+  $("#processo-form-titulo").textContent = "Adicionar processo";
+  $("#processo-servico").disabled = false;
+  $("#processo-servico").selectedIndex = 0;
+  $("#processo-protocolo").value = "";
+  $("#processo-status").value = "Aberto";
+  $("#processo-prazo").value = "";
+  $("#processo-responsavel").value = "";
+  $("#processo-proxima-acao").value = "";
+  $("#processo-observacoes").value = "";
+  $("#salvar-processo").textContent = "Adicionar processo";
+  $("#salvar-processo").dataset.casoId = casoId;
+  delete $("#salvar-processo").dataset.processoId;
+  $("#cancelar-edicao-processo").style.display = "none";
+  $("#salvar-processo-status").textContent = "";
+}
+
+function editarProcesso(p) {
+  $("#processo-form-titulo").textContent = `Editar processo (${p.processo_id})`;
+  $("#processo-servico").value = p.servico_id;
+  $("#processo-servico").disabled = true;
+  $("#processo-protocolo").value = p.protocolo || "";
+  $("#processo-status").value = p.status || "";
+  $("#processo-prazo").value = p.prazo_estimado || "";
+  $("#processo-responsavel").value = p.responsavel_id || "";
+  $("#processo-proxima-acao").value = p.proxima_acao || "";
+  $("#processo-observacoes").value = p.observacoes || "";
+  $("#salvar-processo").textContent = "Salvar alterações";
+  $("#salvar-processo").dataset.processoId = p.processo_id;
+  $("#cancelar-edicao-processo").style.display = "inline-block";
+  $("#salvar-processo-status").textContent = "";
+  $("#processo-servico").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+async function salvarProcesso() {
+  const botao = $("#salvar-processo");
+  const casoId = botao.dataset.casoId;
+  const processoId = botao.dataset.processoId;
+  const statusEl = $("#salvar-processo-status");
+
+  const corpo = {
+    servico_id: $("#processo-servico").value,
+    protocolo: $("#processo-protocolo").value.trim(),
+    status: $("#processo-status").value.trim(),
+    prazo_estimado: $("#processo-prazo").value,
+    proxima_acao: $("#processo-proxima-acao").value.trim(),
+    responsavel_id: $("#processo-responsavel").value,
+    observacoes: $("#processo-observacoes").value.trim(),
+  };
+
+  statusEl.textContent = "Salvando…";
+  botao.disabled = true;
+  try {
+    const url = processoId ? `/api/processos/${processoId}` : `/api/casos/${casoId}/processos`;
+    const r = await fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      statusEl.textContent = "";
+      alert("Erro ao salvar: " + d.erro);
+      return;
+    }
+    await abrirCaso(casoId);
+    statusEl.textContent = "Salvo.";
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+$("#salvar-processo").addEventListener("click", salvarProcesso);
+$("#cancelar-edicao-processo").addEventListener("click", () => resetFormularioProcesso($("#salvar-processo").dataset.casoId));
 
 $("#voltar-casos").addEventListener("click", () => {
   mostrarView("casos");
