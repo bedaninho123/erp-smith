@@ -457,7 +457,7 @@ async function abrirCaso(casoId) {
   const r = await fetch(`/api/casos/${casoId}`);
   const d = await r.json();
   if (!r.ok) {
-    $("#caso-cabecalho").innerHTML = `<div class="alert alert-danger">${d.erro}</div>`;
+    $("#caso-cabecalho").innerHTML = `<div class="alert alert-danger">${escapeHtml(d.erro)}</div>`;
     return;
   }
 
@@ -479,7 +479,7 @@ async function abrirCaso(casoId) {
   $("#caso-processos-body").innerHTML = d.processos.length ? d.processos.map(p => `
     <tr>
       <td>${escapeHtml(p.nome_servico)}</td>
-      <td class="text-monospace">${p.protocolo || '—'}</td>
+      <td class="text-monospace">${escapeHtml(p.protocolo) || '—'}</td>
       <td>${escapeHtml(p.status)}</td>
       <td>${p.prazo_estimado || '—'}</td>
       <td>${escapeHtml(p.proxima_acao || '—')}</td>
@@ -611,7 +611,7 @@ async function abrirCliente(clienteId) {
   const r = await fetch(`/api/clientes/${clienteId}`);
   const d = await r.json();
   if (!r.ok) {
-    $("#cliente-cabecalho").innerHTML = `<div class="alert alert-danger">${d.erro}</div>`;
+    $("#cliente-cabecalho").innerHTML = `<div class="alert alert-danger">${escapeHtml(d.erro)}</div>`;
     return;
   }
 
@@ -797,7 +797,7 @@ async function buscarCliente() {
     return;
   }
 
-  resultadoEl.innerHTML = `<p><span class="badge badge-light">encontrado</span> ${d.nome} (${d.cliente_id}) — CPF ${d.cpf} — ${d.email || 'sem e-mail'}</p>`;
+  resultadoEl.innerHTML = `<p><span class="badge badge-light">encontrado</span> ${escapeHtml(d.nome)} (${escapeHtml(d.cliente_id)}) — CPF ${escapeHtml(d.cpf)} — ${escapeHtml(d.email) || 'sem e-mail'}</p>`;
 
   const select = $("#cliente");
   if ([...select.options].some(o => o.value === d.cliente_id)) {
@@ -871,7 +871,7 @@ async function carregarStatus() {
 async function carregarClientes() {
   const r = await fetch("/api/clientes");
   const clientes = await r.json();
-  $("#cliente").innerHTML = clientes.map(c => `<option value="${c.cliente_id}">${c.nome}</option>`).join("");
+  $("#cliente").innerHTML = clientes.map(c => `<option value="${escapeHtml(c.cliente_id)}">${escapeHtml(c.nome)}</option>`).join("");
 }
 
 function badgeAcao(acao) {
@@ -901,7 +901,7 @@ async function enviarPipeline() {
     const d = await r.json();
 
     if (!r.ok) {
-      resultadoEl.innerHTML = `<div class="alert alert-danger">${d.erro}</div>`;
+      resultadoEl.innerHTML = `<div class="alert alert-danger">${escapeHtml(d.erro)}</div>`;
       return;
     }
 
@@ -909,35 +909,35 @@ async function enviarPipeline() {
     let html = "";
 
     html += `<div class="mb-3 pb-2 border-bottom"><h5>1. Classificação</h5>
-      <p class="mb-1"><b>Intenção:</b> ${c.intencao} ${c.precisa_humano ? '<span class="badge badge-light">precisa_humano</span>' : ''}</p>
-      <p class="mb-1"><b>Resumo:</b> ${c.resumo}</p>
-      ${c.cpf_mencionado ? `<p class="mb-1"><b>CPF mencionado:</b> ${c.cpf_mencionado}</p>` : ''}
-      ${c.protocolo_mencionado ? `<p class="mb-1"><b>Protocolo mencionado:</b> ${c.protocolo_mencionado}</p>` : ''}
-      ${c.servico_mencionado ? `<p class="mb-1"><b>Serviço mencionado:</b> ${c.servico_mencionado}</p>` : ''}
+      <p class="mb-1"><b>Intenção:</b> ${escapeHtml(c.intencao)} ${c.precisa_humano ? '<span class="badge badge-light">precisa_humano</span>' : ''}</p>
+      <p class="mb-1"><b>Resumo:</b> ${escapeHtml(c.resumo)}</p>
+      ${c.cpf_mencionado ? `<p class="mb-1"><b>CPF mencionado:</b> ${escapeHtml(c.cpf_mencionado)}</p>` : ''}
+      ${c.protocolo_mencionado ? `<p class="mb-1"><b>Protocolo mencionado:</b> ${escapeHtml(c.protocolo_mencionado)}</p>` : ''}
+      ${c.servico_mencionado ? `<p class="mb-1"><b>Serviço mencionado:</b> ${escapeHtml(c.servico_mencionado)}</p>` : ''}
     </div>`;
 
     html += `<div class="mb-3 pb-2 border-bottom"><h5>2. Plano</h5>
-      <p class="mb-1"><b>Fontes consultadas:</b> ${d.plano.fontes.join(", ") || "(nenhuma)"}</p>
-      <p class="mb-1"><b>Encaminhar humano:</b> ${d.plano.encaminhar_humano ? "sim" : "não"}${d.plano.motivo_humano ? " — " + d.plano.motivo_humano : ""}</p>
+      <p class="mb-1"><b>Fontes consultadas:</b> ${escapeHtml(d.plano.fontes.join(", ")) || "(nenhuma)"}</p>
+      <p class="mb-1"><b>Encaminhar humano:</b> ${d.plano.encaminhar_humano ? "sim" : "não"}${d.plano.motivo_humano ? " — " + escapeHtml(d.plano.motivo_humano) : ""}</p>
     </div>`;
 
     html += `<div class="mb-3 pb-2 border-bottom"><h5>3. Auditoria</h5>
-      <p class="mb-1">${badgeAcao(d.auditoria.acao)} ${d.auditoria.motivo ? "— " + d.auditoria.motivo : ""}</p>
+      <p class="mb-1">${badgeAcao(d.auditoria.acao)} ${d.auditoria.motivo ? "— " + escapeHtml(d.auditoria.motivo) : ""}</p>
     </div>`;
 
     html += `<div class="mb-3 pb-2 border-bottom"><h5>4. Resultado final</h5>`;
     if (d.auditoria.acao === "enviar") {
-      html += `<p class="mb-1">Resposta enviada ao cliente:</p><div class="resposta-box">${d.resposta_gerada}</div>`;
+      html += `<p class="mb-1">Resposta enviada ao cliente:</p><div class="resposta-box">${escapeHtml(d.resposta_gerada)}</div>`;
     } else if (d.auditoria.acao === "encaminhar_humano") {
       html += `<p class="mb-1">Resposta da IA descartada. Encaminhado para atendimento humano.</p>`;
     } else {
-      html += `<p class="mb-1">Resposta retida para revisão (não enviada):</p><div class="resposta-box">${d.resposta_gerada}</div>`;
+      html += `<p class="mb-1">Resposta retida para revisão (não enviada):</p><div class="resposta-box">${escapeHtml(d.resposta_gerada)}</div>`;
     }
     html += `</div>`;
 
     if (d.memoria_atualizada) {
       html += `<div class="mb-3"><h5>5. Memória atualizada</h5>
-        <p class="mb-1"><b>Nova versão:</b> ${d.memoria_atualizada}</p>
+        <p class="mb-1"><b>Nova versão:</b> ${escapeHtml(d.memoria_atualizada)}</p>
       </div>`;
     }
 

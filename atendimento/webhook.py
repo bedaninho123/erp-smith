@@ -12,6 +12,8 @@ Segurança: se WEBHOOK_SECRET estiver configurado no .env, exige o
 cabeçalho X-Webhook-Secret com o mesmo valor. Sem isso configurado
 (dev local), aceita qualquer chamada.
 """
+import hmac
+
 from flask import Flask, jsonify, request
 
 from atendimento.config import WEBHOOK_SECRET
@@ -19,11 +21,19 @@ from atendimento.processar import processar_mensagem
 
 app = Flask(__name__)
 
+if not WEBHOOK_SECRET:
+    print(
+        "AVISO: WEBHOOK_SECRET não configurado em .env -- este endpoint "
+        "aceita qualquer chamada sem autenticação (ok para teste local, "
+        "nunca exponha assim além de localhost -- ver .env.example)."
+    )
+
 
 def _autorizado(req) -> bool:
     if not WEBHOOK_SECRET:
         return True
-    return req.headers.get("X-Webhook-Secret") == WEBHOOK_SECRET
+    recebido = req.headers.get("X-Webhook-Secret") or ""
+    return hmac.compare_digest(recebido, WEBHOOK_SECRET)
 
 
 @app.route("/webhook/mensagem", methods=["POST"])
@@ -53,4 +63,9 @@ def saude():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    # debug=False desliga o debugger interativo do Werkzeug (ele permite
+    # rodar codigo Python arbitrario pelo navegador em qualquer excecao --
+    # risco serio se este processo algum dia for exposto alem de
+    # localhost). use_reloader continua ligado so pra reiniciar sozinho
+    # quando o codigo muda, sem esse risco.
+    app.run(host="127.0.0.1", port=5001, debug=False, use_reloader=True)

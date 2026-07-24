@@ -505,4 +505,9 @@ def rejeitar(mensagem_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # debug=False desliga o debugger interativo do Werkzeug (permite
+    # rodar codigo Python arbitrario pelo navegador em qualquer excecao
+    # nao tratada -- risco serio se este processo for exposto alem de
+    # localhost). use_reloader continua ligado so pra reiniciar sozinho
+    # quando o codigo muda, sem esse risco.
+    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=True)
