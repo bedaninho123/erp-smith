@@ -131,6 +131,7 @@
     <button class="tab" data-view="status">Status do Projeto</button>
     <button class="tab" data-view="testar">Testar Pipeline</button>
     <button class="tab" data-view="pendentes">Aprovações Pendentes<span class="tab-badge" id="badge-pendentes" style="display:none"></span></button>
+    <button class="tab" data-view="config">Configurações</button>
   </div>
 
   <div id="view-casos" class="view active">
@@ -308,6 +309,11 @@
     <p class="subtitle">Respostas que a IA escreveu e estão esperando aprovação antes de sair de verdade pro cliente — porque o modo de revisão está ligado (configuracoes.revisao_humana_ativa) ou porque o Auditor encontrou uma inconsistência e pediu revisão. Pode editar o texto antes de aprovar.</p>
     <div id="lista-pendentes"><p class="loading">Carregando…</p></div>
   </div>
+
+  <div id="view-config" class="view">
+    <p class="subtitle">Textos, horários e comportamentos usados pela IA -- editar aqui tem efeito imediato na próxima resposta, sem precisar mexer no banco. "Ativo" controla se o valor é realmente usado; desligado, a IA ignora esse dado.</p>
+    <div id="config-lista"><p class="loading">Carregando…</p></div>
+  </div>
 </div>
 
 <script>
@@ -321,6 +327,7 @@ document.querySelectorAll(".tab").forEach(btn => {
     $("#view-" + btn.dataset.view).classList.add("active");
     if (btn.dataset.view === "pendentes") carregarPendentes();
     if (btn.dataset.view === "clientes") carregarClientesLista();
+    if (btn.dataset.view === "config") carregarConfiguracoes();
   });
 });
 
@@ -573,6 +580,54 @@ $("#voltar-clientes").addEventListener("click", () => {
   mostrarView("clientes");
   carregarClientesLista();
 });
+
+async function carregarConfiguracoes() {
+  const r = await fetch("/api/configuracoes");
+  const configs = await r.json();
+
+  const porCategoria = {};
+  configs.forEach(c => {
+    (porCategoria[c.categoria] = porCategoria[c.categoria] || []).push(c);
+  });
+
+  $("#config-lista").innerHTML = Object.keys(porCategoria).sort().map(categoria => `
+    <div class="panel">
+      <h2>${escapeHtml(categoria)}</h2>
+      ${porCategoria[categoria].map(c => `
+        <div class="form-row" style="border-bottom:1px solid var(--line); padding-bottom:0.9rem; margin-bottom:0.9rem;">
+          <label for="cfg-${c.config_id}"><b class="mono">${escapeHtml(c.chave)}</b>${c.descricao ? ` — ${escapeHtml(c.descricao)}` : ''}</label>
+          <textarea id="cfg-${c.config_id}" style="min-height:3rem">${escapeHtml(c.valor)}</textarea>
+          <div style="display:flex; align-items:center; gap:0.8rem; margin-top:0.5rem;">
+            <label style="display:flex; align-items:center; gap:0.35rem; margin:0; font-size:0.85rem; color:var(--ink);">
+              <input type="checkbox" id="cfg-ativo-${c.config_id}" ${c.ativo === 'Sim' ? 'checked' : ''}> Ativo (em uso pela IA)
+            </label>
+            <button class="secondary" onclick="salvarConfig('${c.config_id}')">Salvar</button>
+            <span class="loading" id="cfg-status-${c.config_id}"></span>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
+}
+
+async function salvarConfig(configId) {
+  const valor = $("#cfg-" + configId).value;
+  const ativo = $("#cfg-ativo-" + configId).checked ? "Sim" : "Não";
+  const statusEl = $("#cfg-status-" + configId);
+  statusEl.textContent = "Salvando…";
+
+  const r = await fetch(`/api/configuracoes/${configId}`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ valor, ativo }),
+  });
+  const d = await r.json();
+  if (!r.ok) {
+    statusEl.textContent = "";
+    alert("Erro ao salvar: " + d.erro);
+    return;
+  }
+  statusEl.textContent = "Salvo.";
+}
 
 function escapeHtml(s) {
   const d = document.createElement("div");

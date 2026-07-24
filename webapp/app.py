@@ -372,6 +372,46 @@ def cliente_detalhe(cliente_id):
     return jsonify(cliente=dict(cliente), casos=[dict(r) for r in casos])
 
 
+@app.route("/api/configuracoes")
+@login_required
+def configuracoes_lista():
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+    linhas = con.execute(
+        "SELECT * FROM configuracoes ORDER BY categoria, chave"
+    ).fetchall()
+    con.close()
+    return jsonify([dict(r) for r in linhas])
+
+
+@app.route("/api/configuracoes/<config_id>", methods=["POST"])
+@login_required
+def configuracoes_atualizar(config_id):
+    corpo = request.get_json(force=True)
+    valor = corpo.get("valor")
+    ativo = corpo.get("ativo")
+    if valor is None or not str(valor).strip():
+        return jsonify(erro="O valor não pode ficar vazio."), 400
+    if ativo not in ("Sim", "Não"):
+        return jsonify(erro="Campo 'ativo' inválido."), 400
+
+    con = sqlite3.connect(CORE_DB)
+    existe = con.execute(
+        "SELECT 1 FROM configuracoes WHERE config_id = ?", (config_id,)
+    ).fetchone()
+    if not existe:
+        con.close()
+        return jsonify(erro=f"Configuração não encontrada: {config_id}"), 404
+
+    con.execute(
+        "UPDATE configuracoes SET valor = ?, ativo = ? WHERE config_id = ?",
+        (str(valor).strip(), ativo, config_id),
+    )
+    con.commit()
+    con.close()
+    return jsonify(ok=True)
+
+
 @app.route("/api/identificar_cliente", methods=["POST"])
 @login_required
 def identificar():
