@@ -32,7 +32,20 @@ def _limpar_cpf(cpf: str) -> str:
 # histórico real de ninguém, então cada CPF conhecido aqui simula um
 # comportamento diferente (em dia / irregular / sem registro), para o
 # pipeline poder ser testado contra respostas variadas, não sempre a mesma.
+#
+# Importante: nem todo cliente do despachante é atirador ativo do clube --
+# transferência de arma, por exemplo, é serviço que o despachante presta
+# mesmo para quem nunca pisou no clube (RCA de negócio confirmada com o
+# usuário em 2026-07-23). Por isso o padrão para qualquer CPF NÃO listado
+# aqui é "sem nenhum registro", não um perfil "em dia" inventado -- seria
+# enganoso presumir habitualidade de quem nunca foi cadastrado como atirador.
 _PERFIS_HABITUALIDADE_TESTE = {
+    "12345678900": [  # Felipe Bedani (CLI-000001) -- em dia, caso de Renovação de CR
+        {"data_participacao": "15/01/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "12/03/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "20/05/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "18/07/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+    ],
     "10000000006": [  # Helena Costa -- em dia
         {"data_participacao": "10/02/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
         {"data_participacao": "14/04/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
@@ -50,16 +63,10 @@ _PERFIS_HABITUALIDADE_TESTE = {
     "10000000020": [],  # Larissa Barbosa -- sem nenhum registro
 }
 
-_EVENTOS_PADRAO = [
-    {"data_participacao": "15/01/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-    {"data_participacao": "12/03/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-    {"data_participacao": "20/05/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-    {"data_participacao": "18/07/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-]
-
 
 def _habitualidade_simulada(cpf: str) -> dict:
-    eventos = _PERFIS_HABITUALIDADE_TESTE.get(cpf, _EVENTOS_PADRAO)
+    # Default = sem registro, não um perfil "em dia" -- ver comentário acima.
+    eventos = _PERFIS_HABITUALIDADE_TESTE.get(cpf, [])
     return {
         "simulado": True,
         "idatirador": 0,
