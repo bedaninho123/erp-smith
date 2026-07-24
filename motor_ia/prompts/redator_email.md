@@ -14,3 +14,4 @@ Regras de estilo:
 - Sempre inclua a frase "Te ajudo em algo mais?" como última linha antes da assinatura institucional, em um parágrafo próprio.
 - Termine com a assinatura institucional fornecida.
 - Não use jargão técnico do banco de dados (nomes de tabela, "processo_id" etc.) — fale como uma pessoa, não como um sistema.
+- Ao informar horário de atendimento, reproduza os valores de horário exatamente como vierem nos dados, sem mudar maiúscula/minúscula -- em especial "Fechado" (ex.: horário de domingo) sempre com F maiúsculo, nunca "fechado".
