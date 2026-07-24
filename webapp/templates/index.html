@@ -161,6 +161,26 @@
     <div class="panel" id="caso-cabecalho"></div>
 
     <div class="panel">
+      <h2>Atualizar caso</h2>
+      <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr; gap:0.7rem;">
+        <div>
+          <label for="editar-status">Status</label>
+          <select id="editar-status"></select>
+        </div>
+        <div>
+          <label for="editar-responsavel">Responsável</label>
+          <select id="editar-responsavel"><option value="">não atribuído</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <label for="editar-motivo">Motivo da mudança de status (opcional)</label>
+        <input id="editar-motivo" type="text" placeholder="Ex.: Cliente enviou os documentos pendentes">
+      </div>
+      <button class="primary" id="salvar-caso">Salvar</button>
+      <span class="loading" id="salvar-caso-status" style="margin-left:0.6rem"></span>
+    </div>
+
+    <div class="panel">
       <h2>Processos</h2>
       <table>
         <thead><tr><th>Serviço</th><th>Protocolo</th><th>Status</th><th>Prazo estimado</th><th>Próxima ação</th></tr></thead>
@@ -383,9 +403,69 @@ async function abrirCaso(casoId) {
       <span class="tl-data">${h.criado_em} — ${escapeHtml(h.criado_por)}</span>
     </div>
   `).join("") : `<p class="loading">Nenhum evento registrado.</p>`;
+
+  $("#editar-status").innerHTML = d.status_validos.map(s => `<option value="${s}"${s === c.status ? ' selected' : ''}>${s}</option>`).join("");
+  $("#editar-responsavel").innerHTML = `<option value="">não atribuído</option>` + d.usuarios.map(u => `<option value="${u.usuario_id}"${u.usuario_id === c.responsavel_id ? ' selected' : ''}>${escapeHtml(u.nome)}</option>`).join("");
+  $("#editar-motivo").value = "";
+  $("#salvar-caso-status").textContent = "";
+  $("#salvar-caso").dataset.casoId = casoId;
+  $("#salvar-caso").dataset.statusAtual = c.status;
+  $("#salvar-caso").dataset.responsavelAtual = c.responsavel_id || "";
 }
 
-$("#voltar-casos").addEventListener("click", () => mostrarView("casos"));
+async function salvarCasoEdicao() {
+  const botao = $("#salvar-caso");
+  const casoId = botao.dataset.casoId;
+  const statusAtual = botao.dataset.statusAtual;
+  const responsavelAtual = botao.dataset.responsavelAtual;
+  const novoStatus = $("#editar-status").value;
+  const novoResponsavel = $("#editar-responsavel").value;
+  const motivo = $("#editar-motivo").value.trim();
+  const statusEl = $("#salvar-caso-status");
+
+  const chamadas = [];
+  if (novoStatus !== statusAtual) {
+    chamadas.push(fetch(`/api/casos/${casoId}/status`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: novoStatus, motivo }),
+    }));
+  }
+  if (novoResponsavel !== responsavelAtual) {
+    chamadas.push(fetch(`/api/casos/${casoId}/responsavel`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ responsavel_id: novoResponsavel }),
+    }));
+  }
+  if (chamadas.length === 0) {
+    statusEl.textContent = "Nada para salvar.";
+    return;
+  }
+
+  statusEl.textContent = "Salvando…";
+  botao.disabled = true;
+  try {
+    const respostas = await Promise.all(chamadas);
+    for (const r of respostas) {
+      if (!r.ok) {
+        const d = await r.json();
+        statusEl.textContent = "";
+        alert("Erro ao salvar: " + d.erro);
+        return;
+      }
+    }
+    await abrirCaso(casoId);
+    statusEl.textContent = "Salvo.";
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+$("#salvar-caso").addEventListener("click", salvarCasoEdicao);
+
+$("#voltar-casos").addEventListener("click", () => {
+  mostrarView("casos");
+  carregarCasos();
+});
 
 function escapeHtml(s) {
   const d = document.createElement("div");

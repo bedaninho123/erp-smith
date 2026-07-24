@@ -17,6 +17,7 @@ from werkzeug.security import check_password_hash
 
 from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
 from core import motor_mensagens
+from core.motor_casos import STATUS_VALIDOS, atualizar_responsavel, atualizar_status
 from integracoes.config import shooting_house_configurado
 from motor_ia.atualizador_memoria import atualizar_memoria
 from motor_ia.auditor import auditar
@@ -260,6 +261,10 @@ def caso_detalhe(caso_id):
         (caso_id,),
     ).fetchall()
 
+    usuarios = con.execute(
+        "SELECT usuario_id, nome FROM usuario WHERE ativo = 'Sim' ORDER BY nome"
+    ).fetchall()
+
     con.close()
     return jsonify(
         caso=dict(caso),
@@ -267,7 +272,42 @@ def caso_detalhe(caso_id):
         documentos=[dict(r) for r in documentos],
         historico=[dict(r) for r in historico],
         mensagens=[dict(r) for r in mensagens],
+        status_validos=sorted(STATUS_VALIDOS),
+        usuarios=[dict(r) for r in usuarios],
     )
+
+
+@app.route("/api/casos/<caso_id>/status", methods=["POST"])
+@login_required
+def caso_atualizar_status(caso_id):
+    corpo = request.get_json(force=True)
+    novo_status = (corpo.get("status") or "").strip()
+    motivo = (corpo.get("motivo") or "").strip() or None
+    if not novo_status:
+        return jsonify(erro="Informe o novo status."), 400
+    try:
+        atualizar_status(
+            caso_id, novo_status, motivo=motivo,
+            alterado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
+
+
+@app.route("/api/casos/<caso_id>/responsavel", methods=["POST"])
+@login_required
+def caso_atualizar_responsavel(caso_id):
+    corpo = request.get_json(force=True)
+    novo_responsavel_id = (corpo.get("responsavel_id") or "").strip() or None
+    try:
+        atualizar_responsavel(
+            caso_id, novo_responsavel_id,
+            alterado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
 
 
 @app.route("/api/clientes")

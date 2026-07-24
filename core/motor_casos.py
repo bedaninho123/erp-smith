@@ -119,6 +119,41 @@ def atualizar_status(
         con.close()
 
 
+def atualizar_responsavel(
+    caso_id: str, novo_responsavel_id: Optional[str], alterado_por: str = "Motor de Casos",
+) -> None:
+    # RCA-007: toda troca de responsável gera registro em historico.
+    con = conectar()
+    try:
+        linha = con.execute(
+            "SELECT responsavel_id FROM caso WHERE caso_id = ?", (caso_id,)
+        ).fetchone()
+        if not linha:
+            raise ValueError(f"Caso não encontrado: {caso_id}")
+        if novo_responsavel_id:
+            existe = con.execute(
+                "SELECT 1 FROM usuario WHERE usuario_id = ? AND ativo = 'Sim'",
+                (novo_responsavel_id,),
+            ).fetchone()
+            if not existe:
+                raise ValueError(f"Usuário não encontrado ou inativo: {novo_responsavel_id}")
+        responsavel_antigo = linha["responsavel_id"]
+
+        con.execute(
+            "UPDATE caso SET responsavel_id = ?, atualizado_em = ?, alterado_por = ?, versao = versao + 1 "
+            "WHERE caso_id = ?",
+            (novo_responsavel_id, _agora_iso(), alterado_por, caso_id),
+        )
+        _registrar_historico(
+            con, caso_id, "troca_responsavel",
+            f"Responsável alterado de {responsavel_antigo or '(nenhum)'} para {novo_responsavel_id or '(nenhum)'}",
+            valor_anterior=responsavel_antigo, valor_novo=novo_responsavel_id, criado_por=alterado_por,
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
 if __name__ == "__main__":
     caso_id = localizar_ou_criar_caso(
         "CLI-000002", titulo="Dúvida sobre transferência de arma",
