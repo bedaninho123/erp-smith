@@ -11,7 +11,7 @@ dado simulado com "simulado": True -- permite testar o resto do
 pipeline sem depender do suporte do Shooting House liberar acesso.
 """
 import re
-from datetime import date, datetime
+from datetime import datetime
 from typing import Optional
 
 import requests
@@ -86,8 +86,10 @@ def _habitualidade_simulada(cpf: str) -> dict:
 # é necessariamente atirador" da habitualidade).
 #
 # categoria/data_ultima_confirmacao são o dado bruto; próxima_confirmacao
-# e dias_restantes são CALCULADOS aqui em Python (nunca pela IA -- data é
-# aritmética, não interpretação de texto, e LLM erra conta com facilidade).
+# é CALCULADA aqui em Python (nunca pela IA -- data é aritmética, não
+# interpretação de texto, e LLM erra conta com facilidade). Só datas de
+# referência, sem contagem de dias restantes -- decisão do usuário pra
+# não soar como uma contagem regressiva de "vencimento" (o CR não vence).
 _PERFIS_CR_TESTE = {
     "12345678900": {  # Felipe Bedani -- Atirador Desportivo
         "categoria_cr": "Atirador Desportivo",
@@ -103,7 +105,6 @@ def _cr_simulado(cpf: str) -> Optional[dict]:
 
     data_confirmacao = datetime.strptime(perfil["data_ultima_confirmacao"], "%d/%m/%Y").date()
     proxima_confirmacao = data_confirmacao.replace(year=data_confirmacao.year + 1)
-    dias_restantes = (proxima_confirmacao - date.today()).days
 
     return {
         "simulado": True,
@@ -111,7 +112,6 @@ def _cr_simulado(cpf: str) -> Optional[dict]:
         "categoria_cr": perfil["categoria_cr"],
         "data_ultima_confirmacao": perfil["data_ultima_confirmacao"],
         "proxima_confirmacao": proxima_confirmacao.strftime("%d/%m/%Y"),
-        "dias_restantes": dias_restantes,
     }
 
 

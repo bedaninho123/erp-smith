@@ -86,10 +86,7 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
                 )
             linhas.append(f"Categoria do CR: {cr['categoria_cr']}")
             linhas.append(f"Última confirmação cadastral registrada: {cr['data_ultima_confirmacao']}")
-            linhas.append(
-                f"Próxima confirmação cadastral obrigatória: {cr['proxima_confirmacao']} "
-                f"(faltam {cr['dias_restantes']} dias a partir de hoje)."
-            )
+            linhas.append(f"Próxima confirmação cadastral obrigatória: {cr['proxima_confirmacao']}.")
             linhas.append(
                 "Importante: o CR do atirador desportivo NÃO tem uma data de "
                 "vencimento fixa que expira sozinha -- ele continua válido enquanto "
