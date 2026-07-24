@@ -515,16 +515,20 @@ async function abrirCaso(casoId) {
 
   const c = d.caso;
   $("#caso-cabecalho").innerHTML = `
-    <h3>${c.caso_id} — ${escapeHtml(c.titulo)}</h3>
+    <h3>${idCurto(c.caso_id)} — ${escapeHtml(c.titulo)}</h3>
     <p>
       <span class="badge ${badgesStatus[c.status] || 'badge-secondary'}">${escapeHtml(c.status)}</span>
       <span class="badge badge-light">${escapeHtml(c.categoria)}</span>
       <span class="badge badge-light">Prioridade ${escapeHtml(c.prioridade)}</span>
     </p>
-    <p><b>Cliente:</b> ${escapeHtml(c.cliente_nome)} (${c.cliente_id}) -- CPF ${c.cliente_cpf || 'não informado'} -- ${escapeHtml(c.cliente_email || 'sem e-mail')}</p>
+    <p>
+      <b>Cliente:</b> ${escapeHtml(c.cliente_nome)} (${numeroCurto(c.cliente_id)})<br>
+      CPF: ${c.cliente_cpf || 'não informado'}<br>
+      E-mail: ${escapeHtml(c.cliente_email || 'sem e-mail')}
+    </p>
     <p><b>Responsável:</b> ${escapeHtml(c.responsavel_nome || 'não atribuído')}</p>
     ${c.descricao ? `<p><b>Descrição:</b> ${escapeHtml(c.descricao)}</p>` : ''}
-    <p><b>Criado em:</b> ${c.criado_em} &nbsp; <b>Atualizado em:</b> ${c.atualizado_em}</p>
+    <p><b>Criado em:</b> ${dataHoraBr(c.criado_em)} &nbsp; <b>Atualizado em:</b> ${dataHoraBr(c.atualizado_em)}</p>
     ${c.observacoes ? `<p><b>Observações:</b> ${escapeHtml(c.observacoes)}</p>` : ''}
   `;
 
@@ -953,6 +957,34 @@ function escapeHtml(s) {
   const d = document.createElement("div");
   d.textContent = s || "";
   return d.innerHTML;
+}
+
+// "CAS-000005" -> "CAS-05" (mantém o prefixo, tira os zeros à esquerda
+// até sobrar no mínimo 2 dígitos). Só para exibição -- o ID completo
+// continua sendo o real em toda chamada de API.
+function idCurto(id) {
+  if (!id) return id;
+  const m = String(id).match(/^([A-Z]+)-0*(\d+)$/);
+  if (!m) return id;
+  return `${m[1]}-${m[2].padStart(2, "0")}`;
+}
+
+// "CLI-000004" -> "04" (sem prefixo, usado quando o tipo já está claro
+// pelo contexto ao redor, ex.: "Cliente: Roberto Almeida (04)").
+function numeroCurto(id) {
+  if (!id) return id;
+  const m = String(id).match(/^([A-Z]+)-0*(\d+)$/);
+  if (!m) return id;
+  return m[2].padStart(2, "0");
+}
+
+// "2026-07-23T22:34:08Z" -> "23/07/2026 - 22:34 hrs"
+function dataHoraBr(iso) {
+  if (!iso) return "";
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return iso;
+  const [, ano, mes, dia, hora, min] = m;
+  return `${dia}/${mes}/${ano} - ${hora}:${min} hrs`;
 }
 
 function documentosHtml(documentos) {
