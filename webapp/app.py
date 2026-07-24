@@ -171,6 +171,51 @@ def status():
     )
 
 
+@app.route("/api/casos")
+@login_required
+def casos():
+    status = request.args.get("status") or None
+    categoria = request.args.get("categoria") or None
+
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+    query = (
+        "SELECT c.caso_id, c.titulo, c.categoria, c.status, c.prioridade, "
+        "c.atualizado_em, c.criado_em, cl.cliente_id, cl.nome AS cliente_nome, "
+        "u.nome AS responsavel_nome "
+        "FROM caso c "
+        "JOIN cliente cl ON cl.cliente_id = c.cliente_id "
+        "LEFT JOIN usuario u ON u.usuario_id = c.responsavel_id "
+        "WHERE c.ativo = 'Sim'"
+    )
+    params = []
+    if status:
+        query += " AND c.status = ?"
+        params.append(status)
+    if categoria:
+        query += " AND c.categoria = ?"
+        params.append(categoria)
+    query += " ORDER BY c.atualizado_em DESC"
+
+    casos = [dict(r) for r in con.execute(query, params).fetchall()]
+    status_disponiveis = [
+        r[0] for r in con.execute(
+            "SELECT DISTINCT status FROM caso WHERE ativo = 'Sim' ORDER BY status"
+        ).fetchall()
+    ]
+    categorias_disponiveis = [
+        r[0] for r in con.execute(
+            "SELECT DISTINCT categoria FROM caso WHERE ativo = 'Sim' ORDER BY categoria"
+        ).fetchall()
+    ]
+    con.close()
+
+    return jsonify(
+        casos=casos, status_disponiveis=status_disponiveis,
+        categorias_disponiveis=categorias_disponiveis,
+    )
+
+
 @app.route("/api/clientes")
 @login_required
 def clientes():

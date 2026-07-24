@@ -63,6 +63,9 @@
   tr:last-child td { border-bottom: none; }
   .badge { display: inline-block; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px;
     background: var(--surface-2); color: var(--muted); }
+  .badge.accent-2 { background: var(--accent-2-soft); color: var(--accent-2); }
+  .badge.good { background: var(--good-soft); color: var(--good); }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
 
   .modulo-lista { display: flex; flex-direction: column; gap: 0.5rem; }
   .modulo { display: flex; align-items: center; gap: 0.6rem; font-size: 0.9rem; }
@@ -123,12 +126,37 @@
   </div>
 
   <div class="tabs">
-    <button class="tab active" data-view="status">Status do Projeto</button>
+    <button class="tab active" data-view="casos">Casos</button>
+    <button class="tab" data-view="status">Status do Projeto</button>
     <button class="tab" data-view="testar">Testar Pipeline</button>
     <button class="tab" data-view="pendentes">Aprovações Pendentes<span class="tab-badge" id="badge-pendentes" style="display:none"></span></button>
   </div>
 
-  <div id="view-status" class="view active">
+  <div id="view-casos" class="view active">
+    <div class="panel">
+      <div style="display:flex; gap:0.8rem; align-items:flex-end; flex-wrap:wrap;">
+        <div style="min-width:180px">
+          <label for="filtro-status">Status</label>
+          <select id="filtro-status"><option value="">Todos</option></select>
+        </div>
+        <div style="min-width:180px">
+          <label for="filtro-categoria">Categoria</label>
+          <select id="filtro-categoria"><option value="">Todas</option></select>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <table>
+        <thead><tr>
+          <th>Caso</th><th>Cliente</th><th>Categoria</th><th>Status</th>
+          <th>Prioridade</th><th>Responsável</th><th>Atualizado em</th>
+        </tr></thead>
+        <tbody id="casos-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="view-status" class="view">
     <div class="stat-row" id="stat-row"></div>
 
     <div class="panel">
@@ -211,6 +239,46 @@ document.querySelectorAll(".tab").forEach(btn => {
     if (btn.dataset.view === "pendentes") carregarPendentes();
   });
 });
+
+const badgesStatus = {
+  "Aberto": "accent-2", "Em triagem": "", "Em andamento": "accent-2",
+  "Aguardando cliente": "", "Aguardando terceiro": "", "Suspenso": "",
+  "Encerrado": "good", "Cancelado": "bad",
+};
+
+async function carregarCasos() {
+  const status = $("#filtro-status").value;
+  const categoria = $("#filtro-categoria").value;
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (categoria) params.set("categoria", categoria);
+
+  const r = await fetch("/api/casos?" + params.toString());
+  const d = await r.json();
+
+  // Só preenche as opções dos filtros na primeira carga, pra não perder
+  // a seleção atual do usuário a cada refiltragem.
+  if (!$("#filtro-status").dataset.carregado) {
+    $("#filtro-status").innerHTML += d.status_disponiveis.map(s => `<option value="${s}">${s}</option>`).join("");
+    $("#filtro-categoria").innerHTML += d.categorias_disponiveis.map(c => `<option value="${c}">${c}</option>`).join("");
+    $("#filtro-status").dataset.carregado = "1";
+  }
+
+  $("#casos-body").innerHTML = d.casos.length ? d.casos.map(c => `
+    <tr>
+      <td class="mono">${c.caso_id}</td>
+      <td>${escapeHtml(c.cliente_nome)}</td>
+      <td>${escapeHtml(c.categoria)}</td>
+      <td><span class="badge ${badgesStatus[c.status] || ''}">${escapeHtml(c.status)}</span></td>
+      <td>${escapeHtml(c.prioridade)}</td>
+      <td>${escapeHtml(c.responsavel_nome || 'não atribuído')}</td>
+      <td>${c.atualizado_em}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="7" class="loading">Nenhum caso encontrado com esses filtros.</td></tr>`;
+}
+
+$("#filtro-status").addEventListener("change", carregarCasos);
+$("#filtro-categoria").addEventListener("change", carregarCasos);
 
 function escapeHtml(s) {
   const d = document.createElement("div");
@@ -460,6 +528,7 @@ $("#enviar").addEventListener("click", enviarPipeline);
 carregarStatus();
 carregarClientes();
 carregarPendentes();
+carregarCasos();
 </script>
 </body>
 </html>
