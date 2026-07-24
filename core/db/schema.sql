@@ -77,6 +77,24 @@ CREATE TABLE servico (
     observacoes              TEXT
 );
 
+-- Checklist detalhado de documentos por serviço (2026-07-24, usuário
+-- passou as listas reais de CR/CRAF/Aquisição/Transferência/Guia de
+-- Tráfego). documentos_obrigatorios (acima) continua existindo como
+-- resumo curto usado no catálogo geral; esta tabela é a lista completa,
+-- organizada em grupos, usada quando o cliente pergunta sobre UM serviço
+-- específico. Não tem FK pra caso/processo -- é conhecimento de
+-- catálogo, igual servico, não dado de atendimento de cliente.
+CREATE TABLE documento_exigido (
+    documento_exigido_id  TEXT PRIMARY KEY,             -- DEX-000001
+    servico_id             TEXT NOT NULL REFERENCES servico(service_id),
+    grupo                  TEXT,                          -- ex.: "Documentos Pessoais e Residenciais" (pode ser NULL)
+    item                    TEXT NOT NULL,
+    ordem                   INTEGER NOT NULL,
+    ativo                   TEXT NOT NULL DEFAULT 'Sim'
+);
+
+CREATE INDEX idx_documento_exigido_servico ON documento_exigido(servico_id);
+
 -- RCA/matriz: a IA nunca altera processo.status; só informa proxima_acao cadastrada.
 -- processo.caso_id é campo novo (não existia na planilha) — exigido por
 -- 96_Relacionamentos_Casos: "todo processo operacional deve pertencer a um caso".

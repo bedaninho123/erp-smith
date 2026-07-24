@@ -10,6 +10,28 @@ from motor_ia.conexao import conectar
 from motor_ia.planejador import Plano
 
 
+def _montar_checklist_texto(con, servico_id: str) -> Optional[str]:
+    """Agrupa VW_CHECKLIST_SERVICO num texto legível (markdown simples),
+    formatação pura em Python -- a IA não decide nem monta essa lista,
+    só recebe o texto pronto."""
+    linhas_checklist = con.execute(
+        "SELECT grupo, item FROM VW_CHECKLIST_SERVICO WHERE servico_id = ?",
+        (servico_id,),
+    ).fetchall()
+    if not linhas_checklist:
+        return None
+
+    blocos = []
+    grupo_atual = "__nenhum_ainda__"
+    for linha in linhas_checklist:
+        if linha["grupo"] != grupo_atual:
+            grupo_atual = linha["grupo"]
+            if grupo_atual:
+                blocos.append(f"{grupo_atual}:")
+        blocos.append(f"- {linha['item']}")
+    return "\n".join(blocos)
+
+
 def consultar(
     plano: Plano,
     cliente_id: str,
@@ -34,18 +56,28 @@ def consultar(
                     classificacao.servico_mencionado if classificacao else None
                 )
                 linhas = []
+                correspondencia_exata = False
                 if servico_mencionado:
                     linhas = con.execute(
                         "SELECT * FROM VW_SERVICO WHERE ativo = 'Sim' AND nome_servico = ?",
                         (servico_mencionado,),
                     ).fetchall()
+                    correspondencia_exata = bool(linhas)
                 if not linhas:
                     # Pergunta genérica, ou o nome não bateu exato com o
                     # cadastro -- devolve o catálogo inteiro em vez de nada.
                     linhas = con.execute(
                         "SELECT * FROM VW_SERVICO WHERE ativo = 'Sim'"
                     ).fetchall()
-                resultado["servicos"] = [dict(r) for r in linhas]
+                servicos = [dict(r) for r in linhas]
+                if correspondencia_exata:
+                    # Checklist completo só entra quando o cliente perguntou
+                    # sobre UM serviço específico -- no catálogo inteiro
+                    # (pergunta genérica) continuaria usando o resumo curto,
+                    # mesma cautela já documentada contra despejar tudo.
+                    for s in servicos:
+                        s["checklist_texto"] = _montar_checklist_texto(con, s["service_id"])
+                resultado["servicos"] = servicos
             elif fonte == "VW_PROCESSO":
                 protocolo = classificacao.protocolo_mencionado if classificacao else None
                 if protocolo:

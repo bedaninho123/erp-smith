@@ -33,6 +33,10 @@ LEFT JOIN memoria_ia m ON m.cliente_id = c.cliente_id AND m.ativo = 'Sim';
 
 -- Serviço + o texto de prazo/valor já montado a partir dos templates
 -- (mostra na prática o padrão template + dado real que o Redator vai usar).
+-- Quando prazo/valor ainda não foram cadastrados (serviço novo, dado real
+-- ainda não informado pelo usuário), cai num texto "a confirmar" em vez de
+-- quebrar (REPLACE com NULL vira NULL) ou de inventar um número -- mesmo
+-- princípio do Redator de nunca fabricar prazo/valor.
 CREATE VIEW VW_SERVICO AS
 SELECT
     s.service_id,
@@ -44,11 +48,29 @@ SELECT
     s.valor_referencia,
     s.documentos_obrigatorios,
     s.ativo,
-    REPLACE(tp.conteudo, '{prazo_estimado_dias}', CAST(s.prazo_estimado_dias AS TEXT)) AS prazo_texto,
-    REPLACE(tv.conteudo, '{valor_referencia}', printf('%.2f', s.valor_referencia)) AS valor_texto
+    CASE WHEN s.prazo_estimado_dias IS NULL THEN 'Prazo médio: a confirmar com nossa equipe.'
+         ELSE REPLACE(tp.conteudo, '{prazo_estimado_dias}', CAST(s.prazo_estimado_dias AS TEXT)) END AS prazo_texto,
+    CASE WHEN s.valor_referencia IS NULL THEN 'Valor de referência: a confirmar com nossa equipe.'
+         ELSE REPLACE(tv.conteudo, '{valor_referencia}', printf('%.2f', s.valor_referencia)) END AS valor_texto
 FROM servico s
 LEFT JOIN template tp ON tp.template_key = 'prazo_texto_servico'
 LEFT JOIN template tv ON tv.template_key = 'valor_texto_servico';
+
+-- Checklist completo de documentos por serviço, um item por linha
+-- (grupo/item/ordem) -- o Consultor agrupa e formata em Python antes de
+-- entrar no bloco de fatos do Redator; a view só filtra ativo='Sim' dos
+-- dois lados (documento_exigido e servico).
+CREATE VIEW VW_CHECKLIST_SERVICO AS
+SELECT
+    de.servico_id,
+    s.nome_servico,
+    de.grupo,
+    de.item,
+    de.ordem
+FROM documento_exigido de
+JOIN servico s ON s.service_id = de.servico_id
+WHERE de.ativo = 'Sim' AND s.ativo = 'Sim'
+ORDER BY de.servico_id, de.ordem;
 
 -- Processo com tudo que a rota "Consulta Documentos/Processo" do Make
 -- já usava espalhado em 3 abas diferentes, aqui numa query só.

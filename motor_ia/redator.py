@@ -53,7 +53,11 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
         linhas.append(f"Nome: {s['nome_servico']}")
         linhas.append(s["prazo_texto"])
         linhas.append(s["valor_texto"])
-        linhas.append(f"Documentos necessários: {s['documentos_obrigatorios']}")
+        if s.get("checklist_texto"):
+            linhas.append("Documentos necessários:")
+            linhas.append(s["checklist_texto"])
+        else:
+            linhas.append(f"Documentos necessários: {s['documentos_obrigatorios']}")
 
     habitualidade = dados.get("habitualidade")
     if habitualidade:
