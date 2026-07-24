@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ERP Smith — Painel de Desenvolvimento</title>
+<title>ERP Smith — Painel Administrativo</title>
 <style>
   :root {
     --bg: #EEF0E8; --surface: #F8F9F3; --surface-2: #E4E7DA; --ink: #1E231C;
@@ -26,23 +26,39 @@
     line-height: 1.5; margin: 0;
   }
   .mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; }
-  .page { max-width: 980px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+
+  .layout { display: flex; min-height: 100vh; align-items: flex-start; }
+
+  .sidebar {
+    width: 230px; flex: none; min-height: 100vh; position: sticky; top: 0;
+    background: var(--surface); border-right: 1px solid var(--line);
+    padding: 1.6rem 1rem; display: flex; flex-direction: column;
+  }
+  .brand { font-family: Georgia, serif; font-size: 1.25rem; padding: 0 0.6rem 1.4rem; }
+  .nav-group { margin-bottom: 1.3rem; }
+  .nav-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--muted); padding: 0 0.6rem 0.4rem; }
+  .nav-item {
+    display: flex; align-items: center; justify-content: space-between; width: 100%;
+    background: none; border: none; cursor: pointer; font-size: 0.9rem; font-family: inherit;
+    color: var(--ink); text-align: left; padding: 0.55rem 0.6rem; border-radius: 8px;
+    margin-bottom: 0.1rem;
+  }
+  .nav-item:hover { background: var(--surface-2); }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .sidebar-footer { margin-top: auto; padding: 0.6rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+  .sidebar-footer .user { font-size: 0.85rem; margin-bottom: 0.2rem; }
+  .sidebar-footer a { color: var(--muted); font-size: 0.8rem; text-decoration: none; }
+  .sidebar-footer a:hover { color: var(--ink); text-decoration: underline; }
+
+  .content { flex: 1; min-width: 0; padding: 2.2rem 2.4rem 5rem; max-width: 1200px; }
+  .content-header { margin-bottom: 1.6rem; }
   h1 {
-    font-family: Georgia, serif; font-weight: 400; font-size: 1.9rem;
+    font-family: Georgia, serif; font-weight: 400; font-size: 1.6rem;
     margin: 0 0 0.3rem;
   }
-  .subtitle { color: var(--muted); margin: 0 0 1.8rem; font-size: 0.95rem; }
-  .topbar { display: flex; justify-content: space-between; align-items: flex-start; }
-  .topbar a { color: var(--muted); font-size: 0.85rem; text-decoration: none; }
-  .topbar a:hover { color: var(--ink); text-decoration: underline; }
+  .subtitle { color: var(--muted); margin: 0 0 1.2rem; font-size: 0.92rem; }
 
-  .tabs { display: flex; gap: 0.4rem; margin-bottom: 1.6rem; border-bottom: 1px solid var(--line); }
-  .tab {
-    background: none; border: none; cursor: pointer; font-size: 0.92rem;
-    padding: 0.6rem 1rem; color: var(--muted); border-bottom: 2px solid transparent;
-    font-family: inherit;
-  }
-  .tab.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
   .view { display: none; }
   .view.active { display: block; }
 
@@ -59,8 +75,10 @@
   table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
   th { text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem;
     text-transform: uppercase; letter-spacing: 0.05em; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--line); }
-  td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  td { padding: 0.5rem 0.5rem; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
   tr:last-child td { border-bottom: none; }
+  tr.linha-caso, tr.linha-cliente { transition: background 0.1s ease; }
+  tr.linha-caso:hover, tr.linha-cliente:hover { background: var(--surface-2); }
   .badge { display: inline-block; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px;
     background: var(--surface-2); color: var(--muted); }
   .badge.accent-2 { background: var(--accent-2-soft); color: var(--accent-2); }
@@ -98,8 +116,8 @@
     background: none; color: var(--muted); border: 1px solid var(--line); border-radius: 8px;
     padding: 0.6rem 1.3rem; font-size: 0.92rem; cursor: pointer; font-family: inherit;
   }
-  .tab-badge { display: inline-block; font-size: 0.7rem; padding: 0.05rem 0.4rem; border-radius: 999px;
-    background: var(--accent); color: #F8F5EF; margin-left: 0.3rem; }
+  .nav-badge { display: inline-block; font-size: 0.68rem; padding: 0.05rem 0.4rem; border-radius: 999px;
+    background: var(--accent); color: #F8F5EF; }
 
   .resultado { margin-top: 1.4rem; display: none; }
   .step { border-left: 3px solid var(--line); padding: 0.2rem 0 0.2rem 0.9rem; margin-bottom: 1rem; }
@@ -113,28 +131,50 @@
     padding: 0.9rem 1rem; white-space: pre-wrap; font-size: 0.88rem; margin-top: 0.4rem; }
   .erro-box { background: var(--bad-soft); color: var(--bad); border-radius: 8px; padding: 0.8rem 1rem; font-size: 0.88rem; }
   .loading { color: var(--muted); font-size: 0.88rem; }
+
+  @media (max-width: 760px) {
+    .layout { flex-direction: column; }
+    .sidebar { width: 100%; min-height: auto; position: static; flex-direction: row; align-items: center;
+      overflow-x: auto; padding: 0.8rem; gap: 1rem; }
+    .brand { padding: 0 0.6rem; }
+    .nav-group { display: flex; align-items: center; gap: 0.2rem; margin-bottom: 0; white-space: nowrap; }
+    .nav-label { display: none; }
+    .sidebar-footer { margin-top: 0; border-top: none; padding-top: 0; }
+    .content { padding: 1.6rem 1.2rem 4rem; }
+  }
 </style>
 </head>
 <body>
-<div class="page">
-  <div class="topbar">
-    <div>
-      <h1>ERP Smith — Painel Administrativo</h1>
-      <p class="subtitle">Acompanhe o atendimento, aprove respostas pendentes e veja o status do sistema.</p>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="brand">ERP Smith</div>
+
+    <div class="nav-group">
+      <div class="nav-label">Atendimento</div>
+      <button class="nav-item active" data-view="casos"><span>Casos</span></button>
+      <button class="nav-item" data-view="clientes"><span>Clientes</span></button>
+      <button class="nav-item" data-view="pendentes"><span>Aprovações Pendentes</span><span class="nav-badge" id="badge-pendentes" style="display:none"></span></button>
     </div>
-    <a href="/logout">{{ usuario_nome }} — sair</a>
-  </div>
 
-  <div class="tabs">
-    <button class="tab active" data-view="casos">Casos</button>
-    <button class="tab" data-view="clientes">Clientes</button>
-    <button class="tab" data-view="status">Status do Projeto</button>
-    <button class="tab" data-view="testar">Testar Pipeline</button>
-    <button class="tab" data-view="pendentes">Aprovações Pendentes<span class="tab-badge" id="badge-pendentes" style="display:none"></span></button>
-    <button class="tab" data-view="config">Configurações</button>
-  </div>
+    <div class="nav-group">
+      <div class="nav-label">Sistema</div>
+      <button class="nav-item" data-view="config"><span>Configurações</span></button>
+      <button class="nav-item" data-view="status"><span>Status do Projeto</span></button>
+      <button class="nav-item" data-view="testar"><span>Testar Pipeline</span></button>
+    </div>
 
+    <div class="sidebar-footer">
+      <div class="user">{{ usuario_nome }}</div>
+      <a href="/logout">Sair</a>
+    </div>
+  </nav>
+
+  <main class="content">
   <div id="view-casos" class="view active">
+    <div class="content-header">
+      <h1>Casos</h1>
+      <p class="subtitle">Acompanhe o que está parado e quem precisa de ação.</p>
+    </div>
     <div class="panel">
       <div style="display:flex; gap:0.8rem; align-items:flex-end; flex-wrap:wrap;">
         <div style="min-width:180px">
@@ -210,6 +250,10 @@
   </div>
 
   <div id="view-clientes" class="view">
+    <div class="content-header">
+      <h1>Clientes</h1>
+      <p class="subtitle">Busque e veja o cadastro completo de cada cliente.</p>
+    </div>
     <div class="panel">
       <label for="busca-cliente-lista">Buscar por nome, CPF ou e-mail</label>
       <input id="busca-cliente-lista" type="text" placeholder="Ex.: Maria, 123.456.789-00, maria@email.com">
@@ -241,6 +285,10 @@
   </div>
 
   <div id="view-status" class="view">
+    <div class="content-header">
+      <h1>Status do Projeto</h1>
+      <p class="subtitle">Estado técnico do sistema — ferramenta de desenvolvimento.</p>
+    </div>
     <div class="stat-row" id="stat-row"></div>
 
     <div class="panel">
@@ -278,6 +326,10 @@
   </div>
 
   <div id="view-testar" class="view">
+    <div class="content-header">
+      <h1>Testar Pipeline</h1>
+      <p class="subtitle">Simule uma mensagem de cliente e veja cada etapa do Motor IA.</p>
+    </div>
     <div class="panel">
       <h2>Identificar cliente (por nome, CPF ou e-mail)</h2>
       <p class="subtitle" style="margin-bottom:0.9rem">Simula o passo "Identificar cliente" do fluxo real, que acontece antes de classificar a mensagem. Preencha um dos três campos.</p>
@@ -306,22 +358,29 @@
   </div>
 
   <div id="view-pendentes" class="view">
-    <p class="subtitle">Respostas que a IA escreveu e estão esperando aprovação antes de sair de verdade pro cliente — porque o modo de revisão está ligado (configuracoes.revisao_humana_ativa) ou porque o Auditor encontrou uma inconsistência e pediu revisão. Pode editar o texto antes de aprovar.</p>
+    <div class="content-header">
+      <h1>Aprovações Pendentes</h1>
+      <p class="subtitle">Respostas que a IA escreveu e estão esperando aprovação antes de sair de verdade pro cliente — porque o modo de revisão está ligado (configuracoes.revisao_humana_ativa) ou porque o Auditor encontrou uma inconsistência e pediu revisão. Pode editar o texto antes de aprovar.</p>
+    </div>
     <div id="lista-pendentes"><p class="loading">Carregando…</p></div>
   </div>
 
   <div id="view-config" class="view">
-    <p class="subtitle">Textos, horários e comportamentos usados pela IA -- editar aqui tem efeito imediato na próxima resposta, sem precisar mexer no banco. "Ativo" controla se o valor é realmente usado; desligado, a IA ignora esse dado.</p>
+    <div class="content-header">
+      <h1>Configurações</h1>
+      <p class="subtitle">Textos, horários e comportamentos usados pela IA -- editar aqui tem efeito imediato na próxima resposta, sem precisar mexer no banco. "Ativo" controla se o valor é realmente usado; desligado, a IA ignora esse dado.</p>
+    </div>
     <div id="config-lista"><p class="loading">Carregando…</p></div>
   </div>
+  </main>
 </div>
 
 <script>
 const $ = (sel) => document.querySelector(sel);
 
-document.querySelectorAll(".tab").forEach(btn => {
+document.querySelectorAll(".nav-item").forEach(btn => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
     document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
     btn.classList.add("active");
     $("#view-" + btn.dataset.view).classList.add("active");
@@ -376,9 +435,9 @@ $("#filtro-status").addEventListener("change", carregarCasos);
 $("#filtro-categoria").addEventListener("change", carregarCasos);
 
 function mostrarView(nomeView) {
-  document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-  const tab = document.querySelector(`.tab[data-view="${nomeView}"]`);
+  const tab = document.querySelector(`.nav-item[data-view="${nomeView}"]`);
   if (tab) tab.classList.add("active");
   $("#view-" + nomeView).classList.add("active");
 }
