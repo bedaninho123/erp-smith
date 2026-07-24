@@ -20,3 +20,9 @@ Além da categoria, extraia (quando existirem explicitamente no texto, nunca inv
 {lista_servicos}
 
 Se a pergunta for genérica sobre todos os serviços (ex.: "quais serviços vocês têm?"), ou não deixar claro qual serviço é, deixe servico_mencionado vazio — não escolha um serviço no chute.
+
+- se a pergunta for sobre um tópico de regulamentação/institucional coberto pela nossa base de conhecimento (campo categoria_conhecimento), escolhendo **exatamente uma destas categorias**:
+
+{lista_categorias_conhecimento}
+
+Isso só se aplica a dúvidas sobre esses temas regulatórios em si (ex.: "o que é o CR?", "posso transferir minha arma?", "quantos treinos preciso fazer?"). Perguntas sobre horário de funcionamento, telefone, endereço, uma saudação, um agradecimento, ou qualquer outra coisa que não seja sobre esses temas — deixe categoria_conhecimento vazio. Nunca escolha uma categoria no chute só porque a intenção é ATENDIMENTO_GERAL.

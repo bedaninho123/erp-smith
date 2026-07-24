@@ -33,7 +33,11 @@ class ResultadoClassificacao(BaseModel):
     cpf_mencionado: Optional[str] = None
     protocolo_mencionado: Optional[str] = None
     servico_mencionado: Optional[str] = None
+    categoria_conhecimento: Optional[str] = None
     precisa_humano: bool
+
+
+DOMAIN_DB = "domain/clube_tiro/db/dominio_clube_tiro.db"
 
 
 def _carregar_servicos_ativos() -> list[str]:
@@ -48,10 +52,26 @@ def _carregar_servicos_ativos() -> list[str]:
         con.close()
 
 
-def _carregar_prompt(servicos: list[str]) -> str:
+def _carregar_categorias_conhecimento() -> list[str]:
+    con = sqlite3.connect(DOMAIN_DB)
+    try:
+        return [
+            r[0] for r in con.execute(
+                "SELECT DISTINCT categoria FROM conhecimento "
+                "WHERE aprovado = 'Sim' AND ativo = 'Sim' ORDER BY categoria"
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+
+
+def _carregar_prompt(servicos: list[str], categorias_conhecimento: list[str]) -> str:
     texto = PROMPT_PATH.read_text(encoding="utf-8")
-    lista = "\n".join(f"- {s}" for s in servicos)
-    return texto.replace("{lista_servicos}", lista)
+    lista_servicos = "\n".join(f"- {s}" for s in servicos)
+    lista_categorias = "\n".join(f"- {c}" for c in categorias_conhecimento)
+    texto = texto.replace("{lista_servicos}", lista_servicos)
+    texto = texto.replace("{lista_categorias_conhecimento}", lista_categorias)
+    return texto
 
 
 def classificar(mensagem: str) -> ResultadoClassificacao:
@@ -59,10 +79,11 @@ def classificar(mensagem: str) -> ResultadoClassificacao:
     modelo = config.get("modelo_openai", "gpt-5-mini")
     temperatura = float(config.get("temperatura_ia", 0.2))
     servicos = _carregar_servicos_ativos()
+    categorias_conhecimento = _carregar_categorias_conhecimento()
 
     client = OpenAI(api_key=OPENAI_API_KEY)
     mensagens = [
-        {"role": "system", "content": _carregar_prompt(servicos)},
+        {"role": "system", "content": _carregar_prompt(servicos, categorias_conhecimento)},
         {"role": "user", "content": mensagem},
     ]
     try:

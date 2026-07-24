@@ -59,12 +59,20 @@ def consultar(
                     ).fetchall()
                 resultado["processos"] = [dict(r) for r in linhas]
             elif fonte == "conhecimento":
-                resultado["conhecimento"] = [
-                    dict(r) for r in con.execute(
+                # Diferente de VW_SERVICO, aqui NÃO existe fallback pra "traz
+                # tudo" quando a categoria não bate -- são 10 respostas sobre
+                # regulamentação de arma de fogo, um assunto bem específico;
+                # despejar isso numa pergunta sobre horário de funcionamento,
+                # por exemplo, é o próprio bug que motivou esse filtro.
+                categoria = classificacao.categoria_conhecimento if classificacao else None
+                linhas = []
+                if categoria:
+                    linhas = con.execute(
                         "SELECT * FROM dominio.conhecimento "
-                        "WHERE aprovado = 'Sim' AND ativo = 'Sim'"
+                        "WHERE aprovado = 'Sim' AND ativo = 'Sim' AND categoria = ?",
+                        (categoria,),
                     ).fetchall()
-                ]
+                resultado["conhecimento"] = [dict(r) for r in linhas]
             elif fonte == "SHOOTING_HOUSE_HABITUALIDADE":
                 cpf_cliente = (resultado.get("cliente") or {}).get("cpf")
                 resultado["habitualidade"] = (
