@@ -7,6 +7,7 @@ Classifique em uma destas categorias:
 - CONSULTA_PROCESSO: o cliente quer saber o andamento/status de um processo já aberto.
 - CONSULTA_CLIENTE: o cliente quer confirmar ou atualizar seu próprio cadastro.
 - CONSULTA_HABITUALIDADE: o cliente quer saber sobre sua habitualidade (frequência de treino/participação exigida para renovação de CR/CRAF), ou sobre suas armas registradas.
+- CONSULTA_CR: o cliente quer saber sobre a situação/validade do próprio CR (ex.: "quando vence meu CR?", "meu CR ainda está válido?", "preciso confirmar meu CR esse ano?"). Diferente de CONSULTA_PROCESSO (que é sobre o andamento de uma solicitação/processo já aberto com o despachante, não sobre a validade do CR em si) e de CONSULTA_HABITUALIDADE (frequência de treino).
 - ATENDIMENTO_GERAL: dúvida geral que não se encaixa nas anteriores.
 - ATENDIMENTO_HUMANO: o cliente pede explicitamente para falar com uma pessoa, ou a mensagem tem reclamação/situação sensível.
 

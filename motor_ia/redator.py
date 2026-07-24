@@ -73,6 +73,32 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
             for evento in info.get("eventos", []):
                 linhas.append("  - " + "; ".join(f"{k}: {v}" for k, v in evento.items()))
 
+    if "cr" in dados:
+        cr = dados["cr"]
+        linhas.append("--- Confirmação cadastral do CR ---")
+        if not cr:
+            linhas.append("Nenhum CR registrado para este cliente em nosso sistema.")
+        else:
+            if cr.get("simulado"):
+                linhas.append(
+                    "(Aviso interno, não repetir ao cliente nem mencionar nome de "
+                    "sistema algum: estes dados de CR são de teste.)"
+                )
+            linhas.append(f"Categoria do CR: {cr['categoria_cr']}")
+            linhas.append(f"Última confirmação cadastral registrada: {cr['data_ultima_confirmacao']}")
+            linhas.append(
+                f"Próxima confirmação cadastral obrigatória: {cr['proxima_confirmacao']} "
+                f"(faltam {cr['dias_restantes']} dias a partir de hoje)."
+            )
+            linhas.append(
+                "Importante: o CR do atirador desportivo NÃO tem uma data de "
+                "vencimento fixa que expira sozinha -- ele continua válido enquanto "
+                "a confirmação cadastral anual e a habitualidade mínima estiverem em "
+                "dia. Ao responder, explique que se trata de uma confirmação "
+                "cadastral anual obrigatória, nunca chame isso de 'vencimento do CR' "
+                "(isso é o CRAF, prazo fixo de 3 ou 5 anos, um documento diferente)."
+            )
+
     for k in dados.get("conhecimento", []):
         linhas.append(f"Conhecimento institucional: {k['pergunta']} -> {k['resposta']}")
 

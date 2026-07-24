@@ -30,6 +30,7 @@ from motor_ia.redator import redigir
 
 _CATEGORIA_POR_INTENCAO = {
     "CONSULTA_HABITUALIDADE": "Habitualidade",
+    "CONSULTA_CR": "Consulta",
     "CONSULTA_CLIENTE": "Consulta",
     "ATENDIMENTO_GERAL": "Consulta",
     "ATENDIMENTO_HUMANO": "Consulta",
@@ -38,9 +39,9 @@ _CATEGORIA_POR_INTENCAO = {
 
 # Intenções que só fazem sentido responder sabendo quem é o cliente --
 # sem isso, o Consultor não teria o que buscar (processo/cadastro/
-# habitualidade são sempre de alguém específico).
+# habitualidade/CR são sempre de alguém específico).
 _INTENCOES_QUE_EXIGEM_CADASTRO = {
-    "CONSULTA_PROCESSO", "CONSULTA_CLIENTE", "CONSULTA_HABITUALIDADE",
+    "CONSULTA_PROCESSO", "CONSULTA_CLIENTE", "CONSULTA_HABITUALIDADE", "CONSULTA_CR",
 }
 
 

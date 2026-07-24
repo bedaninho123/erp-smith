@@ -11,6 +11,7 @@ dado simulado com "simulado": True -- permite testar o resto do
 pipeline sem depender do suporte do Shooting House liberar acesso.
 """
 import re
+from datetime import date, datetime
 from typing import Optional
 
 import requests
@@ -77,6 +78,58 @@ def _habitualidade_simulada(cpf: str) -> dict:
             {"ACLP": {"count": len(eventos), "eventos": eventos}} if eventos else {}
         ),
     }
+
+
+# Perfis de CR pra teste -- só o Felipe (atirador de verdade nos testes,
+# ver _PERFIS_HABITUALIDADE_TESTE acima) tem CR simulado; qualquer outro
+# CPF não cadastrado aqui não tem CR nenhum (mesmo princípio "cliente não
+# é necessariamente atirador" da habitualidade).
+#
+# categoria/data_ultima_confirmacao são o dado bruto; próxima_confirmacao
+# e dias_restantes são CALCULADOS aqui em Python (nunca pela IA -- data é
+# aritmética, não interpretação de texto, e LLM erra conta com facilidade).
+_PERFIS_CR_TESTE = {
+    "12345678900": {  # Felipe Bedani -- Atirador Desportivo
+        "categoria_cr": "Atirador Desportivo",
+        "data_ultima_confirmacao": "01/09/2025",
+    },
+}
+
+
+def _cr_simulado(cpf: str) -> Optional[dict]:
+    perfil = _PERFIS_CR_TESTE.get(cpf)
+    if not perfil:
+        return None
+
+    data_confirmacao = datetime.strptime(perfil["data_ultima_confirmacao"], "%d/%m/%Y").date()
+    proxima_confirmacao = data_confirmacao.replace(year=data_confirmacao.year + 1)
+    dias_restantes = (proxima_confirmacao - date.today()).days
+
+    return {
+        "simulado": True,
+        "cpf": cpf,
+        "categoria_cr": perfil["categoria_cr"],
+        "data_ultima_confirmacao": perfil["data_ultima_confirmacao"],
+        "proxima_confirmacao": proxima_confirmacao.strftime("%d/%m/%Y"),
+        "dias_restantes": dias_restantes,
+    }
+
+
+def consultar_cr(cpf: str) -> Optional[dict]:
+    """Status de confirmação cadastral do CR do atirador desportivo --
+    diferente de habitualidade (frequência de treino/competição). Pelo
+    Decreto nº 11.615/2023, o CR do atirador desportivo não tem prazo
+    fixo de vencimento: continua válido enquanto a confirmação cadastral
+    anual + a habitualidade mínima estiverem em dia (ver domain/clube_
+    tiro/db/popular_conhecimento.py). Devolve None se o CPF não tem CR
+    registrado (nem todo cliente é atirador -- mesma regra já aplicada em
+    consultar_habitualidade).
+
+    Endpoint real do Shooting House para isso ainda não foi documentado/
+    testado -- por enquanto sempre devolve dado simulado, mesmo com
+    credencial configurada.
+    """
+    return _cr_simulado(_limpar_cpf(cpf))
 
 
 def consultar_habitualidade(
