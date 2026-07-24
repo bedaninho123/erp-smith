@@ -156,6 +156,37 @@
     </div>
   </div>
 
+  <div id="view-caso-detalhe" class="view">
+    <button class="secondary" id="voltar-casos" style="margin-bottom:1.2rem">&larr; Voltar para Casos</button>
+    <div class="panel" id="caso-cabecalho"></div>
+
+    <div class="panel">
+      <h2>Processos</h2>
+      <table>
+        <thead><tr><th>Serviço</th><th>Protocolo</th><th>Status</th><th>Prazo estimado</th><th>Próxima ação</th></tr></thead>
+        <tbody id="caso-processos-body"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Documentos</h2>
+      <table>
+        <thead><tr><th>Tipo</th><th>Arquivo</th><th>Status</th><th>Enviado em</th></tr></thead>
+        <tbody id="caso-documentos-body"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Mensagens</h2>
+      <div id="caso-mensagens"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Histórico</h2>
+      <div class="timeline" id="caso-historico"></div>
+    </div>
+  </div>
+
   <div id="view-status" class="view">
     <div class="stat-row" id="stat-row"></div>
 
@@ -265,7 +296,7 @@ async function carregarCasos() {
   }
 
   $("#casos-body").innerHTML = d.casos.length ? d.casos.map(c => `
-    <tr>
+    <tr class="linha-caso" data-caso-id="${c.caso_id}" style="cursor:pointer">
       <td class="mono">${c.caso_id}</td>
       <td>${escapeHtml(c.cliente_nome)}</td>
       <td>${escapeHtml(c.categoria)}</td>
@@ -275,10 +306,86 @@ async function carregarCasos() {
       <td>${c.atualizado_em}</td>
     </tr>
   `).join("") : `<tr><td colspan="7" class="loading">Nenhum caso encontrado com esses filtros.</td></tr>`;
+
+  $("#casos-body").querySelectorAll(".linha-caso").forEach(tr => {
+    tr.addEventListener("click", () => abrirCaso(tr.dataset.casoId));
+  });
 }
 
 $("#filtro-status").addEventListener("change", carregarCasos);
 $("#filtro-categoria").addEventListener("change", carregarCasos);
+
+function mostrarView(nomeView) {
+  document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  const tab = document.querySelector(`.tab[data-view="${nomeView}"]`);
+  if (tab) tab.classList.add("active");
+  $("#view-" + nomeView).classList.add("active");
+}
+
+async function abrirCaso(casoId) {
+  mostrarView("caso-detalhe");
+  $("#caso-cabecalho").innerHTML = `<p class="loading">Carregando…</p>`;
+
+  const r = await fetch(`/api/casos/${casoId}`);
+  const d = await r.json();
+  if (!r.ok) {
+    $("#caso-cabecalho").innerHTML = `<div class="erro-box">${d.erro}</div>`;
+    return;
+  }
+
+  const c = d.caso;
+  $("#caso-cabecalho").innerHTML = `
+    <h2>${c.caso_id} — ${escapeHtml(c.titulo)}</h2>
+    <p class="kv">
+      <span class="badge ${badgesStatus[c.status] || ''}">${escapeHtml(c.status)}</span>
+      <span class="badge">${escapeHtml(c.categoria)}</span>
+      <span class="badge">Prioridade ${escapeHtml(c.prioridade)}</span>
+    </p>
+    <p class="kv"><b>Cliente:</b> ${escapeHtml(c.cliente_nome)} (${c.cliente_id}) -- CPF ${c.cliente_cpf || 'não informado'} -- ${escapeHtml(c.cliente_email || 'sem e-mail')}</p>
+    <p class="kv"><b>Responsável:</b> ${escapeHtml(c.responsavel_nome || 'não atribuído')}</p>
+    ${c.descricao ? `<p class="kv"><b>Descrição:</b> ${escapeHtml(c.descricao)}</p>` : ''}
+    <p class="kv"><b>Criado em:</b> ${c.criado_em} &nbsp; <b>Atualizado em:</b> ${c.atualizado_em}</p>
+    ${c.observacoes ? `<p class="kv"><b>Observações:</b> ${escapeHtml(c.observacoes)}</p>` : ''}
+  `;
+
+  $("#caso-processos-body").innerHTML = d.processos.length ? d.processos.map(p => `
+    <tr>
+      <td>${escapeHtml(p.nome_servico)}</td>
+      <td class="mono">${p.protocolo || '—'}</td>
+      <td>${escapeHtml(p.status)}</td>
+      <td>${p.prazo_estimado || '—'}</td>
+      <td>${escapeHtml(p.proxima_acao || '—')}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="5" class="loading">Nenhum processo neste caso.</td></tr>`;
+
+  $("#caso-documentos-body").innerHTML = d.documentos.length ? d.documentos.map(doc => `
+    <tr>
+      <td>${escapeHtml(doc.tipo_documento)}</td>
+      <td>${escapeHtml(doc.nome_arquivo || '—')}</td>
+      <td>${escapeHtml(doc.status)}</td>
+      <td>${doc.data_envio || '—'}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="4" class="loading">Nenhum documento neste caso.</td></tr>`;
+
+  $("#caso-mensagens").innerHTML = d.mensagens.length ? d.mensagens.map(m => `
+    <div class="step">
+      <h3>${m.data_hora} <span class="badge">${escapeHtml(m.intent || 'sem intenção')}</span> <span class="badge">${escapeHtml(m.status_processamento)}</span></h3>
+      <p class="kv"><b>Cliente escreveu:</b></p>
+      <div class="resposta-box">${escapeHtml(m.mensagem || '')}</div>
+      ${m.resposta_ia ? `<p class="kv" style="margin-top:0.6rem"><b>Resposta:</b></p><div class="resposta-box">${escapeHtml(m.resposta_ia)}</div>` : ''}
+    </div>
+  `).join("") : `<p class="loading">Nenhuma mensagem registrada neste caso.</p>`;
+
+  $("#caso-historico").innerHTML = d.historico.length ? d.historico.map(h => `
+    <div class="tl-item">
+      ${escapeHtml(h.descricao || h.tipo_evento)}
+      <span class="tl-data">${h.criado_em} — ${escapeHtml(h.criado_por)}</span>
+    </div>
+  `).join("") : `<p class="loading">Nenhum evento registrado.</p>`;
+}
+
+$("#voltar-casos").addEventListener("click", () => mostrarView("casos"));
 
 function escapeHtml(s) {
   const d = document.createElement("div");

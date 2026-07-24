@@ -216,6 +216,60 @@ def casos():
     )
 
 
+@app.route("/api/casos/<caso_id>")
+@login_required
+def caso_detalhe(caso_id):
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+
+    caso = con.execute(
+        "SELECT c.*, cl.nome AS cliente_nome, cl.cpf AS cliente_cpf, "
+        "cl.email AS cliente_email, cl.telefone AS cliente_telefone, "
+        "u.nome AS responsavel_nome "
+        "FROM caso c "
+        "JOIN cliente cl ON cl.cliente_id = c.cliente_id "
+        "LEFT JOIN usuario u ON u.usuario_id = c.responsavel_id "
+        "WHERE c.caso_id = ?",
+        (caso_id,),
+    ).fetchone()
+    if not caso:
+        con.close()
+        return jsonify(erro=f"Caso não encontrado: {caso_id}"), 404
+
+    processos = con.execute(
+        "SELECT p.*, s.nome_servico FROM processo p "
+        "JOIN servico s ON s.service_id = p.servico_id "
+        "WHERE p.caso_id = ? ORDER BY p.data_abertura",
+        (caso_id,),
+    ).fetchall()
+
+    documentos = con.execute(
+        "SELECT * FROM documento WHERE caso_id = ? "
+        "OR processo_id IN (SELECT processo_id FROM processo WHERE caso_id = ?) "
+        "ORDER BY data_envio",
+        (caso_id, caso_id),
+    ).fetchall()
+
+    historico = con.execute(
+        "SELECT * FROM historico WHERE caso_id = ? ORDER BY criado_em",
+        (caso_id,),
+    ).fetchall()
+
+    mensagens = con.execute(
+        "SELECT * FROM mensagem WHERE caso_id = ? ORDER BY data_hora",
+        (caso_id,),
+    ).fetchall()
+
+    con.close()
+    return jsonify(
+        caso=dict(caso),
+        processos=[dict(r) for r in processos],
+        documentos=[dict(r) for r in documentos],
+        historico=[dict(r) for r in historico],
+        mensagens=[dict(r) for r in mensagens],
+    )
+
+
 @app.route("/api/clientes")
 @login_required
 def clientes():
