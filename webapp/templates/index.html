@@ -4,383 +4,393 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ERP Smith — Painel Administrativo</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
 <style>
-  :root {
-    --bg: #EEF0E8; --surface: #F8F9F3; --surface-2: #E4E7DA; --ink: #1E231C;
-    --muted: #5B6154; --accent: #A8402A; --accent-soft: #A8402A1a;
-    --accent-2: #35695F; --accent-2-soft: #35695F1a; --line: #C9CDBD;
-    --good: #2F6B4C; --good-soft: #2F6B4C1a; --bad: #A8402A; --bad-soft: #A8402A1a;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #14160F; --surface: #1C1F16; --surface-2: #262A1C; --ink: #E9E7DA;
-      --muted: #A2A594; --accent: #E08361; --accent-soft: #E083612a;
-      --accent-2: #82BAAD; --accent-2-soft: #82BAAD22; --line: #33372A;
-      --good: #7FCB9E; --good-soft: #7FCB9E22; --bad: #E08361; --bad-soft: #E083612a;
-    }
-  }
-  * { box-sizing: border-box; }
-  body {
-    background: var(--bg); color: var(--ink);
-    font-family: -apple-system, "Segoe UI", Arial, sans-serif;
-    line-height: 1.5; margin: 0;
-  }
-  .mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; }
-
-  .layout { display: flex; min-height: 100vh; align-items: flex-start; }
-
-  .sidebar {
-    width: 230px; flex: none; min-height: 100vh; position: sticky; top: 0;
-    background: var(--surface); border-right: 1px solid var(--line);
-    padding: 1.6rem 1rem; display: flex; flex-direction: column;
-  }
-  .brand { font-family: Georgia, serif; font-size: 1.25rem; padding: 0 0.6rem 1.4rem; }
-  .nav-group { margin-bottom: 1.3rem; }
-  .nav-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em;
-    color: var(--muted); padding: 0 0.6rem 0.4rem; }
-  .nav-item {
-    display: flex; align-items: center; justify-content: space-between; width: 100%;
-    background: none; border: none; cursor: pointer; font-size: 0.9rem; font-family: inherit;
-    color: var(--ink); text-align: left; padding: 0.55rem 0.6rem; border-radius: 8px;
-    margin-bottom: 0.1rem;
-  }
-  .nav-item:hover { background: var(--surface-2); }
-  .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  .sidebar-footer { margin-top: auto; padding: 0.6rem; border-top: 1px solid var(--line); padding-top: 1rem; }
-  .sidebar-footer .user { font-size: 0.85rem; margin-bottom: 0.2rem; }
-  .sidebar-footer a { color: var(--muted); font-size: 0.8rem; text-decoration: none; }
-  .sidebar-footer a:hover { color: var(--ink); text-decoration: underline; }
-
-  .content { flex: 1; min-width: 0; padding: 2.2rem 2.4rem 5rem; max-width: 1200px; }
-  .content-header { margin-bottom: 1.6rem; }
-  h1 {
-    font-family: Georgia, serif; font-weight: 400; font-size: 1.6rem;
-    margin: 0 0 0.3rem;
-  }
-  .subtitle { color: var(--muted); margin: 0 0 1.2rem; font-size: 0.92rem; }
-
+  .cursor-pointer { cursor: pointer; }
   .view { display: none; }
   .view.active { display: block; }
-
-  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line);
-    border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 1.8rem; }
-  .stat { background: var(--surface); padding: 1rem; }
-  .stat .n { font-family: Georgia, serif; font-size: 1.6rem; font-variant-numeric: tabular-nums; display: block; }
-  .stat .l { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
-
-  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
-    padding: 1.2rem 1.4rem; margin-bottom: 1.4rem; }
-  .panel h2 { font-family: Georgia, serif; font-weight: 400; font-size: 1.15rem; margin: 0 0 1rem; }
-
-  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem;
-    text-transform: uppercase; letter-spacing: 0.05em; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--line); }
-  td { padding: 0.5rem 0.5rem; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
-  tr:last-child td { border-bottom: none; }
-  tr.linha-caso, tr.linha-cliente { transition: background 0.1s ease; }
-  tr.linha-caso:hover, tr.linha-cliente:hover { background: var(--surface-2); }
-  .badge { display: inline-block; font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: 999px;
-    background: var(--surface-2); color: var(--muted); }
-  .badge.accent-2 { background: var(--accent-2-soft); color: var(--accent-2); }
-  .badge.good { background: var(--good-soft); color: var(--good); }
-  .badge.bad { background: var(--bad-soft); color: var(--bad); }
-
-  .modulo-lista { display: flex; flex-direction: column; gap: 0.5rem; }
-  .modulo { display: flex; align-items: center; gap: 0.6rem; font-size: 0.9rem; }
-  .check { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center;
-    justify-content: center; font-size: 0.7rem; flex: none; }
-  .check.sim { background: var(--good-soft); color: var(--good); }
-  .check.nao { background: var(--surface-2); color: var(--muted); }
-
-  .timeline { border-left: 2px solid var(--line); margin-left: 0.3rem; padding-left: 1.1rem; max-height: 340px; overflow-y: auto; }
-  .tl-item { position: relative; padding-bottom: 0.9rem; font-size: 0.85rem; }
-  .tl-item::before { content: ""; position: absolute; left: -1.5rem; top: 0.3rem; width: 7px; height: 7px;
-    border-radius: 50%; background: var(--accent-2); }
-  .tl-hash { font-size: 0.72rem; color: var(--accent-2); background: var(--accent-2-soft); border-radius: 5px;
-    padding: 0.03rem 0.35rem; margin-right: 0.4rem; }
-  .tl-data { font-size: 0.72rem; color: var(--muted); display: block; margin-top: 0.1rem; }
-
-  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.3rem; }
-  select, textarea, input[type="text"] {
-    width: 100%; font-family: inherit; font-size: 0.92rem; padding: 0.55rem 0.7rem;
-    border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
-  }
-  textarea { resize: vertical; min-height: 4.5rem; }
-  .form-row { margin-bottom: 0.9rem; }
-  button.primary {
-    background: var(--accent); color: #F8F5EF; border: none; border-radius: 8px;
-    padding: 0.6rem 1.3rem; font-size: 0.92rem; cursor: pointer; font-family: inherit;
-  }
-  button.primary:disabled { opacity: 0.55; cursor: default; }
-  button.secondary {
-    background: none; color: var(--muted); border: 1px solid var(--line); border-radius: 8px;
-    padding: 0.6rem 1.3rem; font-size: 0.92rem; cursor: pointer; font-family: inherit;
-  }
-  .nav-badge { display: inline-block; font-size: 0.68rem; padding: 0.05rem 0.4rem; border-radius: 999px;
-    background: var(--accent); color: #F8F5EF; }
-
-  .resultado { margin-top: 1.4rem; display: none; }
-  .step { border-left: 3px solid var(--line); padding: 0.2rem 0 0.2rem 0.9rem; margin-bottom: 1rem; }
-  .step h3 { font-family: Georgia, serif; font-weight: 400; font-size: 1rem; margin: 0 0 0.4rem; }
-  .kv { font-size: 0.85rem; margin: 0.15rem 0; }
-  .kv b { color: var(--muted); font-weight: 600; }
-  .pill { display: inline-block; font-size: 0.72rem; padding: 0.12rem 0.55rem; border-radius: 999px; font-weight: 600; }
-  .pill.enviar { background: var(--good-soft); color: var(--good); }
-  .pill.encaminhar_humano, .pill.revisar { background: var(--bad-soft); color: var(--bad); }
-  .resposta-box { background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
-    padding: 0.9rem 1rem; white-space: pre-wrap; font-size: 0.88rem; margin-top: 0.4rem; }
-  .erro-box { background: var(--bad-soft); color: var(--bad); border-radius: 8px; padding: 0.8rem 1rem; font-size: 0.88rem; }
-  .loading { color: var(--muted); font-size: 0.88rem; }
-
-  @media (max-width: 760px) {
-    .layout { flex-direction: column; }
-    .sidebar { width: 100%; min-height: auto; position: static; flex-direction: row; align-items: center;
-      overflow-x: auto; padding: 0.8rem; gap: 1rem; }
-    .brand { padding: 0 0.6rem; }
-    .nav-group { display: flex; align-items: center; gap: 0.2rem; margin-bottom: 0; white-space: nowrap; }
-    .nav-label { display: none; }
-    .sidebar-footer { margin-top: 0; border-top: none; padding-top: 0; }
-    .content { padding: 1.6rem 1.2rem 4rem; }
-  }
+  .resposta-box { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 0.75rem 1rem; white-space: pre-wrap; font-size: 0.88rem; }
+  textarea.resposta-edit { min-height: 8rem; }
 </style>
 </head>
-<body>
-<div class="layout">
-  <nav class="sidebar">
-    <div class="brand">ERP Smith</div>
+<body class="hold-transition sidebar-mini layout-fixed">
+<div class="wrapper">
 
-    <div class="nav-group">
-      <div class="nav-label">Atendimento</div>
-      <button class="nav-item active" data-view="casos"><span>Casos</span></button>
-      <button class="nav-item" data-view="clientes"><span>Clientes</span></button>
-      <button class="nav-item" data-view="pendentes"><span>Aprovações Pendentes</span><span class="nav-badge" id="badge-pendentes" style="display:none"></span></button>
-    </div>
-
-    <div class="nav-group">
-      <div class="nav-label">Sistema</div>
-      <button class="nav-item" data-view="config"><span>Configurações</span></button>
-      <button class="nav-item" data-view="status"><span>Status do Projeto</span></button>
-      <button class="nav-item" data-view="testar"><span>Testar Pipeline</span></button>
-    </div>
-
-    <div class="sidebar-footer">
-      <div class="user">{{ usuario_nome }}</div>
-      <a href="/logout">Sair</a>
-    </div>
+  <nav class="main-header navbar navbar-expand navbar-white navbar-light">
+    <ul class="navbar-nav">
+      <li class="nav-item">
+        <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
+      </li>
+    </ul>
+    <ul class="navbar-nav ml-auto">
+      <li class="nav-item">
+        <span class="nav-link">{{ usuario_nome }}</span>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt mr-1"></i>Sair</a>
+      </li>
+    </ul>
   </nav>
 
-  <main class="content">
-  <div id="view-casos" class="view active">
-    <div class="content-header">
-      <h1>Casos</h1>
-      <p class="subtitle">Acompanhe o que está parado e quem precisa de ação.</p>
+  <aside class="main-sidebar sidebar-dark-primary elevation-4">
+    <a href="#" class="brand-link">
+      <span class="brand-text font-weight-light ml-3"><b>ERP</b> Smith</span>
+    </a>
+
+    <div class="sidebar">
+      <nav class="mt-2">
+        <ul class="nav nav-pills nav-sidebar flex-column" role="menu">
+          <li class="nav-header">ATENDIMENTO</li>
+          <li class="nav-item">
+            <a href="#" class="nav-link active" data-view="casos">
+              <i class="nav-icon fas fa-folder-open"></i>
+              <p>Casos</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="clientes">
+              <i class="nav-icon fas fa-users"></i>
+              <p>Clientes</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="pendentes">
+              <i class="nav-icon fas fa-inbox"></i>
+              <p>
+                Aprovações Pendentes
+                <span class="right badge badge-danger" id="badge-pendentes" style="display:none"></span>
+              </p>
+            </a>
+          </li>
+          <li class="nav-header">SISTEMA</li>
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="config">
+              <i class="nav-icon fas fa-cog"></i>
+              <p>Configurações</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="status">
+              <i class="nav-icon fas fa-server"></i>
+              <p>Status do Projeto</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="testar">
+              <i class="nav-icon fas fa-flask"></i>
+              <p>Testar Pipeline</p>
+            </a>
+          </li>
+        </ul>
+      </nav>
     </div>
-    <div class="panel">
-      <div style="display:flex; gap:0.8rem; align-items:flex-end; flex-wrap:wrap;">
-        <div style="min-width:180px">
-          <label for="filtro-status">Status</label>
-          <select id="filtro-status"><option value="">Todos</option></select>
+  </aside>
+
+  <div class="content-wrapper">
+
+    <div id="view-casos" class="view active">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Casos</h1>
+          <p class="text-muted mb-0">Acompanhe o que está parado e quem precisa de ação.</p>
         </div>
-        <div style="min-width:180px">
-          <label for="filtro-categoria">Categoria</label>
-          <select id="filtro-categoria"><option value="">Todas</option></select>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <div class="card">
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-4">
+                  <label for="filtro-status">Status</label>
+                  <select id="filtro-status" class="form-control"><option value="">Todos</option></select>
+                </div>
+                <div class="col-md-4">
+                  <label for="filtro-categoria">Categoria</label>
+                  <select id="filtro-categoria" class="form-control"><option value="">Todas</option></select>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover text-nowrap">
+                <thead><tr>
+                  <th>Caso</th><th>Cliente</th><th>Categoria</th><th>Status</th>
+                  <th>Prioridade</th><th>Responsável</th><th>Atualizado em</th>
+                </tr></thead>
+                <tbody id="casos-body"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-    <div class="panel">
-      <table>
-        <thead><tr>
-          <th>Caso</th><th>Cliente</th><th>Categoria</th><th>Status</th>
-          <th>Prioridade</th><th>Responsável</th><th>Atualizado em</th>
-        </tr></thead>
-        <tbody id="casos-body"></tbody>
-      </table>
-    </div>
-  </div>
 
-  <div id="view-caso-detalhe" class="view">
-    <button class="secondary" id="voltar-casos" style="margin-bottom:1.2rem">&larr; Voltar para Casos</button>
-    <div class="panel" id="caso-cabecalho"></div>
-
-    <div class="panel">
-      <h2>Atualizar caso</h2>
-      <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr; gap:0.7rem;">
-        <div>
-          <label for="editar-status">Status</label>
-          <select id="editar-status"></select>
-        </div>
-        <div>
-          <label for="editar-responsavel">Responsável</label>
-          <select id="editar-responsavel"><option value="">não atribuído</option></select>
+    <div id="view-caso-detalhe" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <button class="btn btn-outline-secondary btn-sm" id="voltar-casos"><i class="fas fa-arrow-left mr-1"></i>Voltar para Casos</button>
         </div>
       </div>
-      <div class="form-row">
-        <label for="editar-motivo">Motivo da mudança de status (opcional)</label>
-        <input id="editar-motivo" type="text" placeholder="Ex.: Cliente enviou os documentos pendentes">
+      <div class="content">
+        <div class="container-fluid">
+          <div class="card">
+            <div class="card-body" id="caso-cabecalho"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Atualizar caso</h3></div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6">
+                  <label for="editar-status">Status</label>
+                  <select id="editar-status" class="form-control"></select>
+                </div>
+                <div class="col-md-6">
+                  <label for="editar-responsavel">Responsável</label>
+                  <select id="editar-responsavel" class="form-control"><option value="">não atribuído</option></select>
+                </div>
+              </div>
+              <div class="form-group mt-3">
+                <label for="editar-motivo">Motivo da mudança de status (opcional)</label>
+                <input id="editar-motivo" type="text" class="form-control" placeholder="Ex.: Cliente enviou os documentos pendentes">
+              </div>
+              <button class="btn btn-primary" id="salvar-caso">Salvar</button>
+              <span class="text-muted ml-2" id="salvar-caso-status"></span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Processos</h3></div>
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover text-nowrap">
+                <thead><tr><th>Serviço</th><th>Protocolo</th><th>Status</th><th>Prazo estimado</th><th>Próxima ação</th></tr></thead>
+                <tbody id="caso-processos-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Documentos</h3></div>
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover text-nowrap">
+                <thead><tr><th>Tipo</th><th>Arquivo</th><th>Status</th><th>Enviado em</th></tr></thead>
+                <tbody id="caso-documentos-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Mensagens</h3></div>
+            <div class="card-body" id="caso-mensagens"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Histórico</h3></div>
+            <div class="card-body p-0">
+              <ul class="list-group list-group-flush" id="caso-historico"></ul>
+            </div>
+          </div>
+        </div>
       </div>
-      <button class="primary" id="salvar-caso">Salvar</button>
-      <span class="loading" id="salvar-caso-status" style="margin-left:0.6rem"></span>
     </div>
 
-    <div class="panel">
-      <h2>Processos</h2>
-      <table>
-        <thead><tr><th>Serviço</th><th>Protocolo</th><th>Status</th><th>Prazo estimado</th><th>Próxima ação</th></tr></thead>
-        <tbody id="caso-processos-body"></tbody>
-      </table>
-    </div>
-
-    <div class="panel">
-      <h2>Documentos</h2>
-      <table>
-        <thead><tr><th>Tipo</th><th>Arquivo</th><th>Status</th><th>Enviado em</th></tr></thead>
-        <tbody id="caso-documentos-body"></tbody>
-      </table>
-    </div>
-
-    <div class="panel">
-      <h2>Mensagens</h2>
-      <div id="caso-mensagens"></div>
-    </div>
-
-    <div class="panel">
-      <h2>Histórico</h2>
-      <div class="timeline" id="caso-historico"></div>
-    </div>
-  </div>
-
-  <div id="view-clientes" class="view">
-    <div class="content-header">
-      <h1>Clientes</h1>
-      <p class="subtitle">Busque e veja o cadastro completo de cada cliente.</p>
-    </div>
-    <div class="panel">
-      <label for="busca-cliente-lista">Buscar por nome, CPF ou e-mail</label>
-      <input id="busca-cliente-lista" type="text" placeholder="Ex.: Maria, 123.456.789-00, maria@email.com">
-    </div>
-    <div class="panel">
-      <table>
-        <thead><tr>
-          <th>Nome</th><th>CPF</th><th>E-mail</th><th>Cidade</th>
-          <th>Status</th><th style="text-align:right">Casos abertos</th>
-        </tr></thead>
-        <tbody id="clientes-lista-body"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div id="view-cliente-detalhe" class="view">
-    <button class="secondary" id="voltar-clientes" style="margin-bottom:1.2rem">&larr; Voltar para Clientes</button>
-    <div class="panel" id="cliente-cabecalho"></div>
-    <div class="panel">
-      <h2>Casos deste cliente</h2>
-      <table>
-        <thead><tr>
-          <th>Caso</th><th>Categoria</th><th>Status</th><th>Prioridade</th>
-          <th>Responsável</th><th>Atualizado em</th>
-        </tr></thead>
-        <tbody id="cliente-casos-body"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div id="view-status" class="view">
-    <div class="content-header">
-      <h1>Status do Projeto</h1>
-      <p class="subtitle">Estado técnico do sistema — ferramenta de desenvolvimento.</p>
-    </div>
-    <div class="stat-row" id="stat-row"></div>
-
-    <div class="panel">
-      <h2>Módulos do Motor IA</h2>
-      <div class="modulo-lista" id="modulos"></div>
-    </div>
-
-    <div class="panel">
-      <h2>Integrações externas</h2>
-      <div class="modulo-lista" id="integracoes"></div>
-    </div>
-
-    <div class="panel">
-      <h2>Uso da IA (log_ia)</h2>
-      <p class="subtitle" style="margin-bottom:0.9rem">Cada chamada à OpenAI feita pelo Motor IA (Classificador, Redator, Auditor, Atualizador de Memória) fica registrada aqui -- tokens e sucesso/erro, pra dar visibilidade de custo e uso.</p>
-      <div class="stat-row" id="stat-row-log-ia" style="margin-bottom:1.2rem"></div>
-      <table>
-        <thead><tr><th>Módulo</th><th style="text-align:right">Chamadas</th><th style="text-align:right">Tokens entrada</th><th style="text-align:right">Tokens saída</th><th style="text-align:right">Erros</th></tr></thead>
-        <tbody id="log-ia-body"></tbody>
-      </table>
-    </div>
-
-    <div class="panel">
-      <h2>Tabelas do banco</h2>
-      <table>
-        <thead><tr><th>Tabela</th><th>Camada</th><th style="text-align:right">Linhas</th></tr></thead>
-        <tbody id="tabelas-body"></tbody>
-      </table>
-    </div>
-
-    <div class="panel">
-      <h2>Histórico de commits</h2>
-      <div class="timeline" id="commits"></div>
-    </div>
-  </div>
-
-  <div id="view-testar" class="view">
-    <div class="content-header">
-      <h1>Testar Pipeline</h1>
-      <p class="subtitle">Simule uma mensagem de cliente e veja cada etapa do Motor IA.</p>
-    </div>
-    <div class="panel">
-      <h2>Identificar cliente (por nome, CPF ou e-mail)</h2>
-      <p class="subtitle" style="margin-bottom:0.9rem">Simula o passo "Identificar cliente" do fluxo real, que acontece antes de classificar a mensagem. Preencha um dos três campos.</p>
-      <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.7rem;">
-        <div><label for="busca-nome">Nome</label><input id="busca-nome" type="text" placeholder="Ex.: Maria Oliveira"></div>
-        <div><label for="busca-cpf">CPF</label><input id="busca-cpf" type="text" placeholder="Ex.: 123.456.789-00"></div>
-        <div><label for="busca-email">E-mail</label><input id="busca-email" type="text" placeholder="Ex.: cliente@email.com"></div>
+    <div id="view-clientes" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Clientes</h1>
+          <p class="text-muted mb-0">Busque e veja o cadastro completo de cada cliente.</p>
+        </div>
       </div>
-      <button class="primary" id="buscar-cliente">Buscar</button>
-      <div id="resultado-busca" style="margin-top:0.8rem"></div>
-    </div>
-
-    <div class="panel">
-      <h2>Enviar uma mensagem de teste</h2>
-      <div class="form-row">
-        <label for="cliente">Cliente</label>
-        <select id="cliente"></select>
+      <div class="content">
+        <div class="container-fluid">
+          <div class="card">
+            <div class="card-body">
+              <label for="busca-cliente-lista">Buscar por nome, CPF ou e-mail</label>
+              <input id="busca-cliente-lista" type="text" class="form-control" placeholder="Ex.: Maria, 123.456.789-00, maria@email.com">
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover text-nowrap">
+                <thead><tr>
+                  <th>Nome</th><th>CPF</th><th>E-mail</th><th>Cidade</th>
+                  <th>Status</th><th class="text-right">Casos abertos</th>
+                </tr></thead>
+                <tbody id="clientes-lista-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="form-row">
-        <label for="mensagem">Mensagem do cliente</label>
-        <textarea id="mensagem" placeholder="Ex.: Quais documentos preciso para renovar meu CR?"></textarea>
+    </div>
+
+    <div id="view-cliente-detalhe" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <button class="btn btn-outline-secondary btn-sm" id="voltar-clientes"><i class="fas fa-arrow-left mr-1"></i>Voltar para Clientes</button>
+        </div>
       </div>
-      <button class="primary" id="enviar">Enviar pelo pipeline</button>
-      <div id="resultado" class="resultado"></div>
+      <div class="content">
+        <div class="container-fluid">
+          <div class="card">
+            <div class="card-body" id="cliente-cabecalho"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Casos deste cliente</h3></div>
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover text-nowrap">
+                <thead><tr>
+                  <th>Caso</th><th>Categoria</th><th>Status</th><th>Prioridade</th>
+                  <th>Responsável</th><th>Atualizado em</th>
+                </tr></thead>
+                <tbody id="cliente-casos-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <div id="view-status" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Status do Projeto</h1>
+          <p class="text-muted mb-0">Estado técnico do sistema — ferramenta de desenvolvimento.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <div class="row" id="stat-row"></div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Módulos do Motor IA</h3></div>
+            <div class="card-body" id="modulos"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Integrações externas</h3></div>
+            <div class="card-body" id="integracoes"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Uso da IA (log_ia)</h3></div>
+            <div class="card-body">
+              <p class="text-muted">Cada chamada à OpenAI feita pelo Motor IA (Classificador, Redator, Auditor, Atualizador de Memória) fica registrada aqui -- tokens e sucesso/erro, pra dar visibilidade de custo e uso.</p>
+              <div class="row" id="stat-row-log-ia"></div>
+              <table class="table table-hover text-nowrap mt-3">
+                <thead><tr><th>Módulo</th><th class="text-right">Chamadas</th><th class="text-right">Tokens entrada</th><th class="text-right">Tokens saída</th><th class="text-right">Erros</th></tr></thead>
+                <tbody id="log-ia-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Tabelas do banco</h3></div>
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover text-nowrap">
+                <thead><tr><th>Tabela</th><th>Camada</th><th class="text-right">Linhas</th></tr></thead>
+                <tbody id="tabelas-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Histórico de commits</h3></div>
+            <div class="card-body p-0">
+              <ul class="list-group list-group-flush" id="commits"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-testar" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Testar Pipeline</h1>
+          <p class="text-muted mb-0">Simule uma mensagem de cliente e veja cada etapa do Motor IA.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Identificar cliente (por nome, CPF ou e-mail)</h3></div>
+            <div class="card-body">
+              <p class="text-muted">Simula o passo "Identificar cliente" do fluxo real, que acontece antes de classificar a mensagem. Preencha um dos três campos.</p>
+              <div class="row">
+                <div class="col-md-4"><label for="busca-nome">Nome</label><input id="busca-nome" type="text" class="form-control" placeholder="Ex.: Maria Oliveira"></div>
+                <div class="col-md-4"><label for="busca-cpf">CPF</label><input id="busca-cpf" type="text" class="form-control" placeholder="Ex.: 123.456.789-00"></div>
+                <div class="col-md-4"><label for="busca-email">E-mail</label><input id="busca-email" type="text" class="form-control" placeholder="Ex.: cliente@email.com"></div>
+              </div>
+              <button class="btn btn-primary mt-3" id="buscar-cliente">Buscar</button>
+              <div id="resultado-busca" class="mt-3"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Enviar uma mensagem de teste</h3></div>
+            <div class="card-body">
+              <div class="form-group">
+                <label for="cliente">Cliente</label>
+                <select id="cliente" class="form-control"></select>
+              </div>
+              <div class="form-group">
+                <label for="mensagem">Mensagem do cliente</label>
+                <textarea id="mensagem" class="form-control" placeholder="Ex.: Quais documentos preciso para renovar meu CR?"></textarea>
+              </div>
+              <button class="btn btn-primary" id="enviar">Enviar pelo pipeline</button>
+              <div id="resultado" class="mt-3" style="display:none"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-pendentes" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Aprovações Pendentes</h1>
+          <p class="text-muted mb-0">Respostas que a IA escreveu e estão esperando aprovação antes de sair de verdade pro cliente — porque o modo de revisão está ligado (configuracoes.revisao_humana_ativa) ou porque o Auditor encontrou uma inconsistência e pediu revisão. Pode editar o texto antes de aprovar.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid" id="lista-pendentes"><p class="text-muted">Carregando…</p></div>
+      </div>
+    </div>
+
+    <div id="view-config" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Configurações</h1>
+          <p class="text-muted mb-0">Textos, horários e comportamentos usados pela IA -- editar aqui tem efeito imediato na próxima resposta, sem precisar mexer no banco. "Ativo" controla se o valor é realmente usado; desligado, a IA ignora esse dado.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid" id="config-lista"><p class="text-muted">Carregando…</p></div>
+      </div>
+    </div>
+
   </div>
 
-  <div id="view-pendentes" class="view">
-    <div class="content-header">
-      <h1>Aprovações Pendentes</h1>
-      <p class="subtitle">Respostas que a IA escreveu e estão esperando aprovação antes de sair de verdade pro cliente — porque o modo de revisão está ligado (configuracoes.revisao_humana_ativa) ou porque o Auditor encontrou uma inconsistência e pediu revisão. Pode editar o texto antes de aprovar.</p>
-    </div>
-    <div id="lista-pendentes"><p class="loading">Carregando…</p></div>
-  </div>
-
-  <div id="view-config" class="view">
-    <div class="content-header">
-      <h1>Configurações</h1>
-      <p class="subtitle">Textos, horários e comportamentos usados pela IA -- editar aqui tem efeito imediato na próxima resposta, sem precisar mexer no banco. "Ativo" controla se o valor é realmente usado; desligado, a IA ignora esse dado.</p>
-    </div>
-    <div id="config-lista"><p class="loading">Carregando…</p></div>
-  </div>
-  </main>
+  <footer class="main-footer">
+    <strong>ERP Smith</strong> — painel administrativo
+  </footer>
 </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 
 <script>
 const $ = (sel) => document.querySelector(sel);
 
-document.querySelectorAll(".nav-item").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
+document.querySelectorAll("[data-view]").forEach(btn => {
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    document.querySelectorAll("[data-view]").forEach(b => b.classList.remove("active"));
     document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
     btn.classList.add("active");
     $("#view-" + btn.dataset.view).classList.add("active");
@@ -391,9 +401,9 @@ document.querySelectorAll(".nav-item").forEach(btn => {
 });
 
 const badgesStatus = {
-  "Aberto": "accent-2", "Em triagem": "", "Em andamento": "accent-2",
-  "Aguardando cliente": "", "Aguardando terceiro": "", "Suspenso": "",
-  "Encerrado": "good", "Cancelado": "bad",
+  "Aberto": "badge-info", "Em triagem": "badge-secondary", "Em andamento": "badge-info",
+  "Aguardando cliente": "badge-secondary", "Aguardando terceiro": "badge-secondary", "Suspenso": "badge-secondary",
+  "Encerrado": "badge-success", "Cancelado": "badge-danger",
 };
 
 async function carregarCasos() {
@@ -406,8 +416,6 @@ async function carregarCasos() {
   const r = await fetch("/api/casos?" + params.toString());
   const d = await r.json();
 
-  // Só preenche as opções dos filtros na primeira carga, pra não perder
-  // a seleção atual do usuário a cada refiltragem.
   if (!$("#filtro-status").dataset.carregado) {
     $("#filtro-status").innerHTML += d.status_disponiveis.map(s => `<option value="${s}">${s}</option>`).join("");
     $("#filtro-categoria").innerHTML += d.categorias_disponiveis.map(c => `<option value="${c}">${c}</option>`).join("");
@@ -415,16 +423,16 @@ async function carregarCasos() {
   }
 
   $("#casos-body").innerHTML = d.casos.length ? d.casos.map(c => `
-    <tr class="linha-caso" data-caso-id="${c.caso_id}" style="cursor:pointer">
-      <td class="mono">${c.caso_id}</td>
+    <tr class="linha-caso cursor-pointer" data-caso-id="${c.caso_id}">
+      <td class="text-monospace">${c.caso_id}</td>
       <td>${escapeHtml(c.cliente_nome)}</td>
       <td>${escapeHtml(c.categoria)}</td>
-      <td><span class="badge ${badgesStatus[c.status] || ''}">${escapeHtml(c.status)}</span></td>
+      <td><span class="badge ${badgesStatus[c.status] || 'badge-secondary'}">${escapeHtml(c.status)}</span></td>
       <td>${escapeHtml(c.prioridade)}</td>
       <td>${escapeHtml(c.responsavel_nome || 'não atribuído')}</td>
       <td>${c.atualizado_em}</td>
     </tr>
-  `).join("") : `<tr><td colspan="7" class="loading">Nenhum caso encontrado com esses filtros.</td></tr>`;
+  `).join("") : `<tr><td colspan="7" class="text-muted">Nenhum caso encontrado com esses filtros.</td></tr>`;
 
   $("#casos-body").querySelectorAll(".linha-caso").forEach(tr => {
     tr.addEventListener("click", () => abrirCaso(tr.dataset.casoId));
@@ -435,48 +443,48 @@ $("#filtro-status").addEventListener("change", carregarCasos);
 $("#filtro-categoria").addEventListener("change", carregarCasos);
 
 function mostrarView(nomeView) {
-  document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll("[data-view]").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-  const tab = document.querySelector(`.nav-item[data-view="${nomeView}"]`);
+  const tab = document.querySelector(`[data-view="${nomeView}"]`);
   if (tab) tab.classList.add("active");
   $("#view-" + nomeView).classList.add("active");
 }
 
 async function abrirCaso(casoId) {
   mostrarView("caso-detalhe");
-  $("#caso-cabecalho").innerHTML = `<p class="loading">Carregando…</p>`;
+  $("#caso-cabecalho").innerHTML = `<p class="text-muted">Carregando…</p>`;
 
   const r = await fetch(`/api/casos/${casoId}`);
   const d = await r.json();
   if (!r.ok) {
-    $("#caso-cabecalho").innerHTML = `<div class="erro-box">${d.erro}</div>`;
+    $("#caso-cabecalho").innerHTML = `<div class="alert alert-danger">${d.erro}</div>`;
     return;
   }
 
   const c = d.caso;
   $("#caso-cabecalho").innerHTML = `
-    <h2>${c.caso_id} — ${escapeHtml(c.titulo)}</h2>
-    <p class="kv">
-      <span class="badge ${badgesStatus[c.status] || ''}">${escapeHtml(c.status)}</span>
-      <span class="badge">${escapeHtml(c.categoria)}</span>
-      <span class="badge">Prioridade ${escapeHtml(c.prioridade)}</span>
+    <h3>${c.caso_id} — ${escapeHtml(c.titulo)}</h3>
+    <p>
+      <span class="badge ${badgesStatus[c.status] || 'badge-secondary'}">${escapeHtml(c.status)}</span>
+      <span class="badge badge-light">${escapeHtml(c.categoria)}</span>
+      <span class="badge badge-light">Prioridade ${escapeHtml(c.prioridade)}</span>
     </p>
-    <p class="kv"><b>Cliente:</b> ${escapeHtml(c.cliente_nome)} (${c.cliente_id}) -- CPF ${c.cliente_cpf || 'não informado'} -- ${escapeHtml(c.cliente_email || 'sem e-mail')}</p>
-    <p class="kv"><b>Responsável:</b> ${escapeHtml(c.responsavel_nome || 'não atribuído')}</p>
-    ${c.descricao ? `<p class="kv"><b>Descrição:</b> ${escapeHtml(c.descricao)}</p>` : ''}
-    <p class="kv"><b>Criado em:</b> ${c.criado_em} &nbsp; <b>Atualizado em:</b> ${c.atualizado_em}</p>
-    ${c.observacoes ? `<p class="kv"><b>Observações:</b> ${escapeHtml(c.observacoes)}</p>` : ''}
+    <p><b>Cliente:</b> ${escapeHtml(c.cliente_nome)} (${c.cliente_id}) -- CPF ${c.cliente_cpf || 'não informado'} -- ${escapeHtml(c.cliente_email || 'sem e-mail')}</p>
+    <p><b>Responsável:</b> ${escapeHtml(c.responsavel_nome || 'não atribuído')}</p>
+    ${c.descricao ? `<p><b>Descrição:</b> ${escapeHtml(c.descricao)}</p>` : ''}
+    <p><b>Criado em:</b> ${c.criado_em} &nbsp; <b>Atualizado em:</b> ${c.atualizado_em}</p>
+    ${c.observacoes ? `<p><b>Observações:</b> ${escapeHtml(c.observacoes)}</p>` : ''}
   `;
 
   $("#caso-processos-body").innerHTML = d.processos.length ? d.processos.map(p => `
     <tr>
       <td>${escapeHtml(p.nome_servico)}</td>
-      <td class="mono">${p.protocolo || '—'}</td>
+      <td class="text-monospace">${p.protocolo || '—'}</td>
       <td>${escapeHtml(p.status)}</td>
       <td>${p.prazo_estimado || '—'}</td>
       <td>${escapeHtml(p.proxima_acao || '—')}</td>
     </tr>
-  `).join("") : `<tr><td colspan="5" class="loading">Nenhum processo neste caso.</td></tr>`;
+  `).join("") : `<tr><td colspan="5" class="text-muted">Nenhum processo neste caso.</td></tr>`;
 
   $("#caso-documentos-body").innerHTML = d.documentos.length ? d.documentos.map(doc => `
     <tr>
@@ -485,23 +493,23 @@ async function abrirCaso(casoId) {
       <td>${escapeHtml(doc.status)}</td>
       <td>${doc.data_envio || '—'}</td>
     </tr>
-  `).join("") : `<tr><td colspan="4" class="loading">Nenhum documento neste caso.</td></tr>`;
+  `).join("") : `<tr><td colspan="4" class="text-muted">Nenhum documento neste caso.</td></tr>`;
 
   $("#caso-mensagens").innerHTML = d.mensagens.length ? d.mensagens.map(m => `
-    <div class="step">
-      <h3>${m.data_hora} <span class="badge">${escapeHtml(m.intent || 'sem intenção')}</span> <span class="badge">${escapeHtml(m.status_processamento)}</span></h3>
-      <p class="kv"><b>Cliente escreveu:</b></p>
+    <div class="mb-4 pb-3 border-bottom">
+      <h5>${m.data_hora} <span class="badge badge-light">${escapeHtml(m.intent || 'sem intenção')}</span> <span class="badge badge-light">${escapeHtml(m.status_processamento)}</span></h5>
+      <p class="mb-1"><b>Cliente escreveu:</b></p>
       <div class="resposta-box">${escapeHtml(m.mensagem || '')}</div>
-      ${m.resposta_ia ? `<p class="kv" style="margin-top:0.6rem"><b>Resposta:</b></p><div class="resposta-box">${escapeHtml(m.resposta_ia)}</div>` : ''}
+      ${m.resposta_ia ? `<p class="mb-1 mt-2"><b>Resposta:</b></p><div class="resposta-box">${escapeHtml(m.resposta_ia)}</div>` : ''}
     </div>
-  `).join("") : `<p class="loading">Nenhuma mensagem registrada neste caso.</p>`;
+  `).join("") : `<p class="text-muted">Nenhuma mensagem registrada neste caso.</p>`;
 
   $("#caso-historico").innerHTML = d.historico.length ? d.historico.map(h => `
-    <div class="tl-item">
+    <li class="list-group-item">
       ${escapeHtml(h.descricao || h.tipo_evento)}
-      <span class="tl-data">${h.criado_em} — ${escapeHtml(h.criado_por)}</span>
-    </div>
-  `).join("") : `<p class="loading">Nenhum evento registrado.</p>`;
+      <br><small class="text-muted">${h.criado_em} — ${escapeHtml(h.criado_por)}</small>
+    </li>
+  `).join("") : `<li class="list-group-item text-muted">Nenhum evento registrado.</li>`;
 
   $("#editar-status").innerHTML = d.status_validos.map(s => `<option value="${s}"${s === c.status ? ' selected' : ''}>${s}</option>`).join("");
   $("#editar-responsavel").innerHTML = `<option value="">não atribuído</option>` + d.usuarios.map(u => `<option value="${u.usuario_id}"${u.usuario_id === c.responsavel_id ? ' selected' : ''}>${escapeHtml(u.nome)}</option>`).join("");
@@ -575,15 +583,15 @@ async function carregarClientesLista() {
   const d = await r.json();
 
   $("#clientes-lista-body").innerHTML = d.clientes.length ? d.clientes.map(c => `
-    <tr class="linha-cliente" data-cliente-id="${c.cliente_id}" style="cursor:pointer">
+    <tr class="linha-cliente cursor-pointer" data-cliente-id="${c.cliente_id}">
       <td>${escapeHtml(c.nome)}</td>
-      <td class="mono">${c.cpf || '—'}</td>
+      <td class="text-monospace">${c.cpf || '—'}</td>
       <td>${escapeHtml(c.email || '—')}</td>
       <td>${escapeHtml(c.cidade || '—')}</td>
-      <td><span class="badge ${c.status === 'Ativo' ? 'good' : ''}">${escapeHtml(c.status)}</span></td>
-      <td style="text-align:right">${c.casos_abertos}</td>
+      <td><span class="badge ${c.status === 'Ativo' ? 'badge-success' : 'badge-secondary'}">${escapeHtml(c.status)}</span></td>
+      <td class="text-right">${c.casos_abertos}</td>
     </tr>
-  `).join("") : `<tr><td colspan="6" class="loading">Nenhum cliente encontrado.</td></tr>`;
+  `).join("") : `<tr><td colspan="6" class="text-muted">Nenhum cliente encontrado.</td></tr>`;
 
   $("#clientes-lista-body").querySelectorAll(".linha-cliente").forEach(tr => {
     tr.addEventListener("click", () => abrirCliente(tr.dataset.clienteId));
@@ -598,37 +606,37 @@ $("#busca-cliente-lista").addEventListener("input", () => {
 
 async function abrirCliente(clienteId) {
   mostrarView("cliente-detalhe");
-  $("#cliente-cabecalho").innerHTML = `<p class="loading">Carregando…</p>`;
+  $("#cliente-cabecalho").innerHTML = `<p class="text-muted">Carregando…</p>`;
 
   const r = await fetch(`/api/clientes/${clienteId}`);
   const d = await r.json();
   if (!r.ok) {
-    $("#cliente-cabecalho").innerHTML = `<div class="erro-box">${d.erro}</div>`;
+    $("#cliente-cabecalho").innerHTML = `<div class="alert alert-danger">${d.erro}</div>`;
     return;
   }
 
   const c = d.cliente;
   $("#cliente-cabecalho").innerHTML = `
-    <h2>${escapeHtml(c.nome)} <span class="badge">${c.cliente_id}</span></h2>
-    <p class="kv"><span class="badge ${c.status === 'Ativo' ? 'good' : ''}">${escapeHtml(c.status)}</span></p>
-    <p class="kv"><b>CPF:</b> ${c.cpf || 'não informado'}</p>
-    <p class="kv"><b>E-mail:</b> ${escapeHtml(c.email || 'não informado')}</p>
-    <p class="kv"><b>Telefone:</b> ${escapeHtml(c.telefone || 'não informado')}</p>
-    <p class="kv"><b>Cidade:</b> ${escapeHtml(c.cidade || 'não informada')}</p>
-    <p class="kv"><b>Cliente desde:</b> ${c.data_cadastro} ${c.ultima_interacao ? `&nbsp; <b>Última interação:</b> ${c.ultima_interacao}` : ''}</p>
-    ${c.observacoes ? `<p class="kv"><b>Observações:</b> ${escapeHtml(c.observacoes)}</p>` : ''}
+    <h3>${escapeHtml(c.nome)} <span class="badge badge-light">${c.cliente_id}</span></h3>
+    <p><span class="badge ${c.status === 'Ativo' ? 'badge-success' : 'badge-secondary'}">${escapeHtml(c.status)}</span></p>
+    <p><b>CPF:</b> ${c.cpf || 'não informado'}</p>
+    <p><b>E-mail:</b> ${escapeHtml(c.email || 'não informado')}</p>
+    <p><b>Telefone:</b> ${escapeHtml(c.telefone || 'não informado')}</p>
+    <p><b>Cidade:</b> ${escapeHtml(c.cidade || 'não informada')}</p>
+    <p><b>Cliente desde:</b> ${c.data_cadastro} ${c.ultima_interacao ? `&nbsp; <b>Última interação:</b> ${c.ultima_interacao}` : ''}</p>
+    ${c.observacoes ? `<p><b>Observações:</b> ${escapeHtml(c.observacoes)}</p>` : ''}
   `;
 
   $("#cliente-casos-body").innerHTML = d.casos.length ? d.casos.map(caso => `
-    <tr class="linha-caso" data-caso-id="${caso.caso_id}" style="cursor:pointer">
-      <td class="mono">${caso.caso_id}</td>
+    <tr class="linha-caso cursor-pointer" data-caso-id="${caso.caso_id}">
+      <td class="text-monospace">${caso.caso_id}</td>
       <td>${escapeHtml(caso.categoria)}</td>
-      <td><span class="badge ${badgesStatus[caso.status] || ''}">${escapeHtml(caso.status)}</span></td>
+      <td><span class="badge ${badgesStatus[caso.status] || 'badge-secondary'}">${escapeHtml(caso.status)}</span></td>
       <td>${escapeHtml(caso.prioridade)}</td>
       <td>${escapeHtml(caso.responsavel_nome || 'não atribuído')}</td>
       <td>${caso.atualizado_em}</td>
     </tr>
-  `).join("") : `<tr><td colspan="6" class="loading">Nenhum caso para este cliente.</td></tr>`;
+  `).join("") : `<tr><td colspan="6" class="text-muted">Nenhum caso para este cliente.</td></tr>`;
 
   $("#cliente-casos-body").querySelectorAll(".linha-caso").forEach(tr => {
     tr.addEventListener("click", () => abrirCaso(tr.dataset.casoId));
@@ -650,21 +658,24 @@ async function carregarConfiguracoes() {
   });
 
   $("#config-lista").innerHTML = Object.keys(porCategoria).sort().map(categoria => `
-    <div class="panel">
-      <h2>${escapeHtml(categoria)}</h2>
-      ${porCategoria[categoria].map(c => `
-        <div class="form-row" style="border-bottom:1px solid var(--line); padding-bottom:0.9rem; margin-bottom:0.9rem;">
-          <label for="cfg-${c.config_id}"><b class="mono">${escapeHtml(c.chave)}</b>${c.descricao ? ` — ${escapeHtml(c.descricao)}` : ''}</label>
-          <textarea id="cfg-${c.config_id}" style="min-height:3rem">${escapeHtml(c.valor)}</textarea>
-          <div style="display:flex; align-items:center; gap:0.8rem; margin-top:0.5rem;">
-            <label style="display:flex; align-items:center; gap:0.35rem; margin:0; font-size:0.85rem; color:var(--ink);">
-              <input type="checkbox" id="cfg-ativo-${c.config_id}" ${c.ativo === 'Sim' ? 'checked' : ''}> Ativo (em uso pela IA)
-            </label>
-            <button class="secondary" onclick="salvarConfig('${c.config_id}')">Salvar</button>
-            <span class="loading" id="cfg-status-${c.config_id}"></span>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">${escapeHtml(categoria)}</h3></div>
+      <div class="card-body">
+        ${porCategoria[categoria].map(c => `
+          <div class="mb-3 pb-3 border-bottom">
+            <label for="cfg-${c.config_id}"><b class="text-monospace">${escapeHtml(c.chave)}</b>${c.descricao ? ` — ${escapeHtml(c.descricao)}` : ''}</label>
+            <textarea id="cfg-${c.config_id}" class="form-control">${escapeHtml(c.valor)}</textarea>
+            <div class="d-flex align-items-center mt-2" style="gap:0.8rem">
+              <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="cfg-ativo-${c.config_id}" ${c.ativo === 'Sim' ? 'checked' : ''}>
+                <label class="form-check-label" for="cfg-ativo-${c.config_id}">Ativo (em uso pela IA)</label>
+              </div>
+              <button class="btn btn-outline-secondary btn-sm" onclick="salvarConfig('${c.config_id}')">Salvar</button>
+              <span class="text-muted" id="cfg-status-${c.config_id}"></span>
+            </div>
           </div>
-        </div>
-      `).join("")}
+        `).join("")}
+      </div>
     </div>
   `).join("");
 }
@@ -702,7 +713,7 @@ async function carregarPendentes() {
 
   if (pendentes.length === 0) {
     badge.style.display = "none";
-    el.innerHTML = `<p class="loading">Nenhuma aprovação pendente no momento.</p>`;
+    el.innerHTML = `<p class="text-muted">Nenhuma aprovação pendente no momento.</p>`;
     return;
   }
 
@@ -710,17 +721,21 @@ async function carregarPendentes() {
   badge.textContent = pendentes.length;
 
   el.innerHTML = pendentes.map(p => `
-    <div class="panel" id="card-${p.mensagem_id}">
-      <h2>${escapeHtml(p.cliente_nome)} <span class="badge">${p.cliente_id}</span>${p.intent ? ` <span class="badge">${escapeHtml(p.intent)}</span>` : ''}</h2>
-      <p class="kv"><b>Recebido:</b> ${p.data_hora}</p>
-      <p class="kv"><b>Mensagem do cliente:</b></p>
-      <div class="resposta-box">${escapeHtml(p.mensagem)}</div>
-      <p class="kv" style="margin-top:0.8rem"><b>Rascunho da resposta (pode editar antes de aprovar):</b></p>
-      <textarea id="texto-${p.mensagem_id}" style="min-height:8rem">${escapeHtml(p.resposta_ia)}</textarea>
-      <div style="margin-top:0.8rem; display:flex; gap:0.6rem; align-items:center;">
-        <button class="primary" onclick="aprovarPendente('${p.mensagem_id}')">Aprovar e enviar</button>
-        <button class="secondary" onclick="rejeitarPendente('${p.mensagem_id}')">Rejeitar</button>
-        <span class="loading" id="status-${p.mensagem_id}"></span>
+    <div class="card" id="card-${p.mensagem_id}">
+      <div class="card-header">
+        <h3 class="card-title">${escapeHtml(p.cliente_nome)} <span class="badge badge-light">${p.cliente_id}</span>${p.intent ? ` <span class="badge badge-light">${escapeHtml(p.intent)}</span>` : ''}</h3>
+      </div>
+      <div class="card-body">
+        <p class="mb-1"><b>Recebido:</b> ${p.data_hora}</p>
+        <p class="mb-1"><b>Mensagem do cliente:</b></p>
+        <div class="resposta-box">${escapeHtml(p.mensagem)}</div>
+        <p class="mb-1 mt-3"><b>Rascunho da resposta (pode editar antes de aprovar):</b></p>
+        <textarea id="texto-${p.mensagem_id}" class="form-control resposta-edit">${escapeHtml(p.resposta_ia)}</textarea>
+        <div class="mt-3 d-flex align-items-center" style="gap:0.6rem">
+          <button class="btn btn-success" onclick="aprovarPendente('${p.mensagem_id}')">Aprovar e enviar</button>
+          <button class="btn btn-outline-secondary" onclick="rejeitarPendente('${p.mensagem_id}')">Rejeitar</button>
+          <span class="text-muted" id="status-${p.mensagem_id}"></span>
+        </div>
       </div>
     </div>
   `).join("");
@@ -765,11 +780,11 @@ async function buscarCliente() {
   const resultadoEl = $("#resultado-busca");
 
   if (!nome && !cpf && !email) {
-    resultadoEl.innerHTML = `<div class="erro-box">Preencha nome, CPF ou e-mail.</div>`;
+    resultadoEl.innerHTML = `<div class="alert alert-danger">Preencha nome, CPF ou e-mail.</div>`;
     return;
   }
 
-  resultadoEl.innerHTML = `<p class="loading">Buscando…</p>`;
+  resultadoEl.innerHTML = `<p class="text-muted">Buscando…</p>`;
   const r = await fetch("/api/identificar_cliente", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -778,13 +793,12 @@ async function buscarCliente() {
   const d = await r.json();
 
   if (!d.encontrado) {
-    resultadoEl.innerHTML = `<div class="erro-box">Nenhum cliente encontrado com esses dados.</div>`;
+    resultadoEl.innerHTML = `<div class="alert alert-danger">Nenhum cliente encontrado com esses dados.</div>`;
     return;
   }
 
-  resultadoEl.innerHTML = `<p class="kv"><span class="badge">encontrado</span> ${d.nome} (${d.cliente_id}) — CPF ${d.cpf} — ${d.email || 'sem e-mail'}</p>`;
+  resultadoEl.innerHTML = `<p><span class="badge badge-light">encontrado</span> ${d.nome} (${d.cliente_id}) — CPF ${d.cpf} — ${d.email || 'sem e-mail'}</p>`;
 
-  // Seleciona o cliente encontrado no dropdown do teste de pipeline.
   const select = $("#cliente");
   if ([...select.options].some(o => o.value === d.cliente_id)) {
     select.value = d.cliente_id;
@@ -793,61 +807,64 @@ async function buscarCliente() {
 
 $("#buscar-cliente").addEventListener("click", buscarCliente);
 
+function smallBox(cor, numero, label) {
+  return `
+    <div class="col-lg-4 col-6">
+      <div class="small-box bg-${cor}">
+        <div class="inner"><h3>${numero}</h3><p>${label}</p></div>
+        <div class="icon"><i class="fas fa-chart-bar"></i></div>
+      </div>
+    </div>
+  `;
+}
+
 async function carregarStatus() {
   const r = await fetch("/api/status");
   const d = await r.json();
 
-  const totalLinhas = d.tabelas.reduce((s, t) => s + t.linhas, 0);
   const modulosProntos = d.modulos.filter(m => m.existe).length;
-  $("#stat-row").innerHTML = `
-    <div class="stat"><span class="n">${d.tabelas.length}</span><span class="l">Tabelas</span></div>
-    <div class="stat"><span class="n">${d.commits.length}</span><span class="l">Commits</span></div>
-    <div class="stat"><span class="n">${modulosProntos}/${d.modulos.length}</span><span class="l">Módulos Motor IA</span></div>
-  `;
+  $("#stat-row").innerHTML =
+    smallBox("info", d.tabelas.length, "Tabelas") +
+    smallBox("success", d.commits.length, "Commits") +
+    smallBox("warning", `${modulosProntos}/${d.modulos.length}`, "Módulos Motor IA");
 
   $("#modulos").innerHTML = d.modulos.map(m => `
-    <div class="modulo">
-      <span class="check ${m.existe ? 'sim' : 'nao'}">${m.existe ? '✓' : '·'}</span>
-      <span>${m.nome}</span>
-    </div>
+    <p class="mb-2"><i class="fas ${m.existe ? 'fa-check-circle text-success' : 'fa-circle text-muted'} mr-2"></i>${m.nome}</p>
   `).join("");
 
   $("#integracoes").innerHTML = d.integracoes.map(i => `
-    <div class="modulo">
-      <span class="check ${i.configurado ? 'sim' : 'nao'}">${i.configurado ? '✓' : '·'}</span>
-      <span>${i.nome}${i.configurado ? '' : ' <span class="badge">modo simulado</span>'}</span>
-    </div>
+    <p class="mb-2"><i class="fas ${i.configurado ? 'fa-check-circle text-success' : 'fa-circle text-muted'} mr-2"></i>${i.nome}${i.configurado ? '' : ' <span class="badge badge-light">modo simulado</span>'}</p>
   `).join("");
 
   const logIa = d.log_ia;
-  $("#stat-row-log-ia").innerHTML = `
-    <div class="stat"><span class="n">${logIa.total_chamadas}</span><span class="l">Chamadas à IA</span></div>
-    <div class="stat"><span class="n">${logIa.total_tokens_entrada.toLocaleString('pt-BR')}</span><span class="l">Tokens entrada</span></div>
-    <div class="stat"><span class="n">${logIa.total_tokens_saida.toLocaleString('pt-BR')}</span><span class="l">Tokens saída</span></div>
-  `;
+  $("#stat-row-log-ia").innerHTML =
+    smallBox("secondary", logIa.total_chamadas, "Chamadas à IA") +
+    smallBox("secondary", logIa.total_tokens_entrada.toLocaleString('pt-BR'), "Tokens entrada") +
+    smallBox("secondary", logIa.total_tokens_saida.toLocaleString('pt-BR'), "Tokens saída");
+
   $("#log-ia-body").innerHTML = logIa.por_modulo.length ? logIa.por_modulo.map(m => `
     <tr>
-      <td class="mono">${m.prompt_key}</td>
-      <td style="text-align:right">${m.chamadas}</td>
-      <td style="text-align:right">${(m.tokens_entrada || 0).toLocaleString('pt-BR')}</td>
-      <td style="text-align:right">${(m.tokens_saida || 0).toLocaleString('pt-BR')}</td>
-      <td style="text-align:right">${m.erros || 0}</td>
+      <td class="text-monospace">${m.prompt_key}</td>
+      <td class="text-right">${m.chamadas}</td>
+      <td class="text-right">${(m.tokens_entrada || 0).toLocaleString('pt-BR')}</td>
+      <td class="text-right">${(m.tokens_saida || 0).toLocaleString('pt-BR')}</td>
+      <td class="text-right">${m.erros || 0}</td>
     </tr>
-  `).join("") : `<tr><td colspan="5" class="loading">Nenhuma chamada registrada ainda.</td></tr>`;
+  `).join("") : `<tr><td colspan="5" class="text-muted">Nenhuma chamada registrada ainda.</td></tr>`;
 
   $("#tabelas-body").innerHTML = d.tabelas.map(t => `
     <tr>
-      <td class="mono">${t.nome}</td>
-      <td><span class="badge">${t.camada}</span></td>
-      <td style="text-align:right">${t.linhas}</td>
+      <td class="text-monospace">${t.nome}</td>
+      <td><span class="badge badge-light">${t.camada}</span></td>
+      <td class="text-right">${t.linhas}</td>
     </tr>
   `).join("");
 
   $("#commits").innerHTML = d.commits.map(c => `
-    <div class="tl-item">
-      <span class="tl-hash mono">${c.hash}</span>${c.mensagem}
-      <span class="tl-data">${c.data}</span>
-    </div>
+    <li class="list-group-item">
+      <span class="badge badge-light text-monospace">${c.hash}</span> ${c.mensagem}
+      <br><small class="text-muted">${c.data}</small>
+    </li>
   `).join("");
 }
 
@@ -859,7 +876,8 @@ async function carregarClientes() {
 
 function badgeAcao(acao) {
   const nomes = { enviar: "enviar ao cliente", encaminhar_humano: "encaminhar a humano", revisar: "reter para revisão" };
-  return `<span class="pill ${acao}">${nomes[acao] || acao}</span>`;
+  const cor = acao === "enviar" ? "badge-success" : "badge-danger";
+  return `<span class="badge ${cor}">${nomes[acao] || acao}</span>`;
 }
 
 async function enviarPipeline() {
@@ -872,7 +890,7 @@ async function enviarPipeline() {
 
   botao.disabled = true;
   resultadoEl.style.display = "block";
-  resultadoEl.innerHTML = `<p class="loading">Rodando Classificador → Planejador → Consultor → Redator → Auditor…</p>`;
+  resultadoEl.innerHTML = `<p class="text-muted">Rodando Classificador → Planejador → Consultor → Redator → Auditor…</p>`;
 
   try {
     const r = await fetch("/api/pipeline", {
@@ -883,49 +901,49 @@ async function enviarPipeline() {
     const d = await r.json();
 
     if (!r.ok) {
-      resultadoEl.innerHTML = `<div class="erro-box">${d.erro}</div>`;
+      resultadoEl.innerHTML = `<div class="alert alert-danger">${d.erro}</div>`;
       return;
     }
 
     const c = d.classificacao;
     let html = "";
 
-    html += `<div class="step"><h3>1. Classificação</h3>
-      <p class="kv"><b>Intenção:</b> ${c.intencao} ${c.precisa_humano ? '<span class="badge">precisa_humano</span>' : ''}</p>
-      <p class="kv"><b>Resumo:</b> ${c.resumo}</p>
-      ${c.cpf_mencionado ? `<p class="kv"><b>CPF mencionado:</b> ${c.cpf_mencionado}</p>` : ''}
-      ${c.protocolo_mencionado ? `<p class="kv"><b>Protocolo mencionado:</b> ${c.protocolo_mencionado}</p>` : ''}
-      ${c.servico_mencionado ? `<p class="kv"><b>Serviço mencionado:</b> ${c.servico_mencionado}</p>` : ''}
+    html += `<div class="mb-3 pb-2 border-bottom"><h5>1. Classificação</h5>
+      <p class="mb-1"><b>Intenção:</b> ${c.intencao} ${c.precisa_humano ? '<span class="badge badge-light">precisa_humano</span>' : ''}</p>
+      <p class="mb-1"><b>Resumo:</b> ${c.resumo}</p>
+      ${c.cpf_mencionado ? `<p class="mb-1"><b>CPF mencionado:</b> ${c.cpf_mencionado}</p>` : ''}
+      ${c.protocolo_mencionado ? `<p class="mb-1"><b>Protocolo mencionado:</b> ${c.protocolo_mencionado}</p>` : ''}
+      ${c.servico_mencionado ? `<p class="mb-1"><b>Serviço mencionado:</b> ${c.servico_mencionado}</p>` : ''}
     </div>`;
 
-    html += `<div class="step"><h3>2. Plano</h3>
-      <p class="kv"><b>Fontes consultadas:</b> ${d.plano.fontes.join(", ") || "(nenhuma)"}</p>
-      <p class="kv"><b>Encaminhar humano:</b> ${d.plano.encaminhar_humano ? "sim" : "não"}${d.plano.motivo_humano ? " — " + d.plano.motivo_humano : ""}</p>
+    html += `<div class="mb-3 pb-2 border-bottom"><h5>2. Plano</h5>
+      <p class="mb-1"><b>Fontes consultadas:</b> ${d.plano.fontes.join(", ") || "(nenhuma)"}</p>
+      <p class="mb-1"><b>Encaminhar humano:</b> ${d.plano.encaminhar_humano ? "sim" : "não"}${d.plano.motivo_humano ? " — " + d.plano.motivo_humano : ""}</p>
     </div>`;
 
-    html += `<div class="step"><h3>3. Auditoria</h3>
-      <p class="kv">${badgeAcao(d.auditoria.acao)} ${d.auditoria.motivo ? "— " + d.auditoria.motivo : ""}</p>
+    html += `<div class="mb-3 pb-2 border-bottom"><h5>3. Auditoria</h5>
+      <p class="mb-1">${badgeAcao(d.auditoria.acao)} ${d.auditoria.motivo ? "— " + d.auditoria.motivo : ""}</p>
     </div>`;
 
-    html += `<div class="step"><h3>4. Resultado final</h3>`;
+    html += `<div class="mb-3 pb-2 border-bottom"><h5>4. Resultado final</h5>`;
     if (d.auditoria.acao === "enviar") {
-      html += `<p class="kv">Resposta enviada ao cliente:</p><div class="resposta-box">${d.resposta_gerada}</div>`;
+      html += `<p class="mb-1">Resposta enviada ao cliente:</p><div class="resposta-box">${d.resposta_gerada}</div>`;
     } else if (d.auditoria.acao === "encaminhar_humano") {
-      html += `<p class="kv">Resposta da IA descartada. Encaminhado para atendimento humano.</p>`;
+      html += `<p class="mb-1">Resposta da IA descartada. Encaminhado para atendimento humano.</p>`;
     } else {
-      html += `<p class="kv">Resposta retida para revisão (não enviada):</p><div class="resposta-box">${d.resposta_gerada}</div>`;
+      html += `<p class="mb-1">Resposta retida para revisão (não enviada):</p><div class="resposta-box">${d.resposta_gerada}</div>`;
     }
     html += `</div>`;
 
     if (d.memoria_atualizada) {
-      html += `<div class="step"><h3>5. Memória atualizada</h3>
-        <p class="kv"><b>Nova versão:</b> ${d.memoria_atualizada}</p>
+      html += `<div class="mb-3"><h5>5. Memória atualizada</h5>
+        <p class="mb-1"><b>Nova versão:</b> ${d.memoria_atualizada}</p>
       </div>`;
     }
 
     resultadoEl.innerHTML = html;
   } catch (e) {
-    resultadoEl.innerHTML = `<div class="erro-box">Erro inesperado: ${e}</div>`;
+    resultadoEl.innerHTML = `<div class="alert alert-danger">Erro inesperado: ${e}</div>`;
   } finally {
     botao.disabled = false;
   }
