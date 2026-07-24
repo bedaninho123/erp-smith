@@ -170,7 +170,7 @@
             <div class="card-header"><h3 class="card-title">Processos</h3></div>
             <div class="card-body table-responsive p-0">
               <table class="table table-hover text-nowrap">
-                <thead><tr><th>Serviço</th><th>Protocolo</th><th>Status</th><th>Prazo estimado</th><th>Próxima ação</th><th></th></tr></thead>
+                <thead><tr><th>Serviço</th><th>Protocolo</th><th>Status</th><th>Prazo estimado</th><th>Próxima ação</th><th>Documentos</th><th></th></tr></thead>
                 <tbody id="caso-processos-body"></tbody>
               </table>
             </div>
@@ -216,6 +216,11 @@
               <button class="btn btn-outline-secondary ml-2" id="cancelar-edicao-processo" style="display:none">Cancelar edição</button>
               <span class="text-muted ml-2" id="salvar-processo-status"></span>
             </div>
+          </div>
+
+          <div class="card" id="card-checklist" style="display:none">
+            <div class="card-header"><h3 class="card-title" id="checklist-titulo">Checklist de documentos</h3></div>
+            <div class="card-body" id="checklist-corpo"></div>
           </div>
 
           <div class="card">
@@ -432,6 +437,7 @@
 
 <script>
 const $ = (sel) => document.querySelector(sel);
+let casoDocumentosAtuais = [];
 
 document.querySelectorAll("[data-view]").forEach(btn => {
   btn.addEventListener("click", (e) => {
@@ -522,6 +528,9 @@ async function abrirCaso(casoId) {
     ${c.observacoes ? `<p><b>Observações:</b> ${escapeHtml(c.observacoes)}</p>` : ''}
   `;
 
+  casoDocumentosAtuais = d.documentos;
+  $("#card-checklist").style.display = "none";
+
   $("#caso-processos-body").innerHTML = d.processos.length ? d.processos.map(p => `
     <tr class="linha-processo" data-processo='${JSON.stringify(p).replace(/'/g, "&#39;")}'>
       <td>${escapeHtml(p.nome_servico)}</td>
@@ -529,14 +538,24 @@ async function abrirCaso(casoId) {
       <td>${escapeHtml(p.status)}</td>
       <td>${p.prazo_estimado || '—'}</td>
       <td>${escapeHtml(p.proxima_acao || '—')}</td>
-      <td><button class="btn btn-outline-secondary btn-sm btn-editar-processo">Editar</button></td>
+      <td>${documentosBadge(p.checklist)}</td>
+      <td>
+        <button class="btn btn-outline-secondary btn-sm btn-editar-processo">Editar</button>
+        ${p.checklist.length ? '<button class="btn btn-outline-primary btn-sm btn-checklist-processo ml-1">Checklist</button>' : ''}
+      </td>
     </tr>
-  `).join("") : `<tr><td colspan="6" class="text-muted">Nenhum processo neste caso.</td></tr>`;
+  `).join("") : `<tr><td colspan="7" class="text-muted">Nenhum processo neste caso.</td></tr>`;
 
   $("#caso-processos-body").querySelectorAll(".btn-editar-processo").forEach(btn => {
     btn.addEventListener("click", (ev) => {
       const tr = ev.target.closest(".linha-processo");
       editarProcesso(JSON.parse(tr.dataset.processo));
+    });
+  });
+  $("#caso-processos-body").querySelectorAll(".btn-checklist-processo").forEach(btn => {
+    btn.addEventListener("click", (ev) => {
+      const tr = ev.target.closest(".linha-processo");
+      abrirChecklist(JSON.parse(tr.dataset.processo));
     });
   });
 
@@ -712,6 +731,93 @@ async function salvarProcesso() {
 
 $("#salvar-processo").addEventListener("click", salvarProcesso);
 $("#cancelar-edicao-processo").addEventListener("click", () => resetFormularioProcesso($("#salvar-processo").dataset.casoId));
+
+function documentosBadge(checklist) {
+  if (!checklist.length) return '<span class="text-muted">—</span>';
+  const recebidos = checklist.filter(i => i.recebido).length;
+  const cor = recebidos === checklist.length ? 'badge-success' : (recebidos === 0 ? 'badge-secondary' : 'badge-warning');
+  return `<span class="badge ${cor}">${recebidos}/${checklist.length}</span>`;
+}
+
+function abrirChecklist(processo) {
+  $("#card-checklist").style.display = "";
+  $("#checklist-titulo").textContent = `Checklist de documentos — ${processo.nome_servico} (${processo.processo_id})`;
+  renderChecklist(processo);
+  $("#card-checklist").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function renderChecklist(processo) {
+  let grupoAtual = "__nenhum_ainda__";
+  const linhas = processo.checklist.map(item => {
+    let cabecalho = "";
+    if (item.grupo !== grupoAtual) {
+      grupoAtual = item.grupo;
+      if (grupoAtual) cabecalho = `<h6 class="mt-3">${escapeHtml(grupoAtual)}</h6>`;
+    }
+    const opcoesDocumentos = casoDocumentosAtuais
+      .filter(doc => !item.documentos.some(m => m.documento_id === doc.documento_id))
+      .map(doc => `<option value="${doc.documento_id}">${escapeHtml(doc.nome_arquivo || doc.documento_id)}</option>`)
+      .join("");
+    const corpo = item.recebido
+      ? `<div class="mb-2">
+          <span class="badge badge-success mr-2">Recebido</span>${escapeHtml(item.item)}
+          <div class="mt-1">
+            ${item.documentos.map(doc => `
+              <span class="badge badge-light mr-1">
+                ${escapeHtml(doc.nome_arquivo || doc.documento_id)}
+                <button type="button" class="btn-remover-checklist border-0 bg-transparent text-danger" data-dck="${doc.documento_checklist_id}" title="Remover marcação">&times;</button>
+              </span>
+            `).join("")}
+          </div>
+        </div>`
+      : `<div class="mb-2">
+          <span class="badge badge-secondary mr-2">Faltando</span>${escapeHtml(item.item)}
+          <div class="mt-1 form-inline">
+            <select class="form-control form-control-sm mr-2 select-doc-checklist" data-dex="${item.documento_exigido_id}" style="min-width:220px">
+              <option value="">selecione um documento recebido...</option>
+              ${opcoesDocumentos}
+            </select>
+            <button type="button" class="btn btn-outline-primary btn-sm btn-marcar-checklist" data-dex="${item.documento_exigido_id}">Marcar</button>
+          </div>
+        </div>`;
+    return cabecalho + corpo;
+  }).join("");
+
+  $("#checklist-corpo").innerHTML = linhas || `<p class="text-muted">Nenhum item de checklist cadastrado para este serviço.</p>`;
+
+  $("#checklist-corpo").querySelectorAll(".btn-marcar-checklist").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const dex = btn.dataset.dex;
+      const select = $("#checklist-corpo").querySelector(`.select-doc-checklist[data-dex="${dex}"]`);
+      const documentoId = select.value;
+      if (!documentoId) { alert("Selecione um documento."); return; }
+      const r = await fetch(`/api/processos/${processo.processo_id}/checklist`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documento_exigido_id: dex, documento_id: documentoId }),
+      });
+      const d = await r.json();
+      if (!r.ok) { alert("Erro ao marcar: " + d.erro); return; }
+      await recarregarChecklist(processo.caso_id, processo.processo_id);
+    });
+  });
+
+  $("#checklist-corpo").querySelectorAll(".btn-remover-checklist").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const r = await fetch(`/api/checklist/${btn.dataset.dck}/remover`, { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) { alert("Erro ao remover: " + d.erro); return; }
+      await recarregarChecklist(processo.caso_id, processo.processo_id);
+    });
+  });
+}
+
+async function recarregarChecklist(casoId, processoId) {
+  await abrirCaso(casoId);
+  const tr = [...document.querySelectorAll(".linha-processo")].find(
+    el => JSON.parse(el.dataset.processo).processo_id === processoId
+  );
+  if (tr) abrirChecklist(JSON.parse(tr.dataset.processo));
+}
 
 $("#voltar-casos").addEventListener("click", () => {
   mostrarView("casos");

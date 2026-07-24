@@ -16,7 +16,7 @@ from flask import Flask, jsonify, redirect, render_template, request, send_file,
 from werkzeug.security import check_password_hash
 
 from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
-from core import motor_documentos, motor_mensagens
+from core import motor_checklist, motor_documentos, motor_mensagens
 from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
 from core.motor_processos import atualizar_processo, criar_processo
 from integracoes.config import shooting_house_configurado
@@ -251,6 +251,11 @@ def caso_detalhe(caso_id):
         "WHERE p.caso_id = ? ORDER BY p.data_abertura",
         (caso_id,),
     ).fetchall()
+    processos_list = []
+    for r in processos:
+        p = dict(r)
+        p["checklist"] = motor_checklist.status_checklist(con, p["processo_id"])
+        processos_list.append(p)
 
     documentos = con.execute(
         "SELECT * FROM documento WHERE caso_id = ? "
@@ -280,7 +285,7 @@ def caso_detalhe(caso_id):
     con.close()
     return jsonify(
         caso=dict(caso),
-        processos=[dict(r) for r in processos],
+        processos=processos_list,
         documentos=[dict(r) for r in documentos],
         historico=[dict(r) for r in historico],
         mensagens=[dict(r) for r in mensagens],
@@ -387,6 +392,34 @@ def processo_atualizar(processo_id):
             observacoes=(corpo.get("observacoes") or "").strip() or None,
             alterado_por=session.get("usuario_nome", "Painel administrativo"),
         )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
+
+
+@app.route("/api/processos/<processo_id>/checklist", methods=["POST"])
+@login_required
+def checklist_marcar(processo_id):
+    corpo = request.get_json(force=True)
+    documento_exigido_id = (corpo.get("documento_exigido_id") or "").strip()
+    documento_id = (corpo.get("documento_id") or "").strip()
+    if not documento_exigido_id or not documento_id:
+        return jsonify(erro="Informe o item do checklist e o documento."), 400
+    try:
+        novo_id = motor_checklist.marcar_documento(
+            processo_id, documento_exigido_id, documento_id,
+            marcado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True, documento_checklist_id=novo_id)
+
+
+@app.route("/api/checklist/<documento_checklist_id>/remover", methods=["POST"])
+@login_required
+def checklist_desmarcar(documento_checklist_id):
+    try:
+        motor_checklist.desmarcar(documento_checklist_id)
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True)

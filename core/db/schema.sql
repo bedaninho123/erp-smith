@@ -143,6 +143,25 @@ CREATE INDEX idx_documento_cliente_id ON documento(cliente_id);
 CREATE INDEX idx_documento_caso_id ON documento(caso_id);
 CREATE INDEX idx_documento_processo_id ON documento(processo_id);
 
+-- Rastreamento de documento recebido vs. exigido, por processo (2026-07-24).
+-- Marcação sempre manual -- um funcionário confirma visualmente que um
+-- arquivo recebido é de fato aquele documento do checklist; a IA nunca
+-- infere/decide essa correspondência sozinha (seria a IA decidindo regra
+-- de negócio, o que o projeto proíbe). Um documento pode atender mais de
+-- um item (ex.: um PDF só com RG+CPF juntos), e um item pode ter mais de
+-- um documento marcado (raro, mas não impedido).
+CREATE TABLE documento_checklist (
+    documento_checklist_id  TEXT PRIMARY KEY,             -- DCK-000001
+    processo_id               TEXT NOT NULL REFERENCES processo(processo_id),
+    documento_exigido_id      TEXT NOT NULL REFERENCES documento_exigido(documento_exigido_id),
+    documento_id                TEXT NOT NULL REFERENCES documento(documento_id),
+    marcado_em                   TEXT NOT NULL,             -- ISO 8601
+    marcado_por                   TEXT NOT NULL
+);
+
+CREATE INDEX idx_documento_checklist_processo ON documento_checklist(processo_id);
+CREATE UNIQUE INDEX idx_documento_checklist_par ON documento_checklist(processo_id, documento_exigido_id, documento_id);
+
 -- Fonte: docs/schema_documento_sessao.md (08_Sessoes, 40_Listas_Auxiliares).
 -- sessao.caso_id é campo novo e opcional: "uma sessão pode iniciar sem
 -- caso e ser vinculada após classificação" (96_Relacionamentos_Casos).
