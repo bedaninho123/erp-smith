@@ -528,7 +528,7 @@ async function abrirCaso(casoId) {
     </p>
     <p><b>Responsável:</b> ${escapeHtml(c.responsavel_nome || 'não atribuído')}</p>
     ${c.descricao ? `<p><b>Descrição:</b> ${escapeHtml(c.descricao)}</p>` : ''}
-    <p><b>Criado em:</b> ${dataHoraBr(c.criado_em)} &nbsp; <b>Atualizado em:</b> ${dataHoraBr(c.atualizado_em)}</p>
+    <p><b>Criado em:</b> ${dataHoraBr(c.criado_em)}<br><b>Atualizado em:</b> ${dataHoraBr(c.atualizado_em)}</p>
     ${c.observacoes ? `<p><b>Observações:</b> ${escapeHtml(c.observacoes)}</p>` : ''}
   `;
 
