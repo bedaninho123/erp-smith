@@ -84,7 +84,30 @@
     <input type="hidden" name="caso_id" value="{{ caso.caso_id }}">
     <div class="campo">
       <label for="tipo_documento">O que é este documento?</label>
+      {% if itens_faltando %}
+      <select id="tipo_documento" name="tipo_documento" required
+        onchange="document.getElementById('tipo_documento_outro').style.display = (this.value === '__outro__') ? 'block' : 'none';">
+        <option value="" disabled selected>Selecione um documento da lista</option>
+        {% if itens_faltando|length > 1 %}
+          {% for grupo in itens_faltando %}
+          <optgroup label="{{ grupo.processo_label }}">
+            {% for item in grupo.itens %}
+            <option value="{{ item }}">{{ item }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endfor %}
+        {% else %}
+          {% for item in itens_faltando[0].itens %}
+          <option value="{{ item }}">{{ item }}</option>
+          {% endfor %}
+        {% endif %}
+        <option value="__outro__">Outro documento (não está na lista)</option>
+      </select>
+      <input id="tipo_documento_outro" name="tipo_documento_outro" type="text"
+        placeholder="Descreva o documento" style="display:none; margin-top:.6rem;">
+      {% else %}
       <input id="tipo_documento" name="tipo_documento" type="text" placeholder="Ex.: RG, comprovante de residência">
+      {% endif %}
     </div>
     <div class="campo">
       <label for="arquivo">Arquivo (PDF ou foto, até 15MB)</label>

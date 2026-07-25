@@ -445,6 +445,15 @@ def caso_detalhe(caso_id):
     caso["status_classe"] = _classe_selo(caso["status"])
     caso["processos"] = _processos_com_checklist(con, caso_id)
 
+    # Documentos que ainda faltam, agrupados por processo -- alimenta o
+    # <select> do formulário de envio (o cliente escolhe da lista em vez
+    # de escrever de cabeça o nome do documento exigido).
+    itens_faltando = []
+    for processo in caso["processos"]:
+        faltando = [item["item"] for item in processo["checklist"] if not item["recebido"]]
+        if faltando:
+            itens_faltando.append({"processo_label": processo["nome_servico"], "itens": faltando})
+
     documentos = con.execute(
         "SELECT documento_id, tipo_documento, nome_arquivo, status, data_envio "
         "FROM documento WHERE cliente_id = ? AND ("
@@ -459,6 +468,7 @@ def caso_detalhe(caso_id):
         ativo="casos",
         cliente_nome=session.get("cliente_nome"),
         caso=caso,
+        itens_faltando=itens_faltando,
         documentos=[dict(d) for d in documentos],
     )
 
@@ -512,10 +522,18 @@ def upload_documento():
         flash("Caso não encontrado.", "erro")
         return redirect(url_for("casos_lista"))
 
+    # "__outro__" é o valor do <select> quando o documento não está na
+    # lista de faltantes (portal_caso.html) -- nesse caso o texto de
+    # verdade vem do campo livre que aparece ao lado.
+    tipo_documento = (request.form.get("tipo_documento") or "").strip()
+    if tipo_documento == "__outro__":
+        tipo_documento = (request.form.get("tipo_documento_outro") or "").strip()
+    tipo_documento = tipo_documento or "Anexo enviado pelo cliente (Portal)"
+
     motor_documentos.salvar_documento(
         cliente_id, conteudo, arquivo.filename,
         caso_id=caso_id,
-        tipo_documento=(request.form.get("tipo_documento") or "").strip() or "Anexo enviado pelo cliente (Portal)",
+        tipo_documento=tipo_documento,
     )
     flash("Documento enviado.", "sucesso")
     return redirect(url_for("caso_detalhe", caso_id=caso_id))
