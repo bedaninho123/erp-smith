@@ -18,11 +18,13 @@ from werkzeug.security import check_password_hash
 from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
 from core import motor_checklist, motor_documentos, motor_mensagens
 from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
+from core.motor_notificacoes import destinatario_para_notificar
 from core.motor_processos import atualizar_processo, criar_processo
 from domain.clube_tiro.motor_campeonatos import (
     atualizar_campeonato, criar_campeonato, listar_campeonatos, remover_campeonato,
 )
 from integracoes.config import shooting_house_configurado
+from integracoes.gmail import enviar_email, gmail_configurado
 from motor_ia.atualizador_memoria import atualizar_memoria
 from motor_ia.auditor import auditar
 from motor_ia.classificador import classificar
@@ -54,6 +56,10 @@ if not os.getenv("WEBAPP_SECRET_KEY"):
     set_key(str(ENV_PATH), "WEBAPP_SECRET_KEY", _chave)
     os.environ["WEBAPP_SECRET_KEY"] = _chave
 
+# Mesma variável de portal/app.py -- o link do e-mail de notificação de
+# mudança de status aponta pro Portal do Cliente (porta própria, 5002).
+PORTAL_URL_BASE = os.environ.get("PORTAL_URL_BASE", "http://127.0.0.1:5002")
+
 app = Flask(__name__)
 app.secret_key = os.environ["WEBAPP_SECRET_KEY"]
 # Recarrega o template (.html) a cada requisição mesmo sem o modo debug
@@ -74,6 +80,29 @@ def login_required(f):
             return redirect(url_for("login", proximo=request.path))
         return f(*args, **kwargs)
     return wrapper
+
+
+def _notificar_cliente_mudanca_status(caso_id: str) -> None:
+    """E-mail genérico (nunca revela o novo status no corpo -- domínio
+    regulado de arma de fogo) avisando o cliente que algo mudou no
+    atendimento dele, com link pro Portal. Silencioso quando a
+    notificação está desligada, o cliente não tem e-mail cadastrado, ou
+    o Gmail ainda não foi autorizado nesta máquina -- nenhum desses
+    casos deve impedir a mudança de status em si de ter acontecido."""
+    destinatario = destinatario_para_notificar(caso_id)
+    if not destinatario or not gmail_configurado():
+        return
+    enviar_email(
+        destinatario=destinatario["email"],
+        assunto="Atualização no seu atendimento -- Smith Clube de Tiro",
+        corpo=(
+            f"Olá {destinatario['nome']},\n\n"
+            "Houve uma atualização no seu atendimento. Acesse o Portal do "
+            "Cliente para ver os detalhes:\n\n"
+            f"{PORTAL_URL_BASE}\n\n"
+            "Equipe Smith Clube de Tiro"
+        ),
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -307,12 +336,14 @@ def caso_atualizar_status(caso_id):
     if not novo_status:
         return jsonify(erro="Informe o novo status."), 400
     try:
-        atualizar_status(
+        status_antigo = atualizar_status(
             caso_id, novo_status, motivo=motivo,
             alterado_por=session.get("usuario_nome", "Painel administrativo"),
         )
     except ValueError as e:
         return jsonify(erro=str(e)), 400
+    if status_antigo != novo_status:
+        _notificar_cliente_mudanca_status(caso_id)
     return jsonify(ok=True)
 
 
@@ -385,7 +416,7 @@ def processo_atualizar(processo_id):
     if not novo_status:
         return jsonify(erro="Informe o status."), 400
     try:
-        atualizar_processo(
+        status_antigo, caso_id = atualizar_processo(
             processo_id,
             status=novo_status,
             protocolo=(corpo.get("protocolo") or "").strip() or None,
@@ -397,6 +428,8 @@ def processo_atualizar(processo_id):
         )
     except ValueError as e:
         return jsonify(erro=str(e)), 400
+    if status_antigo != novo_status:
+        _notificar_cliente_mudanca_status(caso_id)
     return jsonify(ok=True)
 
 

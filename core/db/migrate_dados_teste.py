@@ -374,6 +374,13 @@ def main():
              "validação. Desligar (mudar para 'Não') quando o sistema "
              "estiver validado o suficiente para enviar 100% automático.",
              "Sim"),
+            ("CFG-000029", "notificar_cliente_mudanca_status", "Sim", "portal",
+             "Enquanto 'Sim', o cliente recebe um e-mail genérico (sem "
+             "detalhe do novo status no corpo, só um link pro Portal) "
+             "sempre que o status de um caso ou processo dele muda pelo "
+             "painel administrativo. Desligar (mudar para 'Não') se o "
+             "volume de e-mail incomodar ou precisar pausar por algum bug.",
+             "Sim"),
         ],
     )
 

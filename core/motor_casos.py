@@ -92,7 +92,9 @@ def localizar_ou_criar_caso(cliente_id: str, titulo: str, categoria: str, **kwar
 def atualizar_status(
     caso_id: str, novo_status: str, motivo: Optional[str] = None,
     alterado_por: str = "Motor de Casos",
-) -> None:
+) -> str:
+    """Devolve o status anterior -- quem chama usa isso pra saber se o
+    status realmente mudou (ex.: decidir se notifica o cliente)."""
     if novo_status not in STATUS_VALIDOS:
         raise ValueError(f"Status inválido: {novo_status}. Use um de {sorted(STATUS_VALIDOS)}")
 
@@ -116,6 +118,7 @@ def atualizar_status(
             valor_anterior=status_antigo, valor_novo=novo_status, criado_por=alterado_por,
         )
         con.commit()
+        return status_antigo
     finally:
         con.close()
 

@@ -85,7 +85,9 @@ def atualizar_processo(
     responsavel_id: Optional[str],
     observacoes: Optional[str],
     alterado_por: str = "Painel administrativo",
-) -> None:
+) -> tuple[str, str]:
+    """Devolve (status_anterior, caso_id) -- quem chama usa isso pra saber
+    se o status realmente mudou e a qual caso notificar."""
     con = conectar()
     try:
         linha = con.execute(
@@ -115,5 +117,6 @@ def atualizar_processo(
                 criado_por=alterado_por,
             )
         con.commit()
+        return status_antigo, linha["caso_id"]
     finally:
         con.close()
