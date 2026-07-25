@@ -34,7 +34,12 @@
         Campeonatos
       </a>
       <a href="{{ url_for('resultados') }}" class="{{ 'ativo' if ativo == 'resultados' }}">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13v3M10 8v8M16 4v12"/></svg>
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 5.5h9M8 10h9M8 14.5h9"/>
+          <text x="2.2" y="7.2" font-size="5.2" font-family="'IBM Plex Mono', monospace" fill="currentColor" stroke="none">1</text>
+          <text x="2.2" y="11.7" font-size="5.2" font-family="'IBM Plex Mono', monospace" fill="currentColor" stroke="none">2</text>
+          <text x="2.2" y="16.2" font-size="5.2" font-family="'IBM Plex Mono', monospace" fill="currentColor" stroke="none">3</text>
+        </svg>
         Resultados
       </a>
       <a href="{{ url_for('habitualidade') }}" class="{{ 'ativo' if ativo == 'habitualidade' }}">
