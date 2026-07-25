@@ -108,10 +108,7 @@ def login():
 def entrar(token):
     cliente_id = validar_e_consumir_token(token)
     if not cliente_id:
-        return render_template(
-            "portal_login.html",
-            erro="Link inválido ou expirado. Solicite um novo acesso abaixo.",
-        )
+        return render_template("portal_expirado.html")
     con = sqlite3.connect(CORE_DB)
     con.row_factory = sqlite3.Row
     cliente = con.execute("SELECT nome FROM cliente WHERE cliente_id = ?", (cliente_id,)).fetchone()

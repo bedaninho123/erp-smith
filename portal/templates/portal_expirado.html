@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Link expirado — Portal do Cliente</title>
+{% include "_portal_estilo.html" %}
+<style>
+  .pagina-login {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  .caixa-login { width: 100%; max-width: 380px; }
+  .caixa-login .marca { display: block; text-align: center; margin-bottom: 1.4rem; }
+  .caixa-login .ficha { padding: 1.8rem 1.6rem; text-align: center; }
+  .subtitulo { color: var(--steel); font-size: .88rem; margin: .5rem 0 1.5rem; }
+</style>
+</head>
+<body>
+<div class="pagina-login">
+  <div class="caixa-login">
+    <span class="marca"><b>SMITH</b> CLUBE DE TIRO</span>
+    <div class="ficha">
+      <span class="selo selo--signal">Link expirado</span>
+      <h1 style="font-size:1.1rem; margin:.9rem 0 0;">Esse link não funciona mais</h1>
+      <p class="subtitulo">
+        Ele vale por 15 minutos e só pode ser usado uma vez, por segurança —
+        sem problema, é rápido pedir outro.
+      </p>
+      <a href="{{ url_for('login') }}" class="botao" style="display:block; width:100%; text-decoration:none;">Pedir novo link</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>
