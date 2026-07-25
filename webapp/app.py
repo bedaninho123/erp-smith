@@ -19,6 +19,9 @@ from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_p
 from core import motor_checklist, motor_documentos, motor_mensagens
 from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
 from core.motor_processos import atualizar_processo, criar_processo
+from domain.clube_tiro.motor_campeonatos import (
+    atualizar_campeonato, criar_campeonato, listar_campeonatos, remover_campeonato,
+)
 from integracoes.config import shooting_house_configurado
 from motor_ia.atualizador_memoria import atualizar_memoria
 from motor_ia.auditor import auditar
@@ -603,6 +606,63 @@ def configuracoes_atualizar(config_id):
     )
     con.commit()
     con.close()
+    return jsonify(ok=True)
+
+
+@app.route("/api/campeonatos")
+@login_required
+def campeonatos_lista():
+    ano = request.args.get("ano", type=int)
+    return jsonify(listar_campeonatos(ano=ano))
+
+
+@app.route("/api/campeonatos", methods=["POST"])
+@login_required
+def campeonatos_criar():
+    corpo = request.get_json(force=True)
+    nome = (corpo.get("nome") or "").strip()
+    data_inicio = (corpo.get("data_inicio") or "").strip()
+    data_fim = (corpo.get("data_fim") or "").strip() or None
+    local = (corpo.get("local") or "").strip() or None
+    observacoes = (corpo.get("observacoes") or "").strip() or None
+    if not nome or not data_inicio:
+        return jsonify(erro="Nome e data de início são obrigatórios."), 400
+
+    campeonato_id = criar_campeonato(
+        nome, data_inicio, data_fim=data_fim, local=local, observacoes=observacoes,
+    )
+    return jsonify(ok=True, campeonato_id=campeonato_id)
+
+
+@app.route("/api/campeonatos/<campeonato_id>", methods=["POST"])
+@login_required
+def campeonatos_atualizar(campeonato_id):
+    corpo = request.get_json(force=True)
+    nome = (corpo.get("nome") or "").strip()
+    data_inicio = (corpo.get("data_inicio") or "").strip()
+    data_fim = (corpo.get("data_fim") or "").strip() or None
+    local = (corpo.get("local") or "").strip() or None
+    observacoes = (corpo.get("observacoes") or "").strip() or None
+    if not nome or not data_inicio:
+        return jsonify(erro="Nome e data de início são obrigatórios."), 400
+
+    try:
+        atualizar_campeonato(
+            campeonato_id, nome, data_inicio, data_fim=data_fim, local=local,
+            observacoes=observacoes,
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 404
+    return jsonify(ok=True)
+
+
+@app.route("/api/campeonatos/<campeonato_id>/remover", methods=["POST"])
+@login_required
+def campeonatos_remover(campeonato_id):
+    try:
+        remover_campeonato(campeonato_id)
+    except ValueError as e:
+        return jsonify(erro=str(e)), 404
     return jsonify(ok=True)
 
 

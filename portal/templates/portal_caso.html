@@ -53,7 +53,7 @@
 <body>
 <div class="topo">
   <img class="marca-logo" src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
-  <span class="topo-usuario">{{ cliente_nome }}<a href="{{ url_for('sair') }}">Sair</a></span>
+  <span class="topo-usuario"><a href="{{ url_for('campeonatos') }}">Campeonatos</a>{{ cliente_nome }}<a href="{{ url_for('sair') }}">Sair</a></span>
 </div>
 
 <div class="conteudo">

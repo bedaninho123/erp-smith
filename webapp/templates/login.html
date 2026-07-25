@@ -7,11 +7,26 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
+<!-- Identidade visual Smith (preto/azul/branco da marca) por cima do
+     tema padrão do AdminLTE -- mesma paleta de
+     portal/templates/_portal_estilo.html, duplicada aqui de propósito
+     (mesmo padrão do resto do projeto: cada app Flask tem seu CSS
+     próprio, sem framework/build step comum). -->
+<style>
+  :root { --ink-deep: #131417; --blue: #396BB3; --blue-deep: #24487D; }
+  body.login-page { background: var(--ink-deep); }
+  .login-logo { text-align: center; margin-bottom: 1.6rem; }
+  .login-logo img { height: 52px; }
+  .btn-primary { background-color: var(--blue); border-color: var(--blue); }
+  .btn-primary:hover, .btn-primary:focus, .btn-primary:active { background-color: var(--blue-deep) !important; border-color: var(--blue-deep) !important; }
+  a { color: var(--blue-deep); }
+  a:hover { color: var(--blue); }
+</style>
 </head>
 <body class="hold-transition login-page">
 <div class="login-box">
   <div class="login-logo">
-    <b>ERP</b> Smith
+    <img src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
   </div>
   <div class="card">
     <div class="card-body login-card-body">

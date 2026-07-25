@@ -12,6 +12,7 @@ de documentos + upload -- sem chat com a IA pelo Portal por enquanto.
 import os
 import secrets
 import sqlite3
+from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from flask import Flask, flash, jsonify, redirect, render_template, request, sen
 from core import motor_checklist, motor_documentos
 from core.conexao import CORE_DB
 from core.motor_portal_auth import criar_token, localizar_cliente_por_cpf_ou_email, validar_e_consumir_token
+from domain.clube_tiro.motor_campeonatos import listar_campeonatos
 from integracoes.gmail import enviar_email, gmail_configurado
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,6 +33,12 @@ ENV_PATH = BASE_DIR / ".env"
 # diferentes não compartilham infra de validação).
 DOCUMENTO_EXTENSOES_ACEITAS = {".pdf", ".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp"}
 DOCUMENTO_TAMANHO_MAXIMO = 15 * 1024 * 1024  # 15 MB
+
+MESES_PT = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+]
+MESES_PT_ABREV = [m[:3].upper() for m in MESES_PT]
 
 load_dotenv(ENV_PATH)
 if not os.getenv("PORTAL_SECRET_KEY"):
@@ -183,6 +191,73 @@ def dashboard():
         "portal_dashboard.html",
         cliente_nome=session.get("cliente_nome"),
         casos=casos_resumo,
+    )
+
+
+@app.route("/portal/campeonatos")
+@cliente_login_required
+def campeonatos():
+    # Datas e contas nunca são feitas no template/IA -- calculadas aqui
+    # em Python, o texto final só fraseia o número pronto (mesmo
+    # princípio de integracoes/shooting_house.py).
+    hoje = datetime.now().date()
+    eventos = []
+    for c in listar_campeonatos():
+        data_inicio = datetime.strptime(c["data_inicio"], "%Y-%m-%d").date()
+        data_fim = datetime.strptime(c["data_fim"], "%Y-%m-%d").date()
+        if data_fim < hoje:
+            continue
+        dias_ate = (data_inicio - hoje).days
+        if dias_ate == 0:
+            rotulo = "Hoje"
+        elif dias_ate < 0:
+            rotulo = "Termina hoje" if data_fim == hoje else "Em andamento"
+        elif dias_ate == 1:
+            rotulo = "Amanhã"
+        elif dias_ate <= 6:
+            rotulo = f"Em {dias_ate} dias"
+        else:
+            rotulo = None
+
+        if data_fim == data_inicio:
+            intervalo = f"{data_inicio.day:02d} de {MESES_PT[data_inicio.month - 1]}"
+        elif data_inicio.month == data_fim.month:
+            intervalo = f"{data_inicio.day:02d} a {data_fim.day:02d} de {MESES_PT[data_inicio.month - 1]}"
+        else:
+            intervalo = (
+                f"{data_inicio.day:02d} de {MESES_PT_ABREV[data_inicio.month - 1]} "
+                f"a {data_fim.day:02d} de {MESES_PT_ABREV[data_fim.month - 1]}"
+            )
+        if data_fim.year != hoje.year or data_inicio.year != hoje.year:
+            intervalo += f" de {data_fim.year}"
+
+        eventos.append({
+            **c,
+            "dia": f"{data_inicio.day:02d}",
+            "mes_abrev": MESES_PT_ABREV[data_inicio.month - 1],
+            "data_inicio_obj": data_inicio,
+            "duracao_dias": (data_fim - data_inicio).days + 1,
+            "rotulo_contagem": rotulo,
+            "intervalo": intervalo,
+        })
+
+    proximo = eventos[0] if eventos else None
+    restantes = eventos[1:]
+
+    meses_grupos = []
+    for ev in restantes:
+        chave = (ev["data_inicio_obj"].year, ev["data_inicio_obj"].month)
+        if not meses_grupos or meses_grupos[-1]["chave"] != chave:
+            nome_mes = MESES_PT[ev["data_inicio_obj"].month - 1]
+            rotulo_mes = nome_mes if chave[0] == hoje.year else f"{nome_mes} de {chave[0]}"
+            meses_grupos.append({"chave": chave, "nome": rotulo_mes, "eventos": []})
+        meses_grupos[-1]["eventos"].append(ev)
+
+    return render_template(
+        "portal_campeonatos.html",
+        cliente_nome=session.get("cliente_nome"),
+        proximo=proximo,
+        meses_grupos=meses_grupos,
     )
 
 

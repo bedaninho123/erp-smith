@@ -24,3 +24,26 @@ CREATE TABLE conhecimento (
 );
 
 CREATE INDEX idx_conhecimento_categoria ON conhecimento(categoria);
+
+-- Calendário de campeonatos/provas do clube. Nasce populado à mão a
+-- partir do calendário público (https://www.smithclube.com.br/calendario/),
+-- porque o Shooting House (integracoes/shooting_house.py) já modela
+-- "campeonatos" do atirador mas ainda não tem credencial liberada --
+-- mesmo raciocínio do dado "simulado" de lá: origem='manual' identifica
+-- o que foi digitado aqui até um dia dar pra reconciliar com a API de
+-- verdade (origem='shooting_house'), em vez de essa tabela virar uma
+-- segunda fonte de verdade permanente.
+CREATE TABLE campeonato (
+    campeonato_id    TEXT PRIMARY KEY,                  -- CAM-000001
+    nome             TEXT NOT NULL,
+    data_inicio      TEXT NOT NULL,                       -- ISO 8601 (YYYY-MM-DD)
+    data_fim         TEXT NOT NULL,                       -- igual a data_inicio quando é um único dia
+    local            TEXT,                                -- nullable -- nem toda prova é na sede
+    observacoes      TEXT,
+    origem           TEXT NOT NULL DEFAULT 'manual',       -- 'manual' | 'shooting_house'
+    ativo            TEXT NOT NULL DEFAULT 'Sim',
+    criado_em        TEXT NOT NULL,                        -- ISO 8601
+    atualizado_em    TEXT NOT NULL                          -- ISO 8601
+);
+
+CREATE INDEX idx_campeonato_data ON campeonato(data_inicio);
