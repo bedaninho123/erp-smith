@@ -26,7 +26,7 @@
       <p class="processo-caso">Caso: {{ p.caso_titulo }}{% if p.protocolo %} · protocolo <span class="mono">{{ p.protocolo }}</span>{% endif %}</p>
       <div class="processo-meta">
         <span class="selo selo--{{ p.status_classe }}" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem;">{{ p.status }}</span>
-        {% if p.prazo_estimado %}<span class="mono">prazo {{ p.prazo_estimado[:10] }}</span>{% endif %}
+        {% if p.prazo_estimado_fmt %}<span class="mono">prazo {{ p.prazo_estimado_fmt }}</span>{% endif %}
         {% if p.checklist_total %}<span>{{ p.checklist_recebidos }}/{{ p.checklist_total }} documentos</span>{% endif %}
         {% if p.proxima_acao %}<span>{{ p.proxima_acao }}</span>{% endif %}
       </div>

@@ -36,8 +36,8 @@
 <div class="ficha caso">
   <div class="caso-cabecalho">
     <div>
-      <h1 class="caso-titulo">{{ caso.titulo }}</h1>
-      <p class="caso-meta">{{ caso.categoria }}</p>
+      <h1 class="caso-titulo">{{ caso.categoria }}</h1>
+      {% if caso.titulo %}<p class="caso-meta">{{ caso.titulo }}</p>{% endif %}
     </div>
     <span class="selo selo--{{ caso.status_classe }}">{{ caso.status }}</span>
   </div>
@@ -50,7 +50,7 @@
       {% if processo.protocolo %}<span class="processo-protocolo mono">protocolo {{ processo.protocolo }}</span>{% endif %}
       <span class="selo selo--{{ processo.status_classe }}" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem;">{{ processo.status }}</span>
     </div>
-    {% if processo.prazo_estimado %}<p class="processo-proxima mono" style="color:var(--steel); font-size:.8rem;">prazo estimado: {{ processo.prazo_estimado[:10] }}</p>{% endif %}
+    {% if processo.prazo_estimado_fmt %}<p class="processo-proxima mono" style="color:var(--steel); font-size:.8rem;">prazo estimado: {{ processo.prazo_estimado_fmt }}</p>{% endif %}
     {% if processo.proxima_acao %}<p class="processo-proxima"><b>Próxima ação:</b> {{ processo.proxima_acao }}</p>{% endif %}
 
     {% if processo.checklist %}

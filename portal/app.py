@@ -15,6 +15,7 @@ import sqlite3
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv, set_key
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
@@ -57,6 +58,16 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SESSION_COOKIE_NAME"] = "portal_session"
 
 URL_BASE = os.environ.get("PORTAL_URL_BASE", "http://127.0.0.1:5002")
+
+
+def _data_br(data_iso: Optional[str]) -> Optional[str]:
+    """Converte um datetime ISO (ex.: '2026-08-09T00:00:00Z') pro formato
+    dd/mm/aaaa usado no resto do Portal (Campeonatos, Habitualidade) --
+    sem isso, prazo_estimado aparecia cru só nesta tela, único lugar do
+    Portal com data no formato errado."""
+    if not data_iso:
+        return None
+    return datetime.strptime(data_iso[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
 
 
 def _classe_selo(status: str) -> str:
@@ -149,6 +160,7 @@ def _processos_com_checklist(con, caso_id: str) -> list:
     for linha_processo in processos:
         processo = dict(linha_processo)
         processo["status_classe"] = _classe_selo(processo["status"])
+        processo["prazo_estimado_fmt"] = _data_br(processo["prazo_estimado"])
         checklist = motor_checklist.status_checklist(con, processo["processo_id"])
         processo["checklist"] = checklist
         processo["checklist_total"] = len(checklist)
@@ -288,6 +300,7 @@ def processos():
     for linha in linhas:
         proc = dict(linha)
         proc["status_classe"] = _classe_selo(proc["status"])
+        proc["prazo_estimado_fmt"] = _data_br(proc["prazo_estimado"])
         checklist = motor_checklist.status_checklist(con, proc["processo_id"])
         proc["checklist_total"] = len(checklist)
         proc["checklist_recebidos"] = sum(1 for item in checklist if item["recebido"])
