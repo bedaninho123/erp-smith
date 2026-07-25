@@ -16,7 +16,7 @@ from functools import wraps
 from pathlib import Path
 
 from dotenv import load_dotenv, set_key
-from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 
 from core import motor_checklist, motor_documentos
 from core.conexao import CORE_DB
@@ -128,6 +128,33 @@ def sair():
     return redirect(url_for("login"))
 
 
+def _processos_com_checklist(con, caso_id: str) -> list:
+    """Processos de um caso, cada um já com o checklist de documentos e
+    as contagens pra o alvo de progresso -- usado tanto no resumo do
+    dashboard (agregado por caso) quanto na tela de detalhe (completo)."""
+    processos = con.execute(
+        "SELECT p.processo_id, p.protocolo, p.status, p.prazo_estimado, "
+        "p.proxima_acao, s.nome_servico "
+        "FROM processo p JOIN servico s ON s.service_id = p.servico_id "
+        "WHERE p.caso_id = ? ORDER BY p.data_abertura",
+        (caso_id,),
+    ).fetchall()
+    resultado = []
+    for linha_processo in processos:
+        processo = dict(linha_processo)
+        processo["status_classe"] = _classe_selo(processo["status"])
+        checklist = motor_checklist.status_checklist(con, processo["processo_id"])
+        processo["checklist"] = checklist
+        processo["checklist_total"] = len(checklist)
+        processo["checklist_recebidos"] = sum(1 for item in checklist if item["recebido"])
+        processo["checklist_pct"] = (
+            round(100 * processo["checklist_recebidos"] / processo["checklist_total"])
+            if checklist else 0
+        )
+        resultado.append(processo)
+    return resultado
+
+
 @app.route("/portal")
 @cliente_login_required
 def dashboard():
@@ -136,49 +163,69 @@ def dashboard():
     con.row_factory = sqlite3.Row
 
     casos = con.execute(
-        "SELECT caso_id, titulo, descricao, status, categoria, criado_em, atualizado_em "
+        "SELECT caso_id, titulo, status, categoria "
         "FROM caso WHERE cliente_id = ? ORDER BY atualizado_em DESC",
         (cliente_id,),
     ).fetchall()
 
-    casos_completos = []
+    casos_resumo = []
     for linha_caso in casos:
         caso = dict(linha_caso)
         caso["status_classe"] = _classe_selo(caso["status"])
-        processos = con.execute(
-            "SELECT p.processo_id, p.protocolo, p.status, p.prazo_estimado, "
-            "p.proxima_acao, s.nome_servico "
-            "FROM processo p JOIN servico s ON s.service_id = p.servico_id "
-            "WHERE p.caso_id = ? ORDER BY p.data_abertura",
-            (caso["caso_id"],),
-        ).fetchall()
-        processos_completos = []
-        for linha_processo in processos:
-            processo = dict(linha_processo)
-            processo["status_classe"] = _classe_selo(processo["status"])
-            checklist = motor_checklist.status_checklist(con, processo["processo_id"])
-            processo["checklist"] = checklist
-            processo["checklist_total"] = len(checklist)
-            processo["checklist_recebidos"] = sum(1 for item in checklist if item["recebido"])
-            processo["checklist_pct"] = (
-                round(100 * processo["checklist_recebidos"] / processo["checklist_total"])
-                if checklist else 0
-            )
-            processos_completos.append(processo)
-        caso["processos"] = processos_completos
-        casos_completos.append(caso)
-
-    documentos = con.execute(
-        "SELECT documento_id, tipo_documento, nome_arquivo, status, data_envio "
-        "FROM documento WHERE cliente_id = ? ORDER BY data_envio DESC",
-        (cliente_id,),
-    ).fetchall()
+        processos = _processos_com_checklist(con, caso["caso_id"])
+        caso["checklist_total"] = sum(p["checklist_total"] for p in processos)
+        caso["checklist_recebidos"] = sum(p["checklist_recebidos"] for p in processos)
+        caso["checklist_pct"] = (
+            round(100 * caso["checklist_recebidos"] / caso["checklist_total"])
+            if caso["checklist_total"] else 0
+        )
+        casos_resumo.append(caso)
     con.close()
 
     return render_template(
         "portal_dashboard.html",
         cliente_nome=session.get("cliente_nome"),
-        casos=casos_completos,
+        casos=casos_resumo,
+    )
+
+
+@app.route("/portal/casos/<caso_id>")
+@cliente_login_required
+def caso_detalhe(caso_id):
+    cliente_id = session["cliente_id"]
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+
+    # Mesmo princípio de isolamento do resto do Portal: o caso só é
+    # encontrado se pertencer a este cliente -- nunca confia no caso_id
+    # da URL sozinho.
+    linha_caso = con.execute(
+        "SELECT caso_id, titulo, descricao, status, categoria "
+        "FROM caso WHERE caso_id = ? AND cliente_id = ?",
+        (caso_id, cliente_id),
+    ).fetchone()
+    if not linha_caso:
+        con.close()
+        flash("Caso não encontrado.", "erro")
+        return redirect(url_for("dashboard"))
+
+    caso = dict(linha_caso)
+    caso["status_classe"] = _classe_selo(caso["status"])
+    caso["processos"] = _processos_com_checklist(con, caso_id)
+
+    documentos = con.execute(
+        "SELECT documento_id, tipo_documento, nome_arquivo, status, data_envio "
+        "FROM documento WHERE cliente_id = ? AND ("
+        "  caso_id = ? OR processo_id IN (SELECT processo_id FROM processo WHERE caso_id = ?)"
+        ") ORDER BY data_envio DESC",
+        (cliente_id, caso_id, caso_id),
+    ).fetchall()
+    con.close()
+
+    return render_template(
+        "portal_caso.html",
+        cliente_nome=session.get("cliente_nome"),
+        caso=caso,
         documentos=[dict(d) for d in documentos],
     )
 
@@ -187,42 +234,58 @@ def dashboard():
 @cliente_login_required
 def upload_documento():
     cliente_id = session["cliente_id"]
+    caso_id = (request.form.get("caso_id") or "").strip() or None
+
+    def _voltar():
+        if caso_id:
+            return redirect(url_for("caso_detalhe", caso_id=caso_id))
+        return redirect(url_for("dashboard"))
+
     arquivo = request.files.get("arquivo")
     if not arquivo or not arquivo.filename:
-        return jsonify(erro="Selecione um arquivo."), 400
+        flash("Selecione um arquivo.", "erro")
+        return _voltar()
 
     extensao = Path(arquivo.filename).suffix.lower()
     if extensao not in DOCUMENTO_EXTENSOES_ACEITAS:
-        return jsonify(erro=f"Tipo de arquivo não aceito: {extensao or '(sem extensão)'}."), 400
+        flash(f"Tipo de arquivo não aceito: {extensao or '(sem extensão)'}.", "erro")
+        return _voltar()
 
     conteudo = arquivo.read()
     if not conteudo:
-        return jsonify(erro="Arquivo vazio."), 400
+        flash("Arquivo vazio.", "erro")
+        return _voltar()
     if len(conteudo) > DOCUMENTO_TAMANHO_MAXIMO:
-        return jsonify(erro="Arquivo maior que 15MB."), 400
+        flash("Arquivo maior que 15MB.", "erro")
+        return _voltar()
 
-    caso_id = (request.form.get("caso_id") or "").strip() or None
     if not caso_id:
-        return jsonify(erro="Selecione a qual caso este documento pertence."), 400
+        flash("Selecione a qual caso este documento pertence.", "erro")
+        return redirect(url_for("dashboard"))
 
     # Nunca confiar no caso_id vindo do formulário sem checar que
     # pertence a este cliente -- ponto central de isolamento de dado do
     # Portal (docs/portal_cliente_arquitetura.md, seção 3). Sem essa
     # checagem, um cliente poderia anexar (ou pior, associar) um
     # documento ao caso de outra pessoa só trocando o ID na requisição.
+    # Redirecionar de volta pro caso_id "cru" é seguro mesmo assim:
+    # caso_detalhe() faz essa mesma checagem de novo antes de mostrar
+    # qualquer coisa.
     con = sqlite3.connect(CORE_DB)
     con.row_factory = sqlite3.Row
     dono = con.execute("SELECT cliente_id FROM caso WHERE caso_id = ?", (caso_id,)).fetchone()
     con.close()
     if not dono or dono["cliente_id"] != cliente_id:
-        return jsonify(erro="Caso não encontrado."), 404
+        flash("Caso não encontrado.", "erro")
+        return redirect(url_for("dashboard"))
 
-    documento_id = motor_documentos.salvar_documento(
+    motor_documentos.salvar_documento(
         cliente_id, conteudo, arquivo.filename,
         caso_id=caso_id,
         tipo_documento=(request.form.get("tipo_documento") or "").strip() or "Anexo enviado pelo cliente (Portal)",
     )
-    return jsonify(ok=True, documento_id=documento_id)
+    flash("Documento enviado.", "sucesso")
+    return redirect(url_for("caso_detalhe", caso_id=caso_id))
 
 
 @app.route("/portal/documentos/<documento_id>/arquivo")

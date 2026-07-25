@@ -153,6 +153,30 @@
     background: var(--signal);
     z-index: 1;
   }
+  .alvo--mini { width: 34px; height: 34px; }
+  .alvo--mini::after { width: 22px; height: 22px; }
+  .alvo--mini.alvo-completo::before { width: 6px; height: 6px; }
+
+  /* Link "← Voltar" no topo da tela de detalhe de caso. */
+  .link-voltar {
+    display: inline-block;
+    color: var(--steel);
+    text-decoration: none;
+    font-size: .85rem;
+    margin-bottom: 1rem;
+  }
+  .link-voltar:hover { color: var(--brass-deep); }
+
+  /* Mensagens de flash (sucesso/erro) pós-ação, ex.: depois de enviar
+     um documento -- reaproveita as cores do .aviso. */
+  .msg-flash {
+    padding: .7rem 1rem;
+    border-radius: var(--radius);
+    font-size: .88rem;
+    margin-bottom: 1.1rem;
+  }
+  .msg-flash--sucesso { background: var(--brass-soft); color: var(--brass-deep); border: 1px solid var(--line); }
+  .msg-flash--erro { background: var(--signal-soft); color: var(--signal); border: 1px solid var(--line); }
 
   .badge-item {
     display: inline-block;

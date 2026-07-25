@@ -25,32 +25,24 @@
     letter-spacing: .05em;
     text-transform: uppercase;
     color: var(--steel);
-    margin: 2.2rem 0 .8rem;
+    margin: 0 0 .8rem;
   }
-  .conteudo h2:first-child { margin-top: 0; }
 
-  .caso { padding: 1.3rem 1.4rem; margin-bottom: 1.1rem; }
-  .caso-cabecalho { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
-  .caso-titulo { font-size: 1.05rem; margin: 0 0 .3rem; }
-  .caso-meta { color: var(--steel); font-size: .82rem; margin: 0 0 .5rem; }
-  .caso-descricao { color: var(--steel); font-size: .9rem; margin: 0; }
-
-  .processo { padding-top: 1rem; margin-top: 1rem; border-top: 2px dashed var(--line); }
-  .processo-linha { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
-  .processo-nome { font-weight: 600; }
-  .processo-protocolo { color: var(--steel); font-size: .85rem; }
-  .processo-proxima { margin: .5rem 0 0; font-size: .9rem; }
-
-  .checklist { display: flex; gap: .9rem; align-items: flex-start; margin-top: .8rem; }
-  .checklist-itens { flex: 1; min-width: 0; }
-  .checklist-contagem { font-size: .74rem; color: var(--steel); text-align: center; margin-top: .2rem; }
-  .checklist-grupo { font-size: .74rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--steel); margin: .5rem 0 .2rem; }
-  .checklist-grupo:first-child { margin-top: 0; }
-  .checklist-item { font-size: .87rem; margin-bottom: .25rem; }
-
-  .ficha-form, .ficha-tabela { padding: 1.3rem 1.4rem; }
-  .campo { margin-bottom: 1rem; }
-  .campo:last-of-type { margin-bottom: 1.2rem; }
+  .caso-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.1rem 1.3rem;
+    margin-bottom: .9rem;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color .15s;
+  }
+  .caso-card:hover { border-color: var(--brass); text-decoration: none; color: inherit; }
+  .caso-card-corpo { flex: 1; min-width: 0; }
+  .caso-card-titulo { font-size: 1.02rem; margin: 0 0 .35rem; }
+  .caso-card-meta { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .caso-card-seta { color: var(--steel); font-size: 1.3rem; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -60,112 +52,32 @@
 </div>
 
 <div class="conteudo">
-
   <h2>Seus casos</h2>
 
   {% if not casos %}
-  <div class="ficha caso">
-    <p class="caso-descricao">Você ainda não tem nenhum caso em andamento. Assim que abrirmos um processo pra você, ele aparece aqui.</p>
+  <div class="ficha" style="padding:1.3rem 1.4rem;">
+    <p style="color:var(--steel); margin:0;">Você ainda não tem nenhum caso em andamento. Assim que abrirmos um processo pra você, ele aparece aqui.</p>
   </div>
   {% endif %}
 
   {% for caso in casos %}
-  <div class="ficha caso">
-    <div class="caso-cabecalho">
-      <div>
-        <h3 class="caso-titulo">{{ caso.titulo }}</h3>
-        <p class="caso-meta">{{ caso.categoria }}</p>
-      </div>
-      <span class="selo selo--{{ caso.status_classe }}">{{ caso.status }}</span>
-    </div>
-    {% if caso.descricao %}<p class="caso-descricao">{{ caso.descricao }}</p>{% endif %}
-
-    {% for processo in caso.processos %}
-    <div class="processo">
-      <div class="processo-linha">
-        <span class="processo-nome">{{ processo.nome_servico }}</span>
-        {% if processo.protocolo %}<span class="processo-protocolo mono">protocolo {{ processo.protocolo }}</span>{% endif %}
-        <span class="selo selo--{{ processo.status_classe }}" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem;">{{ processo.status }}</span>
-      </div>
-      {% if processo.prazo_estimado %}<p class="processo-proxima mono" style="color:var(--steel); font-size:.8rem;">prazo estimado: {{ processo.prazo_estimado[:10] }}</p>{% endif %}
-      {% if processo.proxima_acao %}<p class="processo-proxima"><b>Próxima ação:</b> {{ processo.proxima_acao }}</p>{% endif %}
-
-      {% if processo.checklist %}
-      <div class="checklist">
-        <div>
-          <div class="alvo {% if processo.checklist_pct == 100 %}alvo-completo{% endif %}" style="--pct: {{ processo.checklist_pct }}%;"></div>
-          <div class="checklist-contagem mono">{{ processo.checklist_recebidos }}/{{ processo.checklist_total }}</div>
-        </div>
-        <div class="checklist-itens">
-          {% set ns = namespace(grupo_atual="") %}
-          {% for item in processo.checklist %}
-            {% if item.grupo and item.grupo != ns.grupo_atual %}
-              {% set ns.grupo_atual = item.grupo %}
-              <div class="checklist-grupo">{{ item.grupo }}</div>
-            {% endif %}
-            <div class="checklist-item">
-              <span class="badge-item {{ 'badge-item--sim' if item.recebido else 'badge-item--nao' }}">{{ 'recebido' if item.recebido else 'faltando' }}</span>
-              {{ item.item }}
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </div>
-  {% endfor %}
-
-  <h2>Enviar um documento</h2>
-  <div class="ficha ficha-form">
-    {% if not casos %}
-    <p class="caso-descricao">Você precisa ter pelo menos um caso em andamento pra enviar um documento.</p>
-    {% else %}
-    <form method="post" action="{{ url_for('upload_documento') }}" enctype="multipart/form-data">
-      <div class="campo">
-        <label for="caso_id">Caso</label>
-        <select id="caso_id" name="caso_id" required>
-          {% for caso in casos %}
-          <option value="{{ caso.caso_id }}">{{ caso.titulo }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="campo">
-        <label for="tipo_documento">O que é este documento?</label>
-        <input id="tipo_documento" name="tipo_documento" type="text" placeholder="Ex.: RG, comprovante de residência">
-      </div>
-      <div class="campo">
-        <label for="arquivo">Arquivo (PDF ou foto, até 15MB)</label>
-        <input id="arquivo" name="arquivo" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp" required>
-      </div>
-      <button type="submit" class="botao">Enviar documento</button>
-    </form>
+  <a class="ficha caso-card" href="{{ url_for('caso_detalhe', caso_id=caso.caso_id) }}">
+    {% if caso.checklist_total %}
+    <div class="alvo alvo--mini {% if caso.checklist_pct == 100 %}alvo-completo{% endif %}" style="--pct: {{ caso.checklist_pct }}%;"></div>
     {% endif %}
-  </div>
-
-  <h2>Documentos já enviados</h2>
-  <div class="ficha ficha-tabela">
-    <table>
-      <thead><tr><th>Tipo</th><th>Arquivo</th><th>Status</th><th>Enviado em</th></tr></thead>
-      <tbody>
-        {% for doc in documentos %}
-        <tr>
-          <td>{{ doc.tipo_documento }}</td>
-          <td>
-            {% if doc.nome_arquivo %}
-            <a href="{{ url_for('download_documento', documento_id=doc.documento_id) }}">{{ doc.nome_arquivo }}</a>
-            {% else %}—{% endif %}
-          </td>
-          <td>{{ doc.status }}</td>
-          <td class="mono">{{ doc.data_envio[:10] if doc.data_envio else '—' }}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="4" style="color:var(--steel); padding:1rem .3rem;">Nenhum documento enviado ainda — assim que você mandar algo, aparece aqui.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
+    <div class="caso-card-corpo">
+      <h3 class="caso-card-titulo">{{ caso.titulo }}</h3>
+      <div class="caso-card-meta">
+        <span class="selo selo--{{ caso.status_classe }}">{{ caso.status }}</span>
+        <span style="color:var(--steel); font-size:.82rem;">{{ caso.categoria }}</span>
+        {% if caso.checklist_total %}
+        <span class="mono" style="color:var(--steel); font-size:.78rem;">{{ caso.checklist_recebidos }}/{{ caso.checklist_total }} documentos</span>
+        {% endif %}
+      </div>
+    </div>
+    <span class="caso-card-seta">→</span>
+  </a>
+  {% endfor %}
 </div>
 </body>
 </html>
