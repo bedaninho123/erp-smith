@@ -12,9 +12,10 @@
     align-items: center;
     justify-content: center;
     padding: 24px 16px;
+    background: var(--ink-deep);
   }
   .caixa-login { width: 100%; max-width: 380px; }
-  .caixa-login .marca { display: block; text-align: center; margin-bottom: 1.4rem; }
+  .caixa-login .marca-logo { margin: 0 auto 1.6rem; }
   .caixa-login .ficha { padding: 1.8rem 1.6rem; text-align: center; }
   .subtitulo { color: var(--steel); font-size: .88rem; margin: .5rem 0 1.5rem; }
 </style>
@@ -22,7 +23,7 @@
 <body>
 <div class="pagina-login">
   <div class="caixa-login">
-    <span class="marca"><b>SMITH</b> CLUBE DE TIRO</span>
+    <img class="marca-logo marca-logo--grande" src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
     <div class="ficha">
       <span class="selo selo--signal">Link expirado</span>
       <h1 style="font-size:1.1rem; margin:.9rem 0 0;">Esse link não funciona mais</h1>

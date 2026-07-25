@@ -1,24 +1,26 @@
 <!--
   Sistema de design do Portal do Cliente -- ver notas de decisão no
   final deste arquivo. Sem framework/build step, CSS puro + Google
-  Fonts via CDN, incluído nas duas telas via Jinja include.
+  Fonts via CDN, incluído nas quatro telas via Jinja include.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --paper: #F5F2EA;
-    --paper-raised: #FBF9F4;
-    --line: #DFD6BE;
-    --ink: #23293A;
-    --steel: #5B6472;
-    --brass: #A9782E;
-    --brass-deep: #7E5A22;
-    --signal: #B33A19;
-    --signal-soft: #F1E2D8;
-    --brass-soft: #EFE6D2;
-    --radius: 3px;
+    --paper: #EEF1F5;
+    --paper-raised: #FFFFFF;
+    --line: #DFE3EA;
+    --ink: #232428;
+    --ink-deep: #131417;
+    --steel: #626873;
+    --blue: #396BB3;
+    --blue-deep: #24487D;
+    --blue-bright: #6FA0DC;
+    --blue-soft: #E4ECF8;
+    --signal: #B23B2E;
+    --signal-soft: #F7E5E2;
+    --radius: 8px;
   }
 
   * { box-sizing: border-box; }
@@ -42,45 +44,39 @@
 
   .mono { font-family: 'IBM Plex Mono', monospace; }
 
-  a { color: var(--brass-deep); }
-  a:hover { color: var(--signal); }
+  a { color: var(--blue-deep); }
+  a:hover { color: var(--blue); }
   a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
-    outline: 2px solid var(--brass);
+    outline: 2px solid var(--blue);
     outline-offset: 2px;
   }
 
-  /* Cabeçalho de marca, aparece nas duas telas -- eyebrow condensado
-     tipo carimbo de cabeçalho de formulário oficial. */
-  .marca {
-    font-family: 'Big Shoulders', system-ui, sans-serif;
-    font-weight: 700;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    font-size: 1.05rem;
-  }
-  .marca b { color: var(--brass-deep); }
+  /* Marca -- a logo de verdade (PDF vetorial da identidade visual),
+     em duas versões: escura (sobre fundo claro, telas de login/erro) e
+     branca (sobre a barra preta do topo, telas internas). */
+  .marca-logo { display: block; height: 38px; width: auto; }
+  .marca-logo--grande { height: 54px; }
 
   /* "Ficha" -- o container principal, uma coluna só, como uma ficha de
-     controle de tiro/protocolo de despachante: papel, borda fina,
-     sombra rasteira (está sobre uma mesa, não flutuando). */
+     controle de tiro/protocolo de despachante: superfície branca limpa,
+     borda fina, sombra suave (está sobre a mesa, não flutuando). */
   .ficha {
     background: var(--paper-raised);
     border: 1px solid var(--line);
     border-radius: var(--radius);
-    box-shadow: 0 1px 0 rgba(35,41,58,.04), 0 8px 24px -16px rgba(35,41,58,.25);
+    box-shadow: 0 1px 0 rgba(19,20,23,.03), 0 12px 28px -18px rgba(19,20,23,.35);
   }
 
-  /* Linha de perfuração entre seções da ficha -- em vez de <hr>/card
-     shadow genérico, remete a talão/ficha destacável. */
+  /* Linha divisória entre seções da ficha. */
   .perfuracao {
     height: 0;
-    border-top: 2px dashed var(--line);
+    border-top: 1px solid var(--line);
     margin: 0;
   }
 
-  /* "Selo" -- selo/carimbo de status, referência direta ao carimbo do
+  /* "Selo" -- carimbo de status, referência direta ao carimbo do
      despachante. Anel duplo, leve rotação, tipografia condensada
-     maiúscula. Cor muda por status: bronze = em andamento normal,
+     maiúscula. Cor muda por status: azul = em andamento normal,
      sinalização = precisa de algo do cliente, neutro = encerrado. */
   .selo {
     display: inline-flex;
@@ -97,7 +93,7 @@
     letter-spacing: .07em;
     text-transform: uppercase;
     text-align: center;
-    transform: rotate(-3deg);
+    transform: rotate(-2deg);
     animation: selo-carimbada .28s cubic-bezier(.2,1.4,.4,1) both;
   }
   .selo::before {
@@ -108,15 +104,15 @@
     border-radius: 999px;
     opacity: .55;
   }
-  .selo--brass { color: var(--brass-deep); background: var(--brass-soft); }
+  .selo--padrao { color: var(--blue-deep); background: var(--blue-soft); }
   .selo--signal { color: var(--signal); background: var(--signal-soft); }
-  .selo--neutro { color: var(--steel); background: #ECEAE3; }
+  .selo--neutro { color: var(--steel); background: #EAECEF; }
 
   @media (prefers-reduced-motion: no-preference) {
     @keyframes selo-carimbada {
-      0% { opacity: 0; transform: rotate(-3deg) scale(1.5); }
+      0% { opacity: 0; transform: rotate(-2deg) scale(1.5); }
       60% { opacity: 1; }
-      100% { opacity: 1; transform: rotate(-3deg) scale(1); }
+      100% { opacity: 1; transform: rotate(-2deg) scale(1); }
     }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -124,14 +120,14 @@
   }
 
   /* "Alvo" -- indicador de progresso do checklist de documentos, como
-     um alvo de tiro: anel de bronze fechando conforme os documentos
-     chegam, ponto central marcando "no alvo" quando completo. */
+     um alvo de tiro: anel azul fechando conforme os documentos chegam,
+     ponto central marcando "no alvo" quando completo. */
   .alvo {
     --pct: 0%;
     width: 46px;
     height: 46px;
     border-radius: 50%;
-    background: conic-gradient(var(--brass) var(--pct), var(--line) var(--pct) 100%);
+    background: conic-gradient(var(--blue) var(--pct), var(--line) var(--pct) 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -150,7 +146,7 @@
     position: absolute;
     width: 8px; height: 8px;
     border-radius: 50%;
-    background: var(--signal);
+    background: var(--blue-deep);
     z-index: 1;
   }
   .alvo--mini { width: 34px; height: 34px; }
@@ -165,7 +161,7 @@
     font-size: .85rem;
     margin-bottom: 1rem;
   }
-  .link-voltar:hover { color: var(--brass-deep); }
+  .link-voltar:hover { color: var(--blue-deep); }
 
   /* Mensagens de flash (sucesso/erro) pós-ação, ex.: depois de enviar
      um documento -- reaproveita as cores do .aviso. */
@@ -175,7 +171,7 @@
     font-size: .88rem;
     margin-bottom: 1.1rem;
   }
-  .msg-flash--sucesso { background: var(--brass-soft); color: var(--brass-deep); border: 1px solid var(--line); }
+  .msg-flash--sucesso { background: var(--blue-soft); color: var(--blue-deep); border: 1px solid var(--line); }
   .msg-flash--erro { background: var(--signal-soft); color: var(--signal); border: 1px solid var(--line); }
 
   .badge-item {
@@ -188,7 +184,7 @@
     border-radius: 2px;
     margin-right: .4rem;
   }
-  .badge-item--sim { background: var(--brass-soft); color: var(--brass-deep); }
+  .badge-item--sim { background: var(--blue-soft); color: var(--blue-deep); }
   .badge-item--nao { background: transparent; color: var(--steel); border: 1px solid var(--line); }
 
   label {
@@ -209,12 +205,12 @@
     color: var(--ink);
   }
   input[type=text]:focus, select:focus, textarea:focus {
-    border-color: var(--brass);
+    border-color: var(--blue);
   }
 
   .botao {
     display: inline-block;
-    background: var(--brass-deep);
+    background: var(--ink-deep);
     color: #fff;
     border: none;
     border-radius: var(--radius);
@@ -226,15 +222,15 @@
     font-size: .85rem;
     cursor: pointer;
   }
-  .botao:hover { background: var(--signal); }
+  .botao:hover { background: var(--blue-deep); }
 
   .aviso {
-    background: var(--brass-soft);
+    background: var(--blue-soft);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: .8rem 1rem;
     font-size: .9rem;
-    color: var(--brass-deep);
+    color: var(--blue-deep);
   }
   .aviso--erro { background: var(--signal-soft); color: var(--signal); }
 
@@ -255,29 +251,31 @@
   }
 </style>
 <!--
-  Notas de decisão (skill frontend-design):
-  - Referências rejeitadas de propósito: creme+serif+terracota, quase-
-    preto+verde ácido, jornal com hairlines densas -- nenhuma tem
-    relação com o assunto (despachante de clube de tiro), são só
-    defaults de design gerado por IA.
-  - Direção escolhida: "ficha de controle" -- cruza dois vocabulários
-    reais e específicos deste negócio: (1) o alvo de tiro esportivo
-    (anéis concêntricos = precisão, "no alvo") e (2) o carimbo/ficha de
-    protocolo do despachante brasileiro (selo de status, ficha
-    destacável com perfuração). Cor: bronze de cápsula + papel de ficha
-    + sinalização laranja-ferrugem (cor de segurança de estande/alvo de
-     argila), gunmetal escuro pro texto -- não é o terracota nem o
-    verde-ácido genérico.
-  - Tipografia: Big Shoulders (condensada, remete a estêncil/gravação
-    em metal -- usada só em títulos/selos/rótulos, nunca em texto
-    corrido) + IBM Plex Sans (pedigree técnico, não é o Inter padrão) +
-    IBM Plex Mono pra protocolo/CPF/data (leitura de instrumento).
-  - Assinatura: o "alvo" de progresso do checklist (anel bronze
-    fechando via conic-gradient) e o "selo" carimbado de status
-    (rotacionado, anel duplo) -- os dois únicos elementos com
-    personalidade forte; todo o resto (formulário, tabela) fica quieto
-    e disciplinado.
-  - Movimento: só o selo "carimba" na entrada (leve scale+rotate,
-    ~280ms, respeitando prefers-reduced-motion) -- um momento só,
-    coerente com o gesto físico de carimbar, não decoração espalhada.
+  Notas de decisão (skill frontend-design, revisão 2026-07-25):
+  - Gatilho da revisão: a marca real (LOGO SMITH 150X100CM.pdf) chegou
+    depois do primeiro desenho do Portal -- carvão quase-preto (#2B2A2D)
+    + azul (#396BB3) num lettering condensado/inclinado, estilo esportivo
+    -- então a paleta bronze/papel-creme do rascunho anterior foi
+    substituída pela identidade de verdade, extraída por amostragem de
+    pixel do PDF vetorial (não é preto/azul genérico escolhido no escuro).
+  - Direção mantida: "ficha de controle" -- ainda cruza os dois
+    vocabulários reais deste negócio: (1) o alvo de tiro esportivo (anéis
+    concêntricos = precisão, "no alvo") e (2) o carimbo/ficha de
+    protocolo do despachante brasileiro. Isso não mudou -- só a cor.
+  - Mudança de acabamento: raio de borda maior (8px vs 3px) e sombra mais
+    suave/profunda, divisórias tracejadas trocadas por linha sólida fina
+    -- o pedido era "mais moderno"; o carimbo/ficha continuam como
+    conceito, mas a execução fica mais limpa, menos "papel antigo".
+  - Vermelho (--signal) sobrevive só pra erro/"precisa de algo do
+    cliente" -- é convenção semântica (não decoração), mantê-lo fora da
+    tríade preto/azul/branco pedida seria pior pra quem depende de cor
+    pra notar um problema.
+  - Tipografia mantida: Big Shoulders (condensada, ecoa o lettering
+    esportivo/inclinado da logo real) + IBM Plex Sans/Mono -- já
+    funcionava com a marca antes de eu ver a logo real, e a família
+    condensada bate com o peso do "SMITH" da identidade.
+  - Assinatura: continuam sendo o "alvo" de progresso e o "selo"
+    carimbado -- agora recoloridos, com o centro do alvo em azul-profundo
+    em vez do antigo laranja-ferrugem (evita introduzir uma terceira cor
+    de destaque fora do que foi pedido).
 -->

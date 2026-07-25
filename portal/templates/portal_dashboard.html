@@ -7,15 +7,13 @@
 {% include "_portal_estilo.html" %}
 <style>
   .topo {
-    background: var(--ink);
+    background: var(--ink-deep);
     color: #fff;
-    padding: 14px 20px;
+    padding: 12px 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
-  .topo .marca { color: #fff; }
-  .topo .marca b { color: #E3C687; }
   .topo-usuario { font-size: .85rem; color: #C9CCD4; }
   .topo-usuario a { color: #fff; margin-left: .8rem; }
 
@@ -38,7 +36,7 @@
     color: inherit;
     transition: border-color .15s;
   }
-  .caso-card:hover { border-color: var(--brass); text-decoration: none; color: inherit; }
+  .caso-card:hover { border-color: var(--blue); text-decoration: none; color: inherit; }
   .caso-card-corpo { flex: 1; min-width: 0; }
   .caso-card-titulo { font-size: 1.02rem; margin: 0 0 .35rem; }
   .caso-card-meta { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
@@ -47,7 +45,7 @@
 </head>
 <body>
 <div class="topo">
-  <span class="marca"><b>SMITH</b> CLUBE DE TIRO</span>
+  <img class="marca-logo" src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
   <span class="topo-usuario">{{ cliente_nome }}<a href="{{ url_for('sair') }}">Sair</a></span>
 </div>
 

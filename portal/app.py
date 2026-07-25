@@ -59,7 +59,7 @@ def _classe_selo(status: str) -> str:
         return "neutro"
     if "aguardando cliente" in s or "aguardando documentos" in s:
         return "signal"
-    return "brass"
+    return "padrao"
 
 
 def cliente_login_required(f):
