@@ -24,6 +24,7 @@ from core.conexao import CORE_DB
 from core.motor_portal_auth import criar_token, localizar_cliente_por_cpf_ou_email, validar_e_consumir_token
 from domain.clube_tiro.motor_campeonatos import listar_campeonatos
 from integracoes.gmail import enviar_email, gmail_configurado
+from integracoes.shooting_house import consultar_cr, consultar_habitualidade
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_PATH = BASE_DIR / ".env"
@@ -160,13 +161,7 @@ def _processos_com_checklist(con, caso_id: str) -> list:
     return resultado
 
 
-@app.route("/portal")
-@cliente_login_required
-def dashboard():
-    cliente_id = session["cliente_id"]
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
-
+def _casos_com_resumo(con, cliente_id: str) -> list:
     casos = con.execute(
         "SELECT caso_id, titulo, status, categoria "
         "FROM caso WHERE cliente_id = ? ORDER BY atualizado_em DESC",
@@ -185,22 +180,166 @@ def dashboard():
             if caso["checklist_total"] else 0
         )
         casos_resumo.append(caso)
+    return casos_resumo
+
+
+def _resumo_habitualidade(cpf: str) -> dict:
+    """Status de CR + contagem de participações (habitualidade) do
+    cliente no clube -- consulta ao vivo o Shooting House (ou dado
+    simulado enquanto a credencial não existe), nunca guarda cópia
+    própria (integracoes/shooting_house.py). Devolve tem_registro=False
+    sem erro pra quem nunca foi atirador -- cliente cadastrado não
+    implica atirador ativo."""
+    cr = consultar_cr(cpf)
+    hab = consultar_habitualidade(cpf)
+    eventos = []
+    for dados in (hab.get("habitualidades") or {}).values():
+        eventos.extend(dados.get("eventos", []))
+    return {"cr": cr, "total_participacoes": len(eventos), "tem_registro": bool(cr) or bool(eventos)}
+
+
+@app.route("/portal")
+@cliente_login_required
+def dashboard():
+    cliente_id = session["cliente_id"]
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+
+    cliente = con.execute("SELECT cpf FROM cliente WHERE cliente_id = ?", (cliente_id,)).fetchone()
+
+    casos_resumo = _casos_com_resumo(con, cliente_id)
+    casos_abertos = [c for c in casos_resumo if c["status"] not in ("Encerrado", "Cancelado")]
+
+    processos_rows = con.execute(
+        "SELECT p.processo_id, p.status, p.proxima_acao, p.prazo_estimado, "
+        "s.nome_servico, ca.caso_id, ca.titulo AS caso_titulo "
+        "FROM processo p "
+        "JOIN servico s ON s.service_id = p.servico_id "
+        "JOIN caso ca ON ca.caso_id = p.caso_id "
+        "WHERE p.cliente_id = ? ORDER BY p.ultima_atualizacao DESC",
+        (cliente_id,),
+    ).fetchall()
+
+    processos_em_andamento = []
+    documentos_pendentes = 0
+    for linha in processos_rows:
+        proc = dict(linha)
+        checklist = motor_checklist.status_checklist(con, proc["processo_id"])
+        documentos_pendentes += sum(1 for item in checklist if not item["recebido"])
+        if proc["status"] not in ("Concluído", "Cancelado"):
+            proc["status_classe"] = _classe_selo(proc["status"])
+            processos_em_andamento.append(proc)
+    con.close()
+
+    proximos_campeonatos = _proximos_campeonatos()
+
+    habitualidade_resumo = None
+    if cliente and cliente["cpf"]:
+        habitualidade_resumo = _resumo_habitualidade(cliente["cpf"])
+
+    return render_template(
+        "portal_home.html",
+        ativo="home",
+        cliente_nome=session.get("cliente_nome"),
+        primeiro_nome=(session.get("cliente_nome") or "").split(" ")[0],
+        casos_abertos=len(casos_abertos),
+        documentos_pendentes=documentos_pendentes,
+        processos_em_andamento=processos_em_andamento[:4],
+        total_processos_em_andamento=len(processos_em_andamento),
+        proximo_campeonato=proximos_campeonatos[0] if proximos_campeonatos else None,
+        habitualidade_resumo=habitualidade_resumo,
+    )
+
+
+@app.route("/portal/casos")
+@cliente_login_required
+def casos_lista():
+    cliente_id = session["cliente_id"]
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+    casos_resumo = _casos_com_resumo(con, cliente_id)
     con.close()
 
     return render_template(
-        "portal_dashboard.html",
+        "portal_casos.html",
+        ativo="casos",
         cliente_nome=session.get("cliente_nome"),
         casos=casos_resumo,
     )
 
 
-@app.route("/portal/campeonatos")
+@app.route("/portal/processos")
 @cliente_login_required
-def campeonatos():
-    # Datas e contas nunca são feitas no template/IA -- calculadas aqui
-    # em Python, o texto final só fraseia o número pronto (mesmo
-    # princípio de integracoes/shooting_house.py).
-    hoje = datetime.now().date()
+def processos():
+    cliente_id = session["cliente_id"]
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+    linhas = con.execute(
+        "SELECT p.processo_id, p.protocolo, p.status, p.prazo_estimado, p.proxima_acao, "
+        "s.nome_servico, ca.caso_id, ca.titulo AS caso_titulo "
+        "FROM processo p "
+        "JOIN servico s ON s.service_id = p.servico_id "
+        "JOIN caso ca ON ca.caso_id = p.caso_id "
+        "WHERE p.cliente_id = ? ORDER BY p.ultima_atualizacao DESC",
+        (cliente_id,),
+    ).fetchall()
+
+    processos_lista = []
+    for linha in linhas:
+        proc = dict(linha)
+        proc["status_classe"] = _classe_selo(proc["status"])
+        checklist = motor_checklist.status_checklist(con, proc["processo_id"])
+        proc["checklist_total"] = len(checklist)
+        proc["checklist_recebidos"] = sum(1 for item in checklist if item["recebido"])
+        processos_lista.append(proc)
+    con.close()
+
+    return render_template(
+        "portal_processos.html",
+        ativo="processos",
+        cliente_nome=session.get("cliente_nome"),
+        processos=processos_lista,
+    )
+
+
+@app.route("/portal/habitualidade")
+@cliente_login_required
+def habitualidade():
+    cliente_id = session["cliente_id"]
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+    cliente = con.execute("SELECT cpf FROM cliente WHERE cliente_id = ?", (cliente_id,)).fetchone()
+    con.close()
+
+    cpf = cliente["cpf"] if cliente else None
+    cr = None
+    eventos = []
+    if cpf:
+        cr = consultar_cr(cpf)
+        hab = consultar_habitualidade(cpf)
+        for modalidade, dados in (hab.get("habitualidades") or {}).items():
+            for ev in dados.get("eventos", []):
+                eventos.append({**ev, "modalidade_grupo": modalidade})
+        eventos.sort(key=lambda e: datetime.strptime(e["data_participacao"], "%d/%m/%Y"), reverse=True)
+
+    return render_template(
+        "portal_habitualidade.html",
+        ativo="habitualidade",
+        cliente_nome=session.get("cliente_nome"),
+        cr=cr,
+        eventos=eventos,
+        tem_cpf=bool(cpf),
+    )
+
+
+def _proximos_campeonatos(hoje=None) -> list:
+    """Campeonatos de hoje em diante, já formatados pra exibição (dia,
+    mês abreviado, intervalo por extenso, rótulo de contagem regressiva)
+    -- datas e contas nunca são feitas no template/IA, sempre aqui em
+    Python, o texto final só fraseia o número pronto (mesmo princípio de
+    integracoes/shooting_house.py). Compartilhado entre a Home (só o
+    próximo) e a tela de Campeonatos (a lista inteira)."""
+    hoje = hoje or datetime.now().date()
     eventos = []
     for c in listar_campeonatos():
         data_inicio = datetime.strptime(c["data_inicio"], "%Y-%m-%d").date()
@@ -240,7 +379,14 @@ def campeonatos():
             "rotulo_contagem": rotulo,
             "intervalo": intervalo,
         })
+    return eventos
 
+
+@app.route("/portal/campeonatos")
+@cliente_login_required
+def campeonatos():
+    hoje = datetime.now().date()
+    eventos = _proximos_campeonatos(hoje)
     proximo = eventos[0] if eventos else None
     restantes = eventos[1:]
 
@@ -255,6 +401,7 @@ def campeonatos():
 
     return render_template(
         "portal_campeonatos.html",
+        ativo="campeonatos",
         cliente_nome=session.get("cliente_nome"),
         proximo=proximo,
         meses_grupos=meses_grupos,
@@ -279,7 +426,7 @@ def caso_detalhe(caso_id):
     if not linha_caso:
         con.close()
         flash("Caso não encontrado.", "erro")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("casos_lista"))
 
     caso = dict(linha_caso)
     caso["status_classe"] = _classe_selo(caso["status"])
@@ -296,6 +443,7 @@ def caso_detalhe(caso_id):
 
     return render_template(
         "portal_caso.html",
+        ativo="casos",
         cliente_nome=session.get("cliente_nome"),
         caso=caso,
         documentos=[dict(d) for d in documentos],
@@ -311,7 +459,7 @@ def upload_documento():
     def _voltar():
         if caso_id:
             return redirect(url_for("caso_detalhe", caso_id=caso_id))
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("casos_lista"))
 
     arquivo = request.files.get("arquivo")
     if not arquivo or not arquivo.filename:
@@ -333,7 +481,7 @@ def upload_documento():
 
     if not caso_id:
         flash("Selecione a qual caso este documento pertence.", "erro")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("casos_lista"))
 
     # Nunca confiar no caso_id vindo do formulário sem checar que
     # pertence a este cliente -- ponto central de isolamento de dado do
@@ -349,7 +497,7 @@ def upload_documento():
     con.close()
     if not dono or dono["cliente_id"] != cliente_id:
         flash("Caso não encontrado.", "erro")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("casos_lista"))
 
     motor_documentos.salvar_documento(
         cliente_id, conteudo, arquivo.filename,

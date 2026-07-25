@@ -249,6 +249,202 @@
     padding: .55rem .3rem;
     font-size: .92rem;
   }
+
+  /* ---- Casca do Portal autenticado (sidebar + conteúdo) ----
+     Menu lateral fixo em telas largas (como o painel admin); em telas
+     estreitas vira gaveta puxada por um botão hambúrguer -- só CSS
+     (checkbox escondido + seletor ~), sem nenhuma linha de JS. */
+  .portal-shell { min-height: 100vh; }
+  .portal-menu-toggle-input { position: absolute; opacity: 0; pointer-events: none; }
+
+  .portal-sidebar {
+    width: 232px;
+    background: var(--ink-deep);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0; bottom: 0; left: 0;
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+    z-index: 40;
+  }
+  .portal-menu-toggle-input:checked ~ .portal-sidebar { transform: translateX(0); }
+
+  .portal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(10,10,12,.5);
+    z-index: 35;
+  }
+  .portal-menu-toggle-input:checked ~ .portal-overlay { display: block; }
+
+  .portal-sidebar-marca { padding: 22px 22px 18px; }
+
+  .portal-nav { flex: 1; padding: 6px 0; overflow-y: auto; }
+  .portal-nav a {
+    display: flex; align-items: center; gap: .7rem;
+    padding: .7rem 1.4rem;
+    color: #C6CAD3;
+    text-decoration: none;
+    font-size: .92rem;
+    border-left: 3px solid transparent;
+  }
+  .portal-nav a svg { flex-shrink: 0; opacity: .85; }
+  .portal-nav a:hover { color: #fff; background: rgba(255,255,255,.05); }
+  .portal-nav a.ativo {
+    color: #fff;
+    background: rgba(57,107,179,.2);
+    border-left-color: var(--blue);
+    font-weight: 600;
+  }
+  .portal-nav a.ativo svg { opacity: 1; }
+
+  .portal-sidebar-rodape {
+    padding: 1rem 1.4rem 1.3rem;
+    border-top: 1px solid rgba(255,255,255,.12);
+    font-size: .82rem;
+    color: #C6CAD3;
+  }
+  .portal-sidebar-rodape a { color: #fff; display: block; margin-top: .35rem; }
+
+  .portal-topo-mobile {
+    display: flex; align-items: center; gap: .9rem;
+    background: var(--ink-deep); color: #fff;
+    padding: 13px 18px;
+    position: sticky; top: 0; z-index: 30;
+    cursor: pointer;
+  }
+  .portal-topo-mobile .marca-logo { height: 28px; }
+
+  .portal-conteudo { padding: 26px 18px 64px; max-width: 700px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+
+  @media (min-width: 900px) {
+    .portal-shell { display: flex; }
+    .portal-sidebar { position: sticky; top: 0; height: 100vh; transform: none; flex-shrink: 0; }
+    .portal-overlay, .portal-topo-mobile { display: none !important; }
+    .portal-main { flex: 1; min-width: 0; }
+  }
+
+  /* ---- Componentes da Home / listas resumidas ---- */
+  .saudacao { font-size: 1.3rem; margin: 0 0 .2rem; }
+  .subsaudacao { color: var(--steel); font-size: .92rem; margin: 0 0 1.6rem; }
+
+  .secao-titulo {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin: 2rem 0 .8rem;
+  }
+  .secao-titulo h2 { margin: 0; }
+  .secao-titulo a { font-size: .82rem; text-decoration: none; }
+  .secao-titulo a:hover { text-decoration: underline; }
+
+  .destaques-grid { display: grid; grid-template-columns: 1fr; gap: .9rem; }
+  @media (min-width: 560px) { .destaques-grid { grid-template-columns: 1fr 1fr; } }
+
+  .destaque-mini {
+    display: flex; align-items: center; gap: 1rem;
+    padding: 1.1rem 1.2rem;
+    text-decoration: none; color: inherit;
+    transition: border-color .15s;
+  }
+  .destaque-mini:hover { border-color: var(--blue); text-decoration: none; color: inherit; }
+  .destaque-mini-icone {
+    flex-shrink: 0; width: 42px; height: 42px; border-radius: 50%;
+    background: var(--blue-soft); color: var(--blue-deep);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .destaque-mini-eyebrow { font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--steel); margin: 0 0 .2rem; }
+  .destaque-mini-titulo { font-size: .95rem; margin: 0 0 .15rem; line-height: 1.3; }
+  .destaque-mini-meta { font-size: .78rem; color: var(--steel); }
+
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; margin-top: .9rem; }
+  .stat-card {
+    padding: 1rem 1.2rem;
+    text-decoration: none; color: inherit;
+    border-left: 3px solid var(--blue);
+    transition: border-color .15s;
+  }
+  .stat-card:hover { text-decoration: none; color: inherit; background: var(--blue-soft); }
+  .stat-numero { display: block; font-family: 'Big Shoulders', system-ui, sans-serif; font-weight: 700; font-size: 1.9rem; line-height: 1; color: var(--ink); }
+  .stat-rotulo { font-size: .78rem; color: var(--steel); }
+
+  .lista-linha {
+    display: flex; align-items: center; gap: 1rem;
+    padding: .9rem 0; border-bottom: 1px solid var(--line);
+    text-decoration: none; color: inherit;
+  }
+  .lista-linha:last-child { border-bottom: none; }
+  .lista-linha:hover { color: inherit; text-decoration: none; }
+  .lista-linha-corpo { flex: 1; min-width: 0; }
+  .lista-linha-titulo { font-size: .95rem; margin: 0 0 .3rem; }
+  .lista-linha-meta { color: var(--steel); font-size: .8rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  .lista-linha-seta { color: var(--steel); font-size: 1.2rem; flex-shrink: 0; }
+
+  .estado-vazio { padding: 1.3rem 1.4rem; color: var(--steel); }
+
+  /* "Folhinha" -- folha de calendário de parede/mesa, com furo de
+     espiral e a página arrancada mostrando o dia -- usada em qualquer
+     tela que mostre data de campeonato (Home, Campeonatos). */
+  .folhinha {
+    width: 58px;
+    flex-shrink: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 6px 14px -8px rgba(19,20,23,.45);
+    transform: rotate(-3deg);
+    background: var(--paper-raised);
+  }
+  .folhinha-mes {
+    background: var(--ink-deep);
+    color: #fff;
+    font-family: 'Big Shoulders', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: .62rem;
+    letter-spacing: .06em;
+    text-align: center;
+    padding: .32rem 0 .5rem;
+    position: relative;
+  }
+  .folhinha-mes::before, .folhinha-mes::after {
+    content: "";
+    position: absolute;
+    top: -3px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--paper);
+  }
+  .folhinha-mes::before { left: 9px; }
+  .folhinha-mes::after { right: 9px; }
+  .folhinha-dia {
+    font-family: 'Big Shoulders', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-align: center;
+    color: var(--ink);
+    padding: .38rem 0 .42rem;
+  }
+  .folhinha--destaque { width: 86px; transform: rotate(-2deg); }
+  .folhinha--destaque .folhinha-mes { background: var(--blue); font-size: .72rem; padding: .42rem 0 .6rem; }
+  .folhinha--destaque .folhinha-mes::before { left: 13px; }
+  .folhinha--destaque .folhinha-mes::after { right: 13px; }
+  .folhinha--destaque .folhinha-dia { font-size: 2.15rem; padding: .5rem 0 .55rem; }
+  .folhinha--mini { width: 40px; }
+  .folhinha--mini .folhinha-mes { font-size: .52rem; padding: .22rem 0 .36rem; }
+  .folhinha--mini .folhinha-mes::before { left: 6px; }
+  .folhinha--mini .folhinha-mes::after { right: 6px; }
+  .folhinha--mini .folhinha-dia { font-size: 1.05rem; padding: .22rem 0 .28rem; }
+
+  .pill {
+    display: inline-block;
+    font-size: .68rem;
+    padding: .16rem .5rem;
+    border-radius: 999px;
+    font-weight: 600;
+    letter-spacing: .02em;
+  }
+  .pill--contagem { background: var(--ink-deep); color: #fff; text-transform: uppercase; }
+  .pill--duracao { background: var(--blue-soft); color: var(--blue-deep); }
 </style>
 <!--
   Notas de decisão (skill frontend-design, revisão 2026-07-25):
@@ -278,4 +474,25 @@
     carimbado -- agora recoloridos, com o centro do alvo em azul-profundo
     em vez do antigo laranja-ferrugem (evita introduzir uma terceira cor
     de destaque fora do que foi pedido).
+
+  Revisão 2026-07-25 (2): Home vira hub, não lista de casos.
+  - Motivo: pedido explícito do usuário -- a tela de entrada só mostrava
+    casos; precisava ser "diferencial", com Campeonatos/Processos/
+    Habitualidade acessíveis como o dashboard admin (menu lateral).
+  - Casca nova (.portal-shell/.portal-sidebar): menu fixo em telas
+    largas, gaveta em telas estreitas -- só CSS (checkbox oculto +
+    seletor ~), sem nenhuma linha de JS, mantendo a promessa de "sem
+    framework front-end" mesmo com uma navegação mais rica.
+  - "Folhinha" (folha de calendário arrancada, com furo de espiral)
+    promovida do template de Campeonatos pra cá -- agora é vocabulário
+    compartilhado, reaproveitada no card de destaque da Home.
+  - Ícone de Habitualidade na sidebar é o próprio "alvo" (círculos
+    concêntricos) que já é a assinatura do checklist -- não um ícone de
+    mira genérico, é literalmente o mesmo motivo visual do resto do
+    produto.
+  - Não usei o "alvo" com percentual fabricado na Habitualidade: sem um
+    número real de treinos exigidos por nível salvo em algum lugar,
+    desenhar uma barra de progresso seria inventar uma meta que a IA (ou
+    o design) não tem como saber -- mesmo princípio de "nunca fabricar"
+    que rege o Motor IA, só que aplicado ao desenho da tela.
 -->

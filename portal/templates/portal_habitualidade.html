@@ -1,0 +1,74 @@
+{% extends "_portal_layout.html" %}
+{% block titulo %}Habitualidade{% endblock %}
+{% block estilo_extra %}
+<style>
+  .cr-card { display: flex; align-items: center; gap: 1.1rem; padding: 1.3rem 1.4rem; margin-bottom: 1.6rem; }
+  .cr-icone {
+    flex-shrink: 0; width: 52px; height: 52px; border-radius: 50%;
+    background: var(--blue-soft); color: var(--blue-deep);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cr-titulo { font-size: 1.05rem; margin: 0 0 .3rem; }
+  .cr-meta { color: var(--steel); font-size: .85rem; }
+  .cr-meta b { color: var(--ink); font-weight: 600; }
+
+  .evento-linha { display: flex; gap: 1rem; align-items: center; padding: .8rem 0; border-bottom: 1px solid var(--line); }
+  .evento-linha:last-child { border-bottom: none; }
+  .evento-data { flex-shrink: 0; width: 82px; font-family: 'IBM Plex Mono', monospace; font-size: .82rem; color: var(--ink); }
+  .evento-corpo { flex: 1; min-width: 0; font-size: .9rem; }
+  .evento-local { color: var(--steel); font-size: .8rem; }
+</style>
+{% endblock %}
+{% block conteudo %}
+<h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:0 0 1rem;">Habitualidade</h2>
+
+{% if not tem_cpf %}
+<div class="ficha estado-vazio">Não conseguimos localizar seu CPF no cadastro. Fale com a gente pra atualizar.</div>
+
+{% elif not cr and not eventos %}
+<div class="ficha" style="padding:1.4rem 1.5rem;">
+  <p style="margin:0 0 .6rem;"><b>Você ainda não tem registro de atirador no clube.</b></p>
+  <p style="color:var(--steel); margin:0; font-size:.9rem;">
+    Habitualidade é a frequência mínima de treinos/competições exigida por lei pra manter o CR de atirador
+    desportivo em dia. Se você usa outro serviço do despachante (como transferência de arma) sem nunca ter
+    sido atirador ativo do clube, é esperado que essa tela venha vazia.
+  </p>
+</div>
+
+{% else %}
+
+  {% if cr %}
+  <div class="ficha cr-card">
+    <div class="cr-icone">
+      <svg width="26" height="26" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.7"/><circle cx="10" cy="10" r=".6" fill="currentColor" stroke="none"/></svg>
+    </div>
+    <div>
+      <h3 class="cr-titulo">CR — {{ cr.categoria_cr }}</h3>
+      <p class="cr-meta">Última confirmação cadastral: <b>{{ cr.data_ultima_confirmacao }}</b></p>
+      <p class="cr-meta">Próxima confirmação: <b>{{ cr.proxima_confirmacao }}</b></p>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="secao-titulo" style="margin-top:0;">
+    <h2>Participações registradas</h2>
+    <span style="color:var(--steel); font-size:.82rem;">{{ eventos|length }} no total</span>
+  </div>
+
+  {% if not eventos %}
+  <div class="ficha estado-vazio">Nenhuma participação registrada ainda.</div>
+  {% else %}
+  <div class="ficha" style="padding: 0 1.3rem;">
+    {% for ev in eventos %}
+    <div class="evento-linha">
+      <div class="evento-data">{{ ev.data_participacao }}</div>
+      <div class="evento-corpo">
+        <div>{{ ev.modalidade }}</div>
+        <div class="evento-local">{{ ev.local }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endif %}
+{% endblock %}

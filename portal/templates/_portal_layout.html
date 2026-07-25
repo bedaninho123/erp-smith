@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}Portal do Cliente{% endblock %} — Smith Clube de Tiro</title>
+{% include "_portal_estilo.html" %}
+{% block estilo_extra %}{% endblock %}
+</head>
+<body>
+<div class="portal-shell">
+  <input type="checkbox" id="portal-menu-toggle" class="portal-menu-toggle-input">
+  <label for="portal-menu-toggle" class="portal-overlay" aria-hidden="true"></label>
+
+  <aside class="portal-sidebar">
+    <div class="portal-sidebar-marca">
+      <img class="marca-logo" src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
+    </div>
+    <nav class="portal-nav">
+      <a href="{{ url_for('dashboard') }}" class="{{ 'ativo' if ativo == 'home' }}">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 10 4l7 6.5"/><path d="M5 9v7h10V9"/><path d="M8 16v-4h4v4"/></svg>
+        Início
+      </a>
+      <a href="{{ url_for('casos_lista') }}" class="{{ 'ativo' if ativo == 'casos' }}">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h4.5l1.5 1.8H17V15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6z"/></svg>
+        Meus casos
+      </a>
+      <a href="{{ url_for('processos') }}" class="{{ 'ativo' if ativo == 'processos' }}">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="12" height="14" rx="1.2"/><path d="M7 7.5h6M7 10.5h6M7 13.5h3.5"/></svg>
+        Processos
+      </a>
+      <a href="{{ url_for('campeonatos') }}" class="{{ 'ativo' if ativo == 'campeonatos' }}">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="14" height="14" rx="1.2"/><path d="M3 7.5h14"/><path d="M7 3v2M13 3v2"/></svg>
+        Campeonatos
+      </a>
+      <a href="{{ url_for('habitualidade') }}" class="{{ 'ativo' if ativo == 'habitualidade' }}">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.7"/><circle cx="10" cy="10" r=".6" fill="currentColor" stroke="none"/></svg>
+        Habitualidade
+      </a>
+    </nav>
+    <div class="portal-sidebar-rodape">
+      {{ cliente_nome }}
+      <a href="{{ url_for('sair') }}">Sair</a>
+    </div>
+  </aside>
+
+  <div class="portal-main">
+    <label for="portal-menu-toggle" class="portal-topo-mobile">
+      <span aria-hidden="true">☰</span>
+      <img class="marca-logo" src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
+    </label>
+    <main class="portal-conteudo">
+      {% block conteudo %}{% endblock %}
+    </main>
+  </div>
+</div>
+</body>
+</html>

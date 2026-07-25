@@ -1,0 +1,86 @@
+{% extends "_portal_layout.html" %}
+{% block titulo %}Início{% endblock %}
+{% block conteudo %}
+<h2 class="saudacao">Olá, {{ primeiro_nome }}</h2>
+<p class="subsaudacao">Um resumo do que está rolando com você no clube.</p>
+
+<div class="destaques-grid">
+  {% if proximo_campeonato %}
+  <a class="ficha destaque-mini" href="{{ url_for('campeonatos') }}">
+    <div class="folhinha folhinha--mini">
+      <div class="folhinha-mes">{{ proximo_campeonato.mes_abrev }}</div>
+      <div class="folhinha-dia">{{ proximo_campeonato.dia }}</div>
+    </div>
+    <div>
+      <p class="destaque-mini-eyebrow">Próximo campeonato</p>
+      <h3 class="destaque-mini-titulo">{{ proximo_campeonato.nome }}</h3>
+      <p class="destaque-mini-meta">{{ proximo_campeonato.intervalo }}{% if proximo_campeonato.rotulo_contagem %} · {{ proximo_campeonato.rotulo_contagem }}{% endif %}</p>
+    </div>
+  </a>
+  {% else %}
+  <a class="ficha destaque-mini" href="{{ url_for('campeonatos') }}">
+    <div class="destaque-mini-icone">
+      <svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="14" height="14" rx="1.2"/><path d="M3 7.5h14"/><path d="M7 3v2M13 3v2"/></svg>
+    </div>
+    <div>
+      <p class="destaque-mini-eyebrow">Campeonatos</p>
+      <h3 class="destaque-mini-titulo">Nenhum programado</h3>
+      <p class="destaque-mini-meta">Ver calendário completo</p>
+    </div>
+  </a>
+  {% endif %}
+
+  <a class="ficha destaque-mini" href="{{ url_for('habitualidade') }}">
+    <div class="destaque-mini-icone">
+      <svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.7"/><circle cx="10" cy="10" r=".6" fill="currentColor" stroke="none"/></svg>
+    </div>
+    <div>
+      <p class="destaque-mini-eyebrow">Habitualidade</p>
+      {% if habitualidade_resumo and habitualidade_resumo.tem_registro %}
+      <h3 class="destaque-mini-titulo">{{ habitualidade_resumo.total_participacoes }} participaç{{ 'ão' if habitualidade_resumo.total_participacoes == 1 else 'ões' }} registrada{{ '' if habitualidade_resumo.total_participacoes == 1 else 's' }}</h3>
+      <p class="destaque-mini-meta">{% if habitualidade_resumo.cr %}CR — {{ habitualidade_resumo.cr.categoria_cr }}{% else %}Ver histórico completo{% endif %}</p>
+      {% else %}
+      <h3 class="destaque-mini-titulo">Sem registro de atirador</h3>
+      <p class="destaque-mini-meta">Ver detalhes</p>
+      {% endif %}
+    </div>
+  </a>
+</div>
+
+<div class="stats-grid">
+  <a class="ficha stat-card" href="{{ url_for('casos_lista') }}">
+    <span class="stat-numero">{{ casos_abertos }}</span>
+    <span class="stat-rotulo">{{ 'caso aberto' if casos_abertos == 1 else 'casos abertos' }}</span>
+  </a>
+  <a class="ficha stat-card" href="{{ url_for('processos') }}">
+    <span class="stat-numero">{{ documentos_pendentes }}</span>
+    <span class="stat-rotulo">{{ 'documento pendente' if documentos_pendentes == 1 else 'documentos pendentes' }}</span>
+  </a>
+</div>
+
+<div class="secao-titulo">
+  <h2>Processos em andamento</h2>
+  {% if total_processos_em_andamento > processos_em_andamento|length %}
+  <a href="{{ url_for('processos') }}">Ver todos ({{ total_processos_em_andamento }})</a>
+  {% endif %}
+</div>
+
+{% if not processos_em_andamento %}
+<div class="ficha estado-vazio">Nenhum processo em andamento no momento.</div>
+{% else %}
+<div class="ficha" style="padding: 0 1.3rem;">
+  {% for p in processos_em_andamento %}
+  <a class="lista-linha" href="{{ url_for('caso_detalhe', caso_id=p.caso_id) }}">
+    <div class="lista-linha-corpo">
+      <h5 class="lista-linha-titulo">{{ p.nome_servico }}</h5>
+      <div class="lista-linha-meta">
+        <span class="selo selo--{{ p.status_classe }}" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem;">{{ p.status }}</span>
+        {% if p.proxima_acao %}<span>{{ p.proxima_acao }}</span>{% endif %}
+      </div>
+    </div>
+    <span class="lista-linha-seta">→</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
