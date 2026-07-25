@@ -231,6 +231,30 @@
                 <tbody id="caso-documentos-body"></tbody>
               </table>
             </div>
+            <div class="card-body border-top">
+              <h5>Adicionar documento</h5>
+              <p class="text-muted">Para quando o cliente traz o documento pessoalmente ou por outro canal, em vez de mandar por e-mail. PDF ou foto, até 15MB.</p>
+              <div class="row">
+                <div class="col-md-6">
+                  <label for="documento-arquivo">Arquivo</label>
+                  <input id="documento-arquivo" type="file" class="form-control-file" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp">
+                </div>
+                <div class="col-md-6">
+                  <label for="documento-processo">Processo (opcional)</label>
+                  <select id="documento-processo" class="form-control"><option value="">não vincular a um processo específico</option></select>
+                </div>
+              </div>
+              <div class="form-group mt-3">
+                <label for="documento-tipo">Tipo de documento</label>
+                <input id="documento-tipo" type="text" class="form-control" placeholder="Ex.: RG, comprovante de residência" value="Anexo enviado pelo painel">
+              </div>
+              <div class="form-group">
+                <label for="documento-observacoes">Observações</label>
+                <textarea id="documento-observacoes" class="form-control"></textarea>
+              </div>
+              <button class="btn btn-primary" id="salvar-documento">Enviar documento</button>
+              <span class="text-muted ml-2" id="salvar-documento-status"></span>
+            </div>
           </div>
 
           <div class="card">
@@ -578,6 +602,14 @@ async function abrirCaso(casoId) {
     </tr>
   `).join("") : `<tr><td colspan="4" class="text-muted">Nenhum documento neste caso.</td></tr>`;
 
+  $("#documento-processo").innerHTML = `<option value="">não vincular a um processo específico</option>` +
+    d.processos.map(p => `<option value="${p.processo_id}">${escapeHtml(p.nome_servico)} (${p.processo_id})</option>`).join("");
+  $("#documento-arquivo").value = "";
+  $("#documento-tipo").value = "Anexo enviado pelo painel";
+  $("#documento-observacoes").value = "";
+  $("#salvar-documento-status").textContent = "";
+  $("#salvar-documento").dataset.casoId = casoId;
+
   $("#caso-mensagens").innerHTML = d.mensagens.length ? d.mensagens.map(m => `
     <div class="mb-4 pb-3 border-bottom">
       <h5>${m.data_hora} <span class="badge badge-light">${escapeHtml(m.intent || 'sem intenção')}</span> <span class="badge badge-light">${escapeHtml(m.status_processamento)}</span></h5>
@@ -822,6 +854,38 @@ async function recarregarChecklist(casoId, processoId) {
   );
   if (tr) abrirChecklist(JSON.parse(tr.dataset.processo));
 }
+
+async function enviarDocumento() {
+  const botao = $("#salvar-documento");
+  const casoId = botao.dataset.casoId;
+  const statusEl = $("#salvar-documento-status");
+  const arquivo = $("#documento-arquivo").files[0];
+  if (!arquivo) { alert("Selecione um arquivo."); return; }
+
+  const dados = new FormData();
+  dados.append("arquivo", arquivo);
+  dados.append("processo_id", $("#documento-processo").value);
+  dados.append("tipo_documento", $("#documento-tipo").value.trim());
+  dados.append("observacoes", $("#documento-observacoes").value.trim());
+
+  statusEl.textContent = "Enviando…";
+  botao.disabled = true;
+  try {
+    const r = await fetch(`/api/casos/${casoId}/documentos`, { method: "POST", body: dados });
+    const d = await r.json();
+    if (!r.ok) {
+      statusEl.textContent = "";
+      alert("Erro ao enviar: " + d.erro);
+      return;
+    }
+    await abrirCaso(casoId);
+    statusEl.textContent = "Enviado.";
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+$("#salvar-documento").addEventListener("click", enviarDocumento);
 
 $("#voltar-casos").addEventListener("click", () => {
   mostrarView("casos");

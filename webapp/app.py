@@ -425,6 +425,53 @@ def checklist_desmarcar(documento_checklist_id):
     return jsonify(ok=True)
 
 
+# Mesmo allowlist/limite de integracoes/gmail.py -- duplicado de propósito
+# (mesmo padrão do projeto de não compartilhar infra entre "canais"
+# diferentes: e-mail vs. upload manual pelo painel são fontes distintas
+# do mesmo tipo de documento).
+DOCUMENTO_EXTENSOES_ACEITAS = {".pdf", ".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp"}
+DOCUMENTO_TAMANHO_MAXIMO = 15 * 1024 * 1024  # 15 MB
+
+
+@app.route("/api/casos/<caso_id>/documentos", methods=["POST"])
+@login_required
+def documento_upload(caso_id):
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        return jsonify(erro="Selecione um arquivo."), 400
+
+    extensao = Path(arquivo.filename).suffix.lower()
+    if extensao not in DOCUMENTO_EXTENSOES_ACEITAS:
+        return jsonify(erro=f"Tipo de arquivo não aceito: {extensao or '(sem extensão)'}. Use PDF ou foto."), 400
+
+    conteudo = arquivo.read()
+    if not conteudo:
+        return jsonify(erro="Arquivo vazio."), 400
+    if len(conteudo) > DOCUMENTO_TAMANHO_MAXIMO:
+        return jsonify(erro="Arquivo maior que 15MB."), 400
+
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+    caso = con.execute("SELECT cliente_id FROM caso WHERE caso_id = ?", (caso_id,)).fetchone()
+    con.close()
+    if not caso:
+        return jsonify(erro=f"Caso não encontrado: {caso_id}"), 404
+
+    processo_id = (request.form.get("processo_id") or "").strip() or None
+    tipo_documento = (request.form.get("tipo_documento") or "").strip() or "Anexo enviado pelo painel"
+    observacoes = (request.form.get("observacoes") or "").strip() or None
+
+    try:
+        documento_id = motor_documentos.salvar_documento(
+            caso["cliente_id"], conteudo, arquivo.filename,
+            caso_id=caso_id, processo_id=processo_id,
+            tipo_documento=tipo_documento, observacoes=observacoes,
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True, documento_id=documento_id)
+
+
 @app.route("/api/documentos/<documento_id>/arquivo")
 @login_required
 def documento_arquivo(documento_id):
