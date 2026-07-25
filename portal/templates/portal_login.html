@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal do Cliente — Smith Clube de Tiro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
+</head>
+<body class="hold-transition login-page">
+<div class="login-box">
+  <div class="login-logo">
+    <b>Smith</b> Clube de Tiro
+  </div>
+  <div class="card">
+    <div class="card-body login-card-body">
+      <p class="login-box-msg">Portal do Cliente — acompanhe seus processos e documentos</p>
+
+      {% if erro %}
+      <div class="alert alert-danger py-2">{{ erro }}</div>
+      {% endif %}
+
+      {% if mensagem %}
+      <div class="alert alert-info py-2">{{ mensagem }}</div>
+      {% else %}
+      <form method="post">
+        <div class="input-group mb-3">
+          <input id="identificador" name="identificador" type="text" class="form-control" placeholder="Seu CPF ou e-mail cadastrado" required autofocus>
+          <div class="input-group-append">
+            <div class="input-group-text"><span class="fas fa-id-card"></span></div>
+          </div>
+        </div>
+        <p class="text-muted small">Vamos enviar um link de acesso por e-mail — sem senha pra lembrar.</p>
+        <div class="row">
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary btn-block">Enviar link de acesso</button>
+          </div>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
+</body>
+</html>

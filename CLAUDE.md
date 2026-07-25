@@ -23,6 +23,9 @@ Não existe suíte de testes automatizada (nenhum `pytest`/`unittest`). A valida
 # Webhook de atendimento (localhost:5001) -- endpoint POST /webhook/mensagem
 .venv\Scripts\python.exe -m atendimento.webhook
 
+# Portal do Cliente (localhost:5002) -- autoatendimento, login sem senha por link mágico
+.venv\Scripts\python.exe -m portal.app
+
 # Verificar a caixa de entrada uma vez (usado pela Tarefa Agendada do Windows)
 .venv\Scripts\python.exe -m atendimento.poller --uma-vez
 # Verificar agora, com janela visível (uso manual) -- dá duplo-clique em:
@@ -100,6 +103,10 @@ O Auditor (`motor_ia/auditor.py`) tem duas camadas: uma checagem determinística
 ### webapp/ é o painel administrativo real, não uma ferramenta descartável
 
 Flask + Jinja + JS puro (sem build step, sem framework front-end) servido via CDN para o tema AdminLTE 3. Autenticação por sessão simples (`werkzeug.security`, `usuario.senha_hash`) — sem biblioteca de auth adicional. Todas as rotas `/api/*` exigem login (`@login_required`); a senha de um usuário nunca é definida por código, só via `webapp/definir_senha.py` rodado interativamente pelo próprio usuário. A UI inteira é uma SPA de uma página só (`webapp/templates/index.html`) alternando divs `.view` via JS — não há rotas de URL por tela.
+
+### portal/ é um app Flask separado, nunca reaproveita a sessão do painel
+
+Ver `docs/portal_cliente_arquitetura.md` para o rascunho completo. Autoatendimento pro cliente real (não staff), rodando em porta própria (5002) com `secret_key` e nome de cookie (`SESSION_COOKIE_NAME = "portal_session"`) totalmente separados de `webapp/` — os dois podem rodar ao mesmo tempo no mesmo navegador sem misturar sessão. Login sem senha: link mágico de token único por e-mail (`core/motor_portal_auth.py`), nunca reaproveita `usuario.senha_hash`. MVP é só leitura (status do caso + checklist de documentos) + upload — sem chat com a IA pelo Portal ainda. Toda rota que recebe `caso_id`/`documento_id` do cliente **sempre** confere se o dono bate com `session["cliente_id"]` antes de ler ou escrever qualquer coisa — esse é o único ponto realmente crítico de segurança do Portal (primeira superfície pública do sistema, domínio regulado de arma de fogo): um bug aqui vaza documento de um cliente para outro.
 
 ### Integrações externas simuladas até haver credencial
 

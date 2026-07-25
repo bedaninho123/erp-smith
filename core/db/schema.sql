@@ -391,3 +391,18 @@ CREATE TABLE tarefas (
 CREATE INDEX idx_tarefas_caso_id ON tarefas(caso_id);
 CREATE INDEX idx_tarefas_cliente_id ON tarefas(cliente_id);
 CREATE INDEX idx_tarefas_processo_id ON tarefas(processo_id);
+
+-- Token de login sem senha do Portal do Cliente (docs/portal_cliente_arquitetura.md,
+-- decisão 2: link mágico por e-mail). Uso único -- usado_em marcado na hora
+-- em que o token vira uma sessão, nunca reutilizável depois disso. Sem FK
+-- pra caso/processo -- é infraestrutura de autenticação, não dado de negócio.
+CREATE TABLE portal_token (
+    portal_token_id  TEXT PRIMARY KEY,               -- PTK-000001
+    token             TEXT NOT NULL UNIQUE,            -- valor aleatório, vai na URL do link
+    cliente_id        TEXT NOT NULL REFERENCES cliente(cliente_id),
+    criado_em         TEXT NOT NULL,                    -- ISO 8601
+    expira_em         TEXT NOT NULL,                     -- ISO 8601 (criado_em + 15 min)
+    usado_em          TEXT                                -- ISO 8601, NULL até ser consumido
+);
+
+CREATE INDEX idx_portal_token_cliente_id ON portal_token(cliente_id);
