@@ -4,6 +4,25 @@
 <h2 class="saudacao">Olá, {{ primeiro_nome }}</h2>
 <p class="subsaudacao">Um resumo do que está rolando com você no clube.</p>
 
+{% if habitualidade_resumo and habitualidade_resumo.cr and habitualidade_resumo.cr.nivel_cr %}
+{% set nivel = habitualidade_resumo.cr.nivel_cr %}
+{% set nivel_nome = {1: 'Bronze', 2: 'Prata', 3: 'Ouro'}[nivel] %}
+<div class="ficha nivel-card">
+  <p class="nivel-eyebrow">Seu nível de CR</p>
+  <div class="nivel-podio">
+    {% for n in [1, 2, 3] %}
+    <div class="nivel-degrau nivel-degrau--{{ n }}{{ ' nivel-degrau--ativo' if n == nivel else '' }}">
+      <span class="nivel-degrau-numero">{{ n }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="nivel-legenda">
+    <span class="nivel-selo nivel-selo--{{ nivel }}">Nível {{ nivel }} · {{ nivel_nome }}</span>
+    {{ habitualidade_resumo.cr.categoria_cr }}
+  </p>
+</div>
+{% endif %}
+
 <div class="destaques-grid">
   {% if proximo_campeonato %}
   <a class="ficha destaque-mini" href="{{ url_for('campeonatos') }}">

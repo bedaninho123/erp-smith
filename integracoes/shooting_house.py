@@ -85,15 +85,21 @@ def _habitualidade_simulada(cpf: str) -> dict:
 # CPF não cadastrado aqui não tem CR nenhum (mesmo princípio "cliente não
 # é necessariamente atirador" da habitualidade).
 #
-# categoria/data_ultima_confirmacao são o dado bruto; próxima_confirmacao
-# é CALCULADA aqui em Python (nunca pela IA -- data é aritmética, não
-# interpretação de texto, e LLM erra conta com facilidade). Só datas de
-# referência, sem contagem de dias restantes -- decisão do usuário pra
-# não soar como uma contagem regressiva de "vencimento" (o CR não vence).
+# categoria/data_ultima_confirmacao/nivel_cr são o dado bruto -- nivel_cr
+# (1 a 3) ainda não tem endpoint conhecido no Shooting House, então por
+# enquanto é cadastrado manualmente aqui mesmo (mesmo padrão de
+# categoria_cr): pedido do usuário 2026-07-25, sem regra automática de
+# cálculo por enquanto (não fabricar um critério que não foi confirmado
+# com o cliente/órgão regulador). proxima_confirmacao é CALCULADA aqui em
+# Python (nunca pela IA -- data é aritmética, não interpretação de texto,
+# e LLM erra conta com facilidade). Só datas de referência, sem contagem
+# de dias restantes -- decisão do usuário pra não soar como uma contagem
+# regressiva de "vencimento" (o CR não vence).
 _PERFIS_CR_TESTE = {
     "12345678900": {  # Felipe Bedani -- Atirador Desportivo
         "categoria_cr": "Atirador Desportivo",
         "data_ultima_confirmacao": "01/09/2025",
+        "nivel_cr": 2,
     },
 }
 
@@ -112,6 +118,7 @@ def _cr_simulado(cpf: str) -> Optional[dict]:
         "categoria_cr": perfil["categoria_cr"],
         "data_ultima_confirmacao": perfil["data_ultima_confirmacao"],
         "proxima_confirmacao": proxima_confirmacao.strftime("%d/%m/%Y"),
+        "nivel_cr": perfil.get("nivel_cr"),
     }
 
 

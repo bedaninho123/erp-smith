@@ -21,6 +21,18 @@
     --signal: #B23B2E;
     --signal-soft: #F7E5E2;
     --radius: 8px;
+
+    /* Níveis do CR (1/2/3) -- única exceção deliberada à tríade
+       preto/azul/branco: bronze/prata/ouro é o vocabulário universal de
+       "nível" numa modalidade esportiva (mesmo clube que já tem
+       Campeonatos), então cada nível merece sua própria cor pra ser
+       reconhecido de relance. */
+    --nivel1: #A9673A;
+    --nivel1-soft: #F1E3D7;
+    --nivel2: #8D95A1;
+    --nivel2-soft: #E7E9EC;
+    --nivel3: #B8892B;
+    --nivel3-soft: #F5E9D2;
   }
 
   * { box-sizing: border-box; }
@@ -445,6 +457,50 @@
   }
   .pill--contagem { background: var(--ink-deep); color: #fff; text-transform: uppercase; }
   .pill--duracao { background: var(--blue-soft); color: var(--blue-deep); }
+
+  /* "Pódio" de nível do CR -- 3 degraus de altura crescente (1 a 3),
+     bronze/prata/ouro, ecoando o pódio de campeonato de tiro de verdade.
+     Cada degrau já mostra sua própria cor (em tom suave) o tempo todo --
+     as 3 cores precisam estar visíveis de cara, não só quando ativas.
+     O degrau do nível atual fica erguido, com a cor cheia e sombra, pra
+     bater o olho direto no que importa (qual é o MEU nível). */
+  .nivel-card { padding: 1.2rem 1.4rem 1.4rem; margin-bottom: 1.6rem; }
+  .nivel-eyebrow { font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--steel); margin: 0 0 1rem; }
+  .nivel-podio { display: flex; align-items: flex-end; gap: .7rem; height: 84px; }
+  .nivel-degrau {
+    flex: 1;
+    max-width: 92px;
+    border-radius: 6px 6px 3px 3px;
+    border: 1.5px solid transparent;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: .4rem;
+    opacity: .55;
+    transition: transform .18s ease, box-shadow .18s ease, opacity .18s ease;
+  }
+  .nivel-degrau-numero { font-family: 'Big Shoulders', system-ui, sans-serif; font-weight: 700; font-size: 1.15rem; }
+  .nivel-degrau--1 { height: 52%; background: var(--nivel1-soft); border-color: var(--nivel1); color: var(--nivel1); }
+  .nivel-degrau--2 { height: 74%; background: var(--nivel2-soft); border-color: var(--nivel2); color: #5B626D; }
+  .nivel-degrau--3 { height: 100%; background: var(--nivel3-soft); border-color: var(--nivel3); color: var(--nivel3); }
+  .nivel-degrau--ativo {
+    opacity: 1;
+    box-shadow: 0 10px 20px -12px rgba(19,20,23,.4);
+    transform: translateY(-3px);
+  }
+  .nivel-degrau--ativo.nivel-degrau--1 { background: var(--nivel1); color: #fff; }
+  .nivel-degrau--ativo.nivel-degrau--2 { background: var(--nivel2); color: #fff; }
+  .nivel-degrau--ativo.nivel-degrau--3 { background: var(--nivel3); color: #fff; }
+  .nivel-legenda { display: flex; align-items: center; gap: .6rem; margin: 1rem 0 0; font-size: .88rem; color: var(--steel); }
+  .nivel-selo {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-family: 'Big Shoulders', system-ui, sans-serif; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase; font-size: .78rem;
+    padding: .28rem .65rem; border-radius: 999px;
+  }
+  .nivel-selo--1 { background: var(--nivel1-soft); color: var(--nivel1); }
+  .nivel-selo--2 { background: var(--nivel2-soft); color: #5B626D; }
+  .nivel-selo--3 { background: var(--nivel3-soft); color: var(--nivel3); }
 </style>
 <!--
   Notas de decisão (skill frontend-design, revisão 2026-07-25):
