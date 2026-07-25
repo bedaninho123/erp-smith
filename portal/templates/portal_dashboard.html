@@ -4,128 +4,166 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Portal do Cliente — Smith Clube de Tiro</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
+{% include "_portal_estilo.html" %}
 <style>
-  body { background: #f4f6f9; }
-  .container-portal { max-width: 760px; margin: 0 auto; padding: 24px 16px 60px; }
-  .topbar { background: #343a40; color: #fff; padding: 14px 16px; }
-  .topbar a { color: #adb5bd; }
-  .badge-status { font-size: .85rem; }
-  .grupo-checklist { font-weight: 600; margin-top: .5rem; font-size: .9rem; color: #495057; }
+  .topo {
+    background: var(--ink);
+    color: #fff;
+    padding: 14px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .topo .marca { color: #fff; }
+  .topo .marca b { color: #E3C687; }
+  .topo-usuario { font-size: .85rem; color: #C9CCD4; }
+  .topo-usuario a { color: #fff; margin-left: .8rem; }
+
+  .conteudo { max-width: 680px; margin: 0 auto; padding: 28px 16px 64px; }
+  .conteudo h2 {
+    font-size: 1rem;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--steel);
+    margin: 2.2rem 0 .8rem;
+  }
+  .conteudo h2:first-child { margin-top: 0; }
+
+  .caso { padding: 1.3rem 1.4rem; margin-bottom: 1.1rem; }
+  .caso-cabecalho { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+  .caso-titulo { font-size: 1.05rem; margin: 0 0 .3rem; }
+  .caso-meta { color: var(--steel); font-size: .82rem; margin: 0 0 .5rem; }
+  .caso-descricao { color: var(--steel); font-size: .9rem; margin: 0; }
+
+  .processo { padding-top: 1rem; margin-top: 1rem; border-top: 2px dashed var(--line); }
+  .processo-linha { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+  .processo-nome { font-weight: 600; }
+  .processo-protocolo { color: var(--steel); font-size: .85rem; }
+  .processo-proxima { margin: .5rem 0 0; font-size: .9rem; }
+
+  .checklist { display: flex; gap: .9rem; align-items: flex-start; margin-top: .8rem; }
+  .checklist-itens { flex: 1; min-width: 0; }
+  .checklist-contagem { font-size: .74rem; color: var(--steel); text-align: center; margin-top: .2rem; }
+  .checklist-grupo { font-size: .74rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--steel); margin: .5rem 0 .2rem; }
+  .checklist-grupo:first-child { margin-top: 0; }
+  .checklist-item { font-size: .87rem; margin-bottom: .25rem; }
+
+  .ficha-form, .ficha-tabela { padding: 1.3rem 1.4rem; }
+  .campo { margin-bottom: 1rem; }
+  .campo:last-of-type { margin-bottom: 1.2rem; }
 </style>
 </head>
 <body>
-<div class="topbar d-flex justify-content-between align-items-center">
-  <div><b>Smith</b> Clube de Tiro — Portal do Cliente</div>
-  <div>Olá, {{ cliente_nome }} &nbsp; <a href="{{ url_for('sair') }}">Sair</a></div>
+<div class="topo">
+  <span class="marca"><b>SMITH</b> CLUBE DE TIRO</span>
+  <span class="topo-usuario">{{ cliente_nome }}<a href="{{ url_for('sair') }}">Sair</a></span>
 </div>
 
-<div class="container-portal">
+<div class="conteudo">
 
-  <h4 class="mt-4 mb-3">Seus casos</h4>
+  <h2>Seus casos</h2>
 
   {% if not casos %}
-  <div class="alert alert-light border">Nenhum caso encontrado no momento.</div>
+  <div class="ficha caso">
+    <p class="caso-descricao">Você ainda não tem nenhum caso em andamento. Assim que abrirmos um processo pra você, ele aparece aqui.</p>
+  </div>
   {% endif %}
 
   {% for caso in casos %}
-  <div class="card mb-3">
-    <div class="card-body">
-      <h5 class="card-title">{{ caso.titulo }}</h5>
-      <p>
-        <span class="badge badge-info badge-status">{{ caso.status }}</span>
-        <span class="badge badge-light badge-status">{{ caso.categoria }}</span>
-      </p>
-      {% if caso.descricao %}<p class="text-muted">{{ caso.descricao }}</p>{% endif %}
+  <div class="ficha caso">
+    <div class="caso-cabecalho">
+      <div>
+        <h3 class="caso-titulo">{{ caso.titulo }}</h3>
+        <p class="caso-meta">{{ caso.categoria }}</p>
+      </div>
+      <span class="selo selo--{{ caso.status_classe }}">{{ caso.status }}</span>
+    </div>
+    {% if caso.descricao %}<p class="caso-descricao">{{ caso.descricao }}</p>{% endif %}
 
-      {% for processo in caso.processos %}
-      <div class="border-top pt-2 mt-2">
-        <b>{{ processo.nome_servico }}</b>
-        {% if processo.protocolo %}<span class="text-muted">— protocolo {{ processo.protocolo }}</span>{% endif %}
-        <br>
-        <span class="badge badge-secondary">{{ processo.status }}</span>
-        {% if processo.prazo_estimado %}<span class="text-muted small">prazo estimado: {{ processo.prazo_estimado }}</span>{% endif %}
-        {% if processo.proxima_acao %}<p class="mb-1 mt-1"><b>Próxima ação:</b> {{ processo.proxima_acao }}</p>{% endif %}
+    {% for processo in caso.processos %}
+    <div class="processo">
+      <div class="processo-linha">
+        <span class="processo-nome">{{ processo.nome_servico }}</span>
+        {% if processo.protocolo %}<span class="processo-protocolo mono">protocolo {{ processo.protocolo }}</span>{% endif %}
+        <span class="selo selo--{{ processo.status_classe }}" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem;">{{ processo.status }}</span>
+      </div>
+      {% if processo.prazo_estimado %}<p class="processo-proxima mono" style="color:var(--steel); font-size:.8rem;">prazo estimado: {{ processo.prazo_estimado[:10] }}</p>{% endif %}
+      {% if processo.proxima_acao %}<p class="processo-proxima"><b>Próxima ação:</b> {{ processo.proxima_acao }}</p>{% endif %}
 
-        {% if processo.checklist %}
-        <div class="mt-2">
-          <span class="small text-muted">Documentos deste processo:</span>
+      {% if processo.checklist %}
+      <div class="checklist">
+        <div>
+          <div class="alvo {% if processo.checklist_pct == 100 %}alvo-completo{% endif %}" style="--pct: {{ processo.checklist_pct }}%;"></div>
+          <div class="checklist-contagem mono">{{ processo.checklist_recebidos }}/{{ processo.checklist_total }}</div>
+        </div>
+        <div class="checklist-itens">
           {% set ns = namespace(grupo_atual="") %}
           {% for item in processo.checklist %}
             {% if item.grupo and item.grupo != ns.grupo_atual %}
               {% set ns.grupo_atual = item.grupo %}
-              <div class="grupo-checklist">{{ item.grupo }}</div>
+              <div class="checklist-grupo">{{ item.grupo }}</div>
             {% endif %}
-            <div>
-              {% if item.recebido %}
-              <span class="badge badge-success">Recebido</span>
-              {% else %}
-              <span class="badge badge-light border">Faltando</span>
-              {% endif %}
+            <div class="checklist-item">
+              <span class="badge-item {{ 'badge-item--sim' if item.recebido else 'badge-item--nao' }}">{{ 'recebido' if item.recebido else 'faltando' }}</span>
               {{ item.item }}
             </div>
           {% endfor %}
         </div>
-        {% endif %}
       </div>
-      {% endfor %}
+      {% endif %}
     </div>
+    {% endfor %}
   </div>
   {% endfor %}
 
-  <h4 class="mt-4 mb-3">Enviar um documento</h4>
-  <div class="card mb-3">
-    <div class="card-body">
-      {% if not casos %}
-      <p class="text-muted">Você precisa ter pelo menos um caso em andamento para enviar um documento.</p>
-      {% else %}
-      <form method="post" action="{{ url_for('upload_documento') }}" enctype="multipart/form-data">
-        <div class="form-group">
-          <label for="caso_id">Caso</label>
-          <select id="caso_id" name="caso_id" class="form-control" required>
-            {% for caso in casos %}
-            <option value="{{ caso.caso_id }}">{{ caso.titulo }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="tipo_documento">O que é este documento?</label>
-          <input id="tipo_documento" name="tipo_documento" type="text" class="form-control" placeholder="Ex.: RG, comprovante de residência">
-        </div>
-        <div class="form-group">
-          <label for="arquivo">Arquivo (PDF ou foto, até 15MB)</label>
-          <input id="arquivo" name="arquivo" type="file" class="form-control-file" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp" required>
-        </div>
-        <button type="submit" class="btn btn-primary">Enviar documento</button>
-      </form>
-      {% endif %}
-    </div>
+  <h2>Enviar um documento</h2>
+  <div class="ficha ficha-form">
+    {% if not casos %}
+    <p class="caso-descricao">Você precisa ter pelo menos um caso em andamento pra enviar um documento.</p>
+    {% else %}
+    <form method="post" action="{{ url_for('upload_documento') }}" enctype="multipart/form-data">
+      <div class="campo">
+        <label for="caso_id">Caso</label>
+        <select id="caso_id" name="caso_id" required>
+          {% for caso in casos %}
+          <option value="{{ caso.caso_id }}">{{ caso.titulo }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="tipo_documento">O que é este documento?</label>
+        <input id="tipo_documento" name="tipo_documento" type="text" placeholder="Ex.: RG, comprovante de residência">
+      </div>
+      <div class="campo">
+        <label for="arquivo">Arquivo (PDF ou foto, até 15MB)</label>
+        <input id="arquivo" name="arquivo" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp" required>
+      </div>
+      <button type="submit" class="botao">Enviar documento</button>
+    </form>
+    {% endif %}
   </div>
 
-  <h4 class="mt-4 mb-3">Documentos já enviados</h4>
-  <div class="card">
-    <div class="card-body p-0">
-      <table class="table table-sm mb-0">
-        <thead><tr><th>Tipo</th><th>Arquivo</th><th>Status</th><th>Enviado em</th></tr></thead>
-        <tbody>
-          {% for doc in documentos %}
-          <tr>
-            <td>{{ doc.tipo_documento }}</td>
-            <td>
-              {% if doc.nome_arquivo %}
-              <a href="{{ url_for('download_documento', documento_id=doc.documento_id) }}">{{ doc.nome_arquivo }}</a>
-              {% else %}—{% endif %}
-            </td>
-            <td>{{ doc.status }}</td>
-            <td>{{ doc.data_envio or '—' }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="4" class="text-muted p-3">Nenhum documento enviado ainda.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+  <h2>Documentos já enviados</h2>
+  <div class="ficha ficha-tabela">
+    <table>
+      <thead><tr><th>Tipo</th><th>Arquivo</th><th>Status</th><th>Enviado em</th></tr></thead>
+      <tbody>
+        {% for doc in documentos %}
+        <tr>
+          <td>{{ doc.tipo_documento }}</td>
+          <td>
+            {% if doc.nome_arquivo %}
+            <a href="{{ url_for('download_documento', documento_id=doc.documento_id) }}">{{ doc.nome_arquivo }}</a>
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ doc.status }}</td>
+          <td class="mono">{{ doc.data_envio[:10] if doc.data_envio else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" style="color:var(--steel); padding:1rem .3rem;">Nenhum documento enviado ainda — assim que você mandar algo, aparece aqui.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 
 </div>

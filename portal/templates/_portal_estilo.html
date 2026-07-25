@@ -1,0 +1,259 @@
+<!--
+  Sistema de design do Portal do Cliente -- ver notas de decisão no
+  final deste arquivo. Sem framework/build step, CSS puro + Google
+  Fonts via CDN, incluído nas duas telas via Jinja include.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F5F2EA;
+    --paper-raised: #FBF9F4;
+    --line: #DFD6BE;
+    --ink: #23293A;
+    --steel: #5B6472;
+    --brass: #A9782E;
+    --brass-deep: #7E5A22;
+    --signal: #B33A19;
+    --signal-soft: #F1E2D8;
+    --brass-soft: #EFE6D2;
+    --radius: 3px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 15.5px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, .rotulo {
+    font-family: 'Big Shoulders', system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: .01em;
+    color: var(--ink);
+  }
+
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  a { color: var(--brass-deep); }
+  a:hover { color: var(--signal); }
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--brass);
+    outline-offset: 2px;
+  }
+
+  /* Cabeçalho de marca, aparece nas duas telas -- eyebrow condensado
+     tipo carimbo de cabeçalho de formulário oficial. */
+  .marca {
+    font-family: 'Big Shoulders', system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-size: 1.05rem;
+  }
+  .marca b { color: var(--brass-deep); }
+
+  /* "Ficha" -- o container principal, uma coluna só, como uma ficha de
+     controle de tiro/protocolo de despachante: papel, borda fina,
+     sombra rasteira (está sobre uma mesa, não flutuando). */
+  .ficha {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 0 rgba(35,41,58,.04), 0 8px 24px -16px rgba(35,41,58,.25);
+  }
+
+  /* Linha de perfuração entre seções da ficha -- em vez de <hr>/card
+     shadow genérico, remete a talão/ficha destacável. */
+  .perfuracao {
+    height: 0;
+    border-top: 2px dashed var(--line);
+    margin: 0;
+  }
+
+  /* "Selo" -- selo/carimbo de status, referência direta ao carimbo do
+     despachante. Anel duplo, leve rotação, tipografia condensada
+     maiúscula. Cor muda por status: bronze = em andamento normal,
+     sinalização = precisa de algo do cliente, neutro = encerrado. */
+  .selo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 108px;
+    padding: .3rem .65rem;
+    border: 2px solid currentColor;
+    border-radius: 999px;
+    position: relative;
+    font-family: 'Big Shoulders', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: .72rem;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    text-align: center;
+    transform: rotate(-3deg);
+    animation: selo-carimbada .28s cubic-bezier(.2,1.4,.4,1) both;
+  }
+  .selo::before {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    opacity: .55;
+  }
+  .selo--brass { color: var(--brass-deep); background: var(--brass-soft); }
+  .selo--signal { color: var(--signal); background: var(--signal-soft); }
+  .selo--neutro { color: var(--steel); background: #ECEAE3; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes selo-carimbada {
+      0% { opacity: 0; transform: rotate(-3deg) scale(1.5); }
+      60% { opacity: 1; }
+      100% { opacity: 1; transform: rotate(-3deg) scale(1); }
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .selo { animation: none; }
+  }
+
+  /* "Alvo" -- indicador de progresso do checklist de documentos, como
+     um alvo de tiro: anel de bronze fechando conforme os documentos
+     chegam, ponto central marcando "no alvo" quando completo. */
+  .alvo {
+    --pct: 0%;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: conic-gradient(var(--brass) var(--pct), var(--line) var(--pct) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .alvo::after {
+    content: "";
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--paper-raised);
+  }
+  .alvo-completo { position: relative; }
+  .alvo-completo::before {
+    content: "";
+    position: absolute;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--signal);
+    z-index: 1;
+  }
+
+  .badge-item {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: .68rem;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    padding: .1rem .4rem;
+    border-radius: 2px;
+    margin-right: .4rem;
+  }
+  .badge-item--sim { background: var(--brass-soft); color: var(--brass-deep); }
+  .badge-item--nao { background: transparent; color: var(--steel); border: 1px solid var(--line); }
+
+  label {
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--steel);
+    display: block;
+    margin-bottom: .3rem;
+  }
+  input[type=text], input[type=file], select, textarea {
+    width: 100%;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: .55rem .7rem;
+    font-family: inherit;
+    font-size: .95rem;
+    color: var(--ink);
+  }
+  input[type=text]:focus, select:focus, textarea:focus {
+    border-color: var(--brass);
+  }
+
+  .botao {
+    display: inline-block;
+    background: var(--brass-deep);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    padding: .65rem 1.1rem;
+    font-family: 'Big Shoulders', system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    font-size: .85rem;
+    cursor: pointer;
+  }
+  .botao:hover { background: var(--signal); }
+
+  .aviso {
+    background: var(--brass-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: .8rem 1rem;
+    font-size: .9rem;
+    color: var(--brass-deep);
+  }
+  .aviso--erro { background: var(--signal-soft); color: var(--signal); }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left;
+    font-size: .72rem;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--steel);
+    border-bottom: 1px solid var(--line);
+    padding: .5rem .3rem;
+  }
+  td {
+    border-bottom: 1px solid var(--line);
+    padding: .55rem .3rem;
+    font-size: .92rem;
+  }
+</style>
+<!--
+  Notas de decisão (skill frontend-design):
+  - Referências rejeitadas de propósito: creme+serif+terracota, quase-
+    preto+verde ácido, jornal com hairlines densas -- nenhuma tem
+    relação com o assunto (despachante de clube de tiro), são só
+    defaults de design gerado por IA.
+  - Direção escolhida: "ficha de controle" -- cruza dois vocabulários
+    reais e específicos deste negócio: (1) o alvo de tiro esportivo
+    (anéis concêntricos = precisão, "no alvo") e (2) o carimbo/ficha de
+    protocolo do despachante brasileiro (selo de status, ficha
+    destacável com perfuração). Cor: bronze de cápsula + papel de ficha
+    + sinalização laranja-ferrugem (cor de segurança de estande/alvo de
+     argila), gunmetal escuro pro texto -- não é o terracota nem o
+    verde-ácido genérico.
+  - Tipografia: Big Shoulders (condensada, remete a estêncil/gravação
+    em metal -- usada só em títulos/selos/rótulos, nunca em texto
+    corrido) + IBM Plex Sans (pedigree técnico, não é o Inter padrão) +
+    IBM Plex Mono pra protocolo/CPF/data (leitura de instrumento).
+  - Assinatura: o "alvo" de progresso do checklist (anel bronze
+    fechando via conic-gradient) e o "selo" carimbado de status
+    (rotacionado, anel duplo) -- os dois únicos elementos com
+    personalidade forte; todo o resto (formulário, tabela) fica quieto
+    e disciplinado.
+  - Movimento: só o selo "carimba" na entrada (leve scale+rotate,
+    ~280ms, respeitando prefers-reduced-motion) -- um momento só,
+    coerente com o gesto físico de carimbar, não decoração espalhada.
+-->

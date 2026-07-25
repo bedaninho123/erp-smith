@@ -50,6 +50,18 @@ app.config["SESSION_COOKIE_NAME"] = "portal_session"
 URL_BASE = os.environ.get("PORTAL_URL_BASE", "http://127.0.0.1:5002")
 
 
+def _classe_selo(status: str) -> str:
+    """Cor do selo de status na UI (ver portal/templates/_portal_estilo.html)
+    -- puramente de apresentação, não é regra de negócio (não decide o
+    que o status significa, só como ele aparece na tela)."""
+    s = (status or "").lower()
+    if "cancel" in s or "encerr" in s:
+        return "neutro"
+    if "aguardando cliente" in s or "aguardando documentos" in s:
+        return "signal"
+    return "brass"
+
+
 def cliente_login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -132,6 +144,7 @@ def dashboard():
     casos_completos = []
     for linha_caso in casos:
         caso = dict(linha_caso)
+        caso["status_classe"] = _classe_selo(caso["status"])
         processos = con.execute(
             "SELECT p.processo_id, p.protocolo, p.status, p.prazo_estimado, "
             "p.proxima_acao, s.nome_servico "
@@ -142,7 +155,15 @@ def dashboard():
         processos_completos = []
         for linha_processo in processos:
             processo = dict(linha_processo)
-            processo["checklist"] = motor_checklist.status_checklist(con, processo["processo_id"])
+            processo["status_classe"] = _classe_selo(processo["status"])
+            checklist = motor_checklist.status_checklist(con, processo["processo_id"])
+            processo["checklist"] = checklist
+            processo["checklist_total"] = len(checklist)
+            processo["checklist_recebidos"] = sum(1 for item in checklist if item["recebido"])
+            processo["checklist_pct"] = (
+                round(100 * processo["checklist_recebidos"] / processo["checklist_total"])
+                if checklist else 0
+            )
             processos_completos.append(processo)
         caso["processos"] = processos_completos
         casos_completos.append(caso)
