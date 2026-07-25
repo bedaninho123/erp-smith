@@ -91,6 +91,12 @@
               <p>Campeonatos</p>
             </a>
           </li>
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="resultados">
+              <i class="nav-icon fas fa-list-ol"></i>
+              <p>Resultados</p>
+            </a>
+          </li>
           <li class="nav-header">SISTEMA</li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="config">
@@ -380,6 +386,65 @@
             </div>
           </div>
 
+          <div class="card">
+            <div class="card-header"><h3 class="card-title" id="campeonato-form-titulo">Novo campeonato</h3></div>
+            <div class="card-body">
+              <input type="hidden" id="campeonato-id">
+              <div class="form-group">
+                <label for="campeonato-nome">Nome</label>
+                <input id="campeonato-nome" type="text" class="form-control" placeholder="Ex.: Prova 4 Armas Smith Clube">
+              </div>
+              <div class="row">
+                <div class="col-md-3">
+                  <label for="campeonato-data-inicio">Data de início</label>
+                  <input id="campeonato-data-inicio" type="date" class="form-control">
+                </div>
+                <div class="col-md-3">
+                  <label for="campeonato-data-fim">Data de fim (opcional)</label>
+                  <input id="campeonato-data-fim" type="date" class="form-control">
+                </div>
+                <div class="col-md-6">
+                  <label for="campeonato-local">Local (opcional)</label>
+                  <input id="campeonato-local" type="text" class="form-control" placeholder="Ex.: Sede Smith Clube de Tiro">
+                </div>
+              </div>
+              <div class="form-group mt-3">
+                <label for="campeonato-observacoes">Observações (opcional)</label>
+                <textarea id="campeonato-observacoes" class="form-control"></textarea>
+              </div>
+              <button class="btn btn-primary" id="salvar-campeonato">Adicionar campeonato</button>
+              <button class="btn btn-outline-secondary ml-2" id="cancelar-edicao-campeonato" style="display:none">Cancelar edição</button>
+              <span class="text-muted ml-2" id="salvar-campeonato-status"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-resultados" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Resultados</h1>
+          <p class="text-muted mb-0">Classificação das provas já ocorridas. Escolha um campeonato pra ver ou cadastrar o resultado.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <div class="card">
+            <div class="card-body">
+              <label for="resultados-filtro-ano">Ano</label>
+              <select id="resultados-filtro-ano" class="form-control" style="max-width:160px"></select>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover text-nowrap">
+                <thead><tr><th>Nome</th><th>Início</th><th>Fim</th><th>Local</th><th></th></tr></thead>
+                <tbody id="resultados-campeonatos-body"></tbody>
+              </table>
+            </div>
+          </div>
+
           <div class="card" id="card-resultados" style="display:none">
             <div class="card-header">
               <h3 class="card-title" id="resultados-titulo">Resultados</h3>
@@ -434,38 +499,6 @@
               <button class="btn btn-primary mt-3" id="salvar-resultado">Adicionar resultado</button>
               <button class="btn btn-outline-secondary ml-2 mt-3" id="cancelar-edicao-resultado" style="display:none">Cancelar edição</button>
               <span class="text-muted ml-2" id="salvar-resultado-status"></span>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-header"><h3 class="card-title" id="campeonato-form-titulo">Novo campeonato</h3></div>
-            <div class="card-body">
-              <input type="hidden" id="campeonato-id">
-              <div class="form-group">
-                <label for="campeonato-nome">Nome</label>
-                <input id="campeonato-nome" type="text" class="form-control" placeholder="Ex.: Prova 4 Armas Smith Clube">
-              </div>
-              <div class="row">
-                <div class="col-md-3">
-                  <label for="campeonato-data-inicio">Data de início</label>
-                  <input id="campeonato-data-inicio" type="date" class="form-control">
-                </div>
-                <div class="col-md-3">
-                  <label for="campeonato-data-fim">Data de fim (opcional)</label>
-                  <input id="campeonato-data-fim" type="date" class="form-control">
-                </div>
-                <div class="col-md-6">
-                  <label for="campeonato-local">Local (opcional)</label>
-                  <input id="campeonato-local" type="text" class="form-control" placeholder="Ex.: Sede Smith Clube de Tiro">
-                </div>
-              </div>
-              <div class="form-group mt-3">
-                <label for="campeonato-observacoes">Observações (opcional)</label>
-                <textarea id="campeonato-observacoes" class="form-control"></textarea>
-              </div>
-              <button class="btn btn-primary" id="salvar-campeonato">Adicionar campeonato</button>
-              <button class="btn btn-outline-secondary ml-2" id="cancelar-edicao-campeonato" style="display:none">Cancelar edição</button>
-              <span class="text-muted ml-2" id="salvar-campeonato-status"></span>
             </div>
           </div>
         </div>
@@ -617,6 +650,7 @@ document.querySelectorAll("[data-view]").forEach(btn => {
     if (btn.dataset.view === "clientes") carregarClientesLista();
     if (btn.dataset.view === "config") carregarConfiguracoes();
     if (btn.dataset.view === "campeonatos") carregarCampeonatos();
+    if (btn.dataset.view === "resultados") carregarResultadosCampeonatosLista();
   });
 });
 
@@ -1017,7 +1051,6 @@ async function carregarCampeonatos() {
       <td>${c.data_fim !== c.data_inicio ? dataBr(c.data_fim) : '—'}</td>
       <td>${escapeHtml(c.local || '—')}</td>
       <td class="text-right">
-        <button class="btn btn-outline-primary btn-sm btn-resultados-campeonato">Resultados</button>
         <button class="btn btn-outline-secondary btn-sm btn-editar-campeonato"><i class="fas fa-pen"></i></button>
         <button class="btn btn-outline-danger btn-sm btn-remover-campeonato"><i class="fas fa-trash"></i></button>
       </td>
@@ -1036,7 +1069,35 @@ async function carregarCampeonatos() {
       removerCampeonato(c.campeonato_id, c.nome);
     });
   });
-  $("#campeonatos-body").querySelectorAll(".btn-resultados-campeonato").forEach(btn => {
+}
+
+async function carregarResultadosCampeonatosLista() {
+  const anoSelect = $("#resultados-filtro-ano");
+  if (!anoSelect.dataset.carregado) {
+    const anoAtual = new Date().getFullYear();
+    const anos = [anoAtual - 1, anoAtual, anoAtual + 1, anoAtual + 2];
+    anoSelect.innerHTML = anos.map(a => `<option value="${a}" ${a === anoAtual ? "selected" : ""}>${a}</option>`).join("");
+    anoSelect.dataset.carregado = "1";
+    anoSelect.addEventListener("change", carregarResultadosCampeonatosLista);
+  }
+
+  const ano = anoSelect.value;
+  const r = await fetch(`/api/campeonatos?ano=${ano}`);
+  const campeonatos = await r.json();
+
+  $("#resultados-campeonatos-body").innerHTML = campeonatos.length ? campeonatos.map(c => `
+    <tr data-campeonato='${JSON.stringify(c).replace(/'/g, "&#39;")}'>
+      <td>${escapeHtml(c.nome)}</td>
+      <td>${dataBr(c.data_inicio)}</td>
+      <td>${c.data_fim !== c.data_inicio ? dataBr(c.data_fim) : '—'}</td>
+      <td>${escapeHtml(c.local || '—')}</td>
+      <td class="text-right">
+        <button class="btn btn-outline-primary btn-sm btn-ver-resultados">Ver resultados</button>
+      </td>
+    </tr>
+  `).join("") : `<tr><td colspan="5" class="text-muted">Nenhum campeonato cadastrado para ${ano}.</td></tr>`;
+
+  $("#resultados-campeonatos-body").querySelectorAll(".btn-ver-resultados").forEach(btn => {
     btn.addEventListener("click", () => {
       const c = JSON.parse(btn.closest("tr").dataset.campeonato);
       abrirResultados(c);
