@@ -447,15 +447,23 @@ def campeonatos():
             meses_grupos.append({"chave": chave, "nome": rotulo_mes, "eventos": []})
         meses_grupos[-1]["eventos"].append(ev)
 
-    campeonatos_com_resultado = _campeonatos_com_resultado(hoje)
-
     return render_template(
         "portal_campeonatos.html",
         ativo="campeonatos",
         cliente_nome=session.get("cliente_nome"),
         proximo=proximo,
         meses_grupos=meses_grupos,
-        campeonatos_com_resultado=campeonatos_com_resultado,
+    )
+
+
+@app.route("/portal/resultados")
+@cliente_login_required
+def resultados():
+    return render_template(
+        "portal_resultados.html",
+        ativo="resultados",
+        cliente_nome=session.get("cliente_nome"),
+        campeonatos_com_resultado=_campeonatos_com_resultado(),
     )
 
 
@@ -463,14 +471,14 @@ def campeonatos():
 @cliente_login_required
 def resultado_detalhe(campeonato_id):
     campeonato = obter_campeonato(campeonato_id)
-    resultados = listar_resultados(campeonato_id) if campeonato else []
-    if not campeonato or not resultados:
+    resultados_lista = listar_resultados(campeonato_id) if campeonato else []
+    if not campeonato or not resultados_lista:
         flash("Resultado não encontrado.", "erro")
-        return redirect(url_for("campeonatos"))
+        return redirect(url_for("resultados"))
 
     cliente_id = session.get("cliente_id")
     modalidades = []
-    for res in resultados:
+    for res in resultados_lista:
         res["eh_voce"] = bool(cliente_id) and res["cliente_id"] == cliente_id
         chave = res["modalidade"] or "Geral"
         if not modalidades or modalidades[-1]["nome"] != chave:
@@ -479,7 +487,7 @@ def resultado_detalhe(campeonato_id):
 
     return render_template(
         "portal_resultado_detalhe.html",
-        ativo="campeonatos",
+        ativo="resultados",
         cliente_nome=session.get("cliente_nome"),
         campeonato={**campeonato, "intervalo": _intervalo_campeonato(campeonato, datetime.now().date())},
         modalidades=modalidades,

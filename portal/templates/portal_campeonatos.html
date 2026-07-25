@@ -50,24 +50,4 @@
 {% endfor %}
 
 {% endif %}
-
-{% if campeonatos_com_resultado %}
-<div class="secao-titulo" style="margin-top:2.4rem;">
-  <h2>Resultados</h2>
-</div>
-<div class="ficha" style="padding: 0 1.3rem;">
-  {% for c in campeonatos_com_resultado %}
-  <a class="lista-linha" href="{{ url_for('resultado_detalhe', campeonato_id=c.campeonato_id) }}">
-    <div class="lista-linha-corpo">
-      <h5 class="lista-linha-titulo">{{ c.nome }}</h5>
-      <div class="lista-linha-meta">
-        <span>{{ c.intervalo }}</span>
-        {% if c.local %}<span>· {{ c.local }}</span>{% endif %}
-      </div>
-    </div>
-    <span class="lista-linha-seta">→</span>
-  </a>
-  {% endfor %}
-</div>
-{% endif %}
 {% endblock %}

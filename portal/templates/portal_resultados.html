@@ -1,0 +1,28 @@
+{% extends "_portal_layout.html" %}
+{% block titulo %}Resultados{% endblock %}
+{% block conteudo %}
+{% for categoria, mensagem in get_flashed_messages(with_categories=true) %}
+<div class="msg-flash msg-flash--{{ categoria }}">{{ mensagem }}</div>
+{% endfor %}
+
+<h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:0 0 1rem;">Resultados de campeonatos</h2>
+
+{% if not campeonatos_com_resultado %}
+<div class="ficha estado-vazio">Ainda não há classificação divulgada de nenhuma prova.</div>
+{% else %}
+<div class="ficha" style="padding: 0 1.3rem;">
+  {% for c in campeonatos_com_resultado %}
+  <a class="lista-linha" href="{{ url_for('resultado_detalhe', campeonato_id=c.campeonato_id) }}">
+    <div class="lista-linha-corpo">
+      <h5 class="lista-linha-titulo">{{ c.nome }}</h5>
+      <div class="lista-linha-meta">
+        <span>{{ c.intervalo }}</span>
+        {% if c.local %}<span>· {{ c.local }}</span>{% endif %}
+      </div>
+    </div>
+    <span class="lista-linha-seta">→</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
