@@ -1,25 +1,10 @@
 {% extends "_portal_layout.html" %}
 {% block titulo %}Campeonatos{% endblock %}
-{% block estilo_extra %}
-<style>
-  .resultado-card { padding: 1.2rem 1.4rem 1.4rem; margin-bottom: 1.2rem; }
-  .resultado-cabecalho { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: .4rem; margin-bottom: .6rem; }
-  .resultado-cabecalho h3 { font-size: 1.05rem; margin: 0; }
-  .resultado-data { color: var(--steel); font-size: .8rem; }
-  .resultado-modalidade-titulo { font-size: .74rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--steel); margin: 1rem 0 .3rem; }
-  .resultado-modalidade-titulo:first-of-type { margin-top: .2rem; }
-  .resultado-tabela { width: 100%; border-collapse: collapse; }
-  .resultado-tabela td { padding: .4rem .3rem; border-bottom: 1px solid var(--line); font-size: .9rem; }
-  .resultado-tabela tr:last-child td { border-bottom: none; }
-  .resultado-colocacao { font-family: 'Big Shoulders', system-ui, sans-serif; font-weight: 700; width: 2.6rem; color: var(--steel); }
-  .resultado-linha--voce td { background: var(--blue-soft); }
-  .resultado-linha--voce .resultado-colocacao { color: var(--blue-deep); }
-  .resultado-obs { color: var(--steel); font-size: .82rem; padding-top: 0; }
-  .resultado-pontuacao { text-align: right; color: var(--steel); }
-  .pill--voce { background: var(--blue); color: #fff; margin-left: .4rem; }
-</style>
-{% endblock %}
 {% block conteudo %}
+{% for categoria, mensagem in get_flashed_messages(with_categories=true) %}
+<div class="msg-flash msg-flash--{{ categoria }}">{{ mensagem }}</div>
+{% endfor %}
+
 <h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:0 0 1rem;">Calendário de campeonatos</h2>
 
 {% if not proximo %}
@@ -70,33 +55,19 @@
 <div class="secao-titulo" style="margin-top:2.4rem;">
   <h2>Resultados</h2>
 </div>
-{% for c in campeonatos_com_resultado %}
-<div class="ficha resultado-card">
-  <div class="resultado-cabecalho">
-    <h3>{{ c.nome }}</h3>
-    <span class="resultado-data">{{ c.intervalo }}{% if c.local %} · {{ c.local }}{% endif %}</span>
-  </div>
-  {% for grupo in c.modalidades %}
-  <div class="resultado-modalidade-titulo">{{ grupo.nome }}</div>
-  <table class="resultado-tabela">
-    <tbody>
-      {% for res in grupo.resultados %}
-      <tr class="{{ 'resultado-linha--voce' if res.eh_voce }}">
-        <td class="resultado-colocacao">{{ (res.colocacao|string + 'º') if res.colocacao else '—' }}</td>
-        <td>{{ res.nome_atirador }}{% if res.eh_voce %}<span class="pill pill--voce">Você</span>{% endif %}</td>
-        <td class="resultado-pontuacao mono">{{ res.pontuacao or '' }}</td>
-      </tr>
-      {% if res.observacoes %}
-      <tr class="{{ 'resultado-linha--voce' if res.eh_voce }}">
-        <td></td>
-        <td colspan="2" class="resultado-obs">{{ res.observacoes }}</td>
-      </tr>
-      {% endif %}
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="ficha" style="padding: 0 1.3rem;">
+  {% for c in campeonatos_com_resultado %}
+  <a class="lista-linha" href="{{ url_for('resultado_detalhe', campeonato_id=c.campeonato_id) }}">
+    <div class="lista-linha-corpo">
+      <h5 class="lista-linha-titulo">{{ c.nome }}</h5>
+      <div class="lista-linha-meta">
+        <span>{{ c.intervalo }}</span>
+        {% if c.local %}<span>· {{ c.local }}</span>{% endif %}
+      </div>
+    </div>
+    <span class="lista-linha-seta">→</span>
+  </a>
   {% endfor %}
 </div>
-{% endfor %}
 {% endif %}
 {% endblock %}

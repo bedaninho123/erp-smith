@@ -1,0 +1,51 @@
+{% extends "_portal_layout.html" %}
+{% block titulo %}{{ campeonato.nome }}{% endblock %}
+{% block estilo_extra %}
+<style>
+  .resultado-cabecalho { padding: 1.3rem 1.4rem; margin-bottom: 1.6rem; }
+  .resultado-cabecalho h1 { font-size: 1.15rem; margin: 0 0 .3rem; }
+  .resultado-cabecalho-meta { color: var(--steel); font-size: .85rem; margin: 0; }
+  .resultado-modalidade-titulo { font-size: .74rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--steel); margin: 0 0 .3rem; padding: 1.3rem 1.4rem 0; }
+  .resultado-modalidade-titulo:first-of-type { padding-top: 1.3rem; }
+  .resultado-tabela { width: 100%; border-collapse: collapse; }
+  .resultado-tabela td { padding: .55rem 1.4rem; border-bottom: 1px solid var(--line); font-size: .9rem; }
+  .resultado-tabela tr:last-child td { border-bottom: none; }
+  .resultado-colocacao { font-family: 'Big Shoulders', system-ui, sans-serif; font-weight: 700; width: 2.6rem; color: var(--steel); }
+  .resultado-linha--voce td { background: var(--blue-soft); }
+  .resultado-linha--voce .resultado-colocacao { color: var(--blue-deep); }
+  .resultado-obs { color: var(--steel); font-size: .82rem; padding-top: 0; }
+  .resultado-pontuacao { text-align: right; color: var(--steel); }
+  .pill--voce { background: var(--blue); color: #fff; margin-left: .4rem; }
+</style>
+{% endblock %}
+{% block conteudo %}
+<a class="link-voltar" href="{{ url_for('campeonatos') }}">← Voltar pros campeonatos</a>
+
+<div class="ficha resultado-cabecalho">
+  <h1>{{ campeonato.nome }}</h1>
+  <p class="resultado-cabecalho-meta">{{ campeonato.intervalo }}{% if campeonato.local %} · {{ campeonato.local }}{% endif %}</p>
+</div>
+
+<div class="ficha" style="padding-bottom: .3rem;">
+  {% for grupo in modalidades %}
+  <div class="resultado-modalidade-titulo">{{ grupo.nome }}</div>
+  <table class="resultado-tabela">
+    <tbody>
+      {% for res in grupo.resultados %}
+      <tr class="{{ 'resultado-linha--voce' if res.eh_voce }}">
+        <td class="resultado-colocacao">{{ (res.colocacao|string + 'º') if res.colocacao else '—' }}</td>
+        <td>{{ res.nome_atirador }}{% if res.eh_voce %}<span class="pill pill--voce">Você</span>{% endif %}</td>
+        <td class="resultado-pontuacao mono">{{ res.pontuacao or '' }}</td>
+      </tr>
+      {% if res.observacoes %}
+      <tr class="{{ 'resultado-linha--voce' if res.eh_voce }}">
+        <td></td>
+        <td colspan="2" class="resultado-obs">{{ res.observacoes }}</td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+</div>
+{% endblock %}
