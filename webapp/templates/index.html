@@ -379,6 +379,64 @@
               </table>
             </div>
           </div>
+
+          <div class="card" id="card-resultados" style="display:none">
+            <div class="card-header">
+              <h3 class="card-title" id="resultados-titulo">Resultados</h3>
+              <div class="card-tools">
+                <button class="btn btn-tool" id="fechar-resultados"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover text-nowrap">
+                <thead><tr><th>Modalidade</th><th>Colocação</th><th>Atirador</th><th>Pontuação</th><th>Observações</th><th></th></tr></thead>
+                <tbody id="resultados-body"></tbody>
+              </table>
+            </div>
+            <div class="card-body border-top">
+              <h5 id="resultado-form-titulo">Novo resultado</h5>
+              <input type="hidden" id="resultado-id">
+              <input type="hidden" id="resultado-cliente-id">
+              <div class="row">
+                <div class="col-md-3">
+                  <label for="resultado-cpf">CPF do cliente (opcional)</label>
+                  <div class="input-group">
+                    <input id="resultado-cpf" type="text" class="form-control" placeholder="Só dígitos">
+                    <div class="input-group-append">
+                      <button class="btn btn-outline-secondary" id="buscar-cpf-resultado" type="button">Buscar</button>
+                    </div>
+                  </div>
+                  <small class="text-muted" id="resultado-cpf-status"></small>
+                </div>
+                <div class="col-md-4">
+                  <label for="resultado-nome">Nome do atirador</label>
+                  <input id="resultado-nome" type="text" class="form-control" placeholder="Preenchido pela busca, ou digite pra quem não é cliente">
+                </div>
+                <div class="col-md-5">
+                  <label for="resultado-modalidade">Modalidade/categoria (opcional)</label>
+                  <input id="resultado-modalidade" type="text" class="form-control" placeholder="Ex.: Tiro Prático -- Categoria A">
+                </div>
+              </div>
+              <div class="row mt-2">
+                <div class="col-md-2">
+                  <label for="resultado-colocacao">Colocação (opcional)</label>
+                  <input id="resultado-colocacao" type="number" min="1" class="form-control">
+                </div>
+                <div class="col-md-3">
+                  <label for="resultado-pontuacao">Pontuação (opcional)</label>
+                  <input id="resultado-pontuacao" type="text" class="form-control" placeholder="Ex.: 285/300">
+                </div>
+                <div class="col-md-7">
+                  <label for="resultado-observacoes">Observações (opcional)</label>
+                  <input id="resultado-observacoes" type="text" class="form-control">
+                </div>
+              </div>
+              <button class="btn btn-primary mt-3" id="salvar-resultado">Adicionar resultado</button>
+              <button class="btn btn-outline-secondary ml-2 mt-3" id="cancelar-edicao-resultado" style="display:none">Cancelar edição</button>
+              <span class="text-muted ml-2" id="salvar-resultado-status"></span>
+            </div>
+          </div>
+
           <div class="card">
             <div class="card-header"><h3 class="card-title" id="campeonato-form-titulo">Novo campeonato</h3></div>
             <div class="card-body">
@@ -959,6 +1017,7 @@ async function carregarCampeonatos() {
       <td>${c.data_fim !== c.data_inicio ? dataBr(c.data_fim) : '—'}</td>
       <td>${escapeHtml(c.local || '—')}</td>
       <td class="text-right">
+        <button class="btn btn-outline-primary btn-sm btn-resultados-campeonato">Resultados</button>
         <button class="btn btn-outline-secondary btn-sm btn-editar-campeonato"><i class="fas fa-pen"></i></button>
         <button class="btn btn-outline-danger btn-sm btn-remover-campeonato"><i class="fas fa-trash"></i></button>
       </td>
@@ -977,7 +1036,167 @@ async function carregarCampeonatos() {
       removerCampeonato(c.campeonato_id, c.nome);
     });
   });
+  $("#campeonatos-body").querySelectorAll(".btn-resultados-campeonato").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const c = JSON.parse(btn.closest("tr").dataset.campeonato);
+      abrirResultados(c);
+    });
+  });
 }
+
+let resultadosCampeonatoAtual = null;
+
+async function abrirResultados(campeonato) {
+  resultadosCampeonatoAtual = campeonato;
+  $("#resultados-titulo").textContent = `Resultados -- ${campeonato.nome}`;
+  $("#card-resultados").style.display = "";
+  resetFormularioResultado();
+  await carregarResultados();
+  $("#card-resultados").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+$("#fechar-resultados").addEventListener("click", () => {
+  $("#card-resultados").style.display = "none";
+  resultadosCampeonatoAtual = null;
+});
+
+async function carregarResultados() {
+  if (!resultadosCampeonatoAtual) return;
+  const r = await fetch(`/api/campeonatos/${resultadosCampeonatoAtual.campeonato_id}/resultados`);
+  const resultados = await r.json();
+
+  $("#resultados-body").innerHTML = resultados.length ? resultados.map(res => `
+    <tr data-resultado='${JSON.stringify(res).replace(/'/g, "&#39;")}'>
+      <td>${escapeHtml(res.modalidade || "—")}</td>
+      <td>${res.colocacao ? `${res.colocacao}º` : "—"}</td>
+      <td>${escapeHtml(res.nome_atirador)}${res.cliente_id ? ` <span class="badge badge-info">${res.cliente_id}</span>` : ""}</td>
+      <td>${escapeHtml(res.pontuacao || "—")}</td>
+      <td>${escapeHtml(res.observacoes || "—")}</td>
+      <td class="text-right">
+        <button class="btn btn-outline-secondary btn-sm btn-editar-resultado"><i class="fas fa-pen"></i></button>
+        <button class="btn btn-outline-danger btn-sm btn-remover-resultado"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>
+  `).join("") : `<tr><td colspan="6" class="text-muted">Nenhum resultado cadastrado ainda pra este campeonato.</td></tr>`;
+
+  $("#resultados-body").querySelectorAll(".btn-editar-resultado").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const res = JSON.parse(btn.closest("tr").dataset.resultado);
+      editarResultado(res);
+    });
+  });
+  $("#resultados-body").querySelectorAll(".btn-remover-resultado").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const res = JSON.parse(btn.closest("tr").dataset.resultado);
+      removerResultado(res.resultado_id, res.nome_atirador);
+    });
+  });
+}
+
+function resetFormularioResultado() {
+  $("#resultado-id").value = "";
+  $("#resultado-cliente-id").value = "";
+  $("#resultado-cpf").value = "";
+  $("#resultado-cpf-status").textContent = "";
+  $("#resultado-nome").value = "";
+  $("#resultado-modalidade").value = "";
+  $("#resultado-colocacao").value = "";
+  $("#resultado-pontuacao").value = "";
+  $("#resultado-observacoes").value = "";
+  $("#resultado-form-titulo").textContent = "Novo resultado";
+  $("#salvar-resultado").textContent = "Adicionar resultado";
+  $("#cancelar-edicao-resultado").style.display = "none";
+  $("#salvar-resultado-status").textContent = "";
+}
+
+function editarResultado(res) {
+  $("#resultado-id").value = res.resultado_id;
+  $("#resultado-cliente-id").value = res.cliente_id || "";
+  $("#resultado-cpf").value = "";
+  $("#resultado-cpf-status").textContent = res.cliente_id ? `Vinculado a ${res.cliente_id} -- busque outro CPF pra trocar.` : "";
+  $("#resultado-nome").value = res.nome_atirador;
+  $("#resultado-modalidade").value = res.modalidade || "";
+  $("#resultado-colocacao").value = res.colocacao || "";
+  $("#resultado-pontuacao").value = res.pontuacao || "";
+  $("#resultado-observacoes").value = res.observacoes || "";
+  $("#resultado-form-titulo").textContent = `Editar resultado (${res.resultado_id})`;
+  $("#salvar-resultado").textContent = "Salvar alterações";
+  $("#cancelar-edicao-resultado").style.display = "inline-block";
+  $("#salvar-resultado-status").textContent = "";
+  $("#resultado-nome").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+$("#cancelar-edicao-resultado").addEventListener("click", resetFormularioResultado);
+
+$("#buscar-cpf-resultado").addEventListener("click", async () => {
+  const cpf = $("#resultado-cpf").value.trim();
+  const statusEl = $("#resultado-cpf-status");
+  if (!cpf) { statusEl.textContent = "Digite um CPF."; return; }
+  statusEl.textContent = "Buscando…";
+  const r = await fetch(`/api/clientes/buscar-cpf/${encodeURIComponent(cpf)}`);
+  const d = await r.json();
+  if (!r.ok) {
+    $("#resultado-cliente-id").value = "";
+    statusEl.textContent = d.erro;
+    return;
+  }
+  $("#resultado-cliente-id").value = d.cliente_id;
+  $("#resultado-nome").value = d.nome;
+  statusEl.textContent = `Encontrado: ${d.nome} (${d.cliente_id}).`;
+});
+
+async function salvarResultado() {
+  if (!resultadosCampeonatoAtual) return;
+  const resultadoId = $("#resultado-id").value;
+  const statusEl = $("#salvar-resultado-status");
+  const botao = $("#salvar-resultado");
+
+  const corpo = {
+    nome_atirador: $("#resultado-nome").value.trim(),
+    cliente_id: $("#resultado-cliente-id").value.trim(),
+    modalidade: $("#resultado-modalidade").value.trim(),
+    colocacao: $("#resultado-colocacao").value,
+    pontuacao: $("#resultado-pontuacao").value.trim(),
+    observacoes: $("#resultado-observacoes").value.trim(),
+  };
+  if (!corpo.nome_atirador) {
+    alert("Preencha o nome do atirador.");
+    return;
+  }
+
+  statusEl.textContent = "Salvando…";
+  botao.disabled = true;
+  try {
+    const url = resultadoId ? `/api/resultados/${resultadoId}` : `/api/campeonatos/${resultadosCampeonatoAtual.campeonato_id}/resultados`;
+    const r = await fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      statusEl.textContent = "";
+      alert("Erro ao salvar: " + d.erro);
+      return;
+    }
+    resetFormularioResultado();
+    await carregarResultados();
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+async function removerResultado(resultadoId, nomeAtirador) {
+  if (!confirm(`Remover o resultado de "${nomeAtirador}"?`)) return;
+  const r = await fetch(`/api/resultados/${resultadoId}/remover`, { method: "POST" });
+  const d = await r.json();
+  if (!r.ok) {
+    alert("Erro ao remover: " + d.erro);
+    return;
+  }
+  await carregarResultados();
+}
+
+$("#salvar-resultado").addEventListener("click", salvarResultado);
 
 $("#salvar-campeonato").addEventListener("click", salvarCampeonato);
 $("#cancelar-edicao-campeonato").addEventListener("click", resetFormularioCampeonato);

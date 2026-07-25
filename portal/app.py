@@ -24,6 +24,7 @@ from core import motor_checklist, motor_documentos
 from core.conexao import CORE_DB
 from core.motor_portal_auth import criar_token, localizar_cliente_por_cpf_ou_email, validar_e_consumir_token
 from domain.clube_tiro.motor_campeonatos import listar_campeonatos
+from domain.clube_tiro.motor_resultados import listar_resultados
 from integracoes.gmail import enviar_email, gmail_configurado
 from integracoes.shooting_house import consultar_cr, consultar_habitualidade
 
@@ -395,6 +396,47 @@ def _proximos_campeonatos(hoje=None) -> list:
     return eventos
 
 
+def _campeonatos_com_resultado(hoje=None) -> list:
+    """Campeonatos já ocorridos que têm classificação cadastrada,
+    formatados como _proximos_campeonatos (mesmo campo intervalo) e já
+    com a classificação completa agrupada por modalidade. Cada linha da
+    classificação leva eh_voce pra destacar o cliente logado na lista --
+    a lista em si mostra todo mundo que participou (decisão do usuário
+    2026-07-25), não só o resultado do cliente."""
+    hoje = hoje or datetime.now().date()
+    cliente_id = session.get("cliente_id")
+    resultado = []
+    for c in listar_campeonatos():
+        data_inicio = datetime.strptime(c["data_inicio"], "%Y-%m-%d").date()
+        data_fim = datetime.strptime(c["data_fim"], "%Y-%m-%d").date()
+        if data_fim >= hoje:
+            continue
+
+        resultados = listar_resultados(c["campeonato_id"])
+        if not resultados:
+            continue
+
+        modalidades = []
+        for res in resultados:
+            res["eh_voce"] = bool(cliente_id) and res["cliente_id"] == cliente_id
+            chave = res["modalidade"] or "Geral"
+            if not modalidades or modalidades[-1]["nome"] != chave:
+                modalidades.append({"nome": chave, "resultados": []})
+            modalidades[-1]["resultados"].append(res)
+
+        if data_fim == data_inicio:
+            intervalo = f"{data_inicio.day:02d} de {MESES_PT[data_inicio.month - 1]}"
+        else:
+            intervalo = f"{data_inicio.day:02d} a {data_fim.day:02d} de {MESES_PT[data_inicio.month - 1]}"
+        if data_fim.year != hoje.year:
+            intervalo += f" de {data_fim.year}"
+
+        resultado.append({**c, "intervalo": intervalo, "modalidades": modalidades})
+
+    resultado.sort(key=lambda c: c["data_inicio"], reverse=True)
+    return resultado
+
+
 @app.route("/portal/campeonatos")
 @cliente_login_required
 def campeonatos():
@@ -412,12 +454,15 @@ def campeonatos():
             meses_grupos.append({"chave": chave, "nome": rotulo_mes, "eventos": []})
         meses_grupos[-1]["eventos"].append(ev)
 
+    campeonatos_com_resultado = _campeonatos_com_resultado(hoje)
+
     return render_template(
         "portal_campeonatos.html",
         ativo="campeonatos",
         cliente_nome=session.get("cliente_nome"),
         proximo=proximo,
         meses_grupos=meses_grupos,
+        campeonatos_com_resultado=campeonatos_com_resultado,
     )
 
 

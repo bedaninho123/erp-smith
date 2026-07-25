@@ -23,6 +23,9 @@ from core.motor_processos import atualizar_processo, criar_processo
 from domain.clube_tiro.motor_campeonatos import (
     atualizar_campeonato, criar_campeonato, listar_campeonatos, remover_campeonato,
 )
+from domain.clube_tiro.motor_resultados import (
+    atualizar_resultado, criar_resultado, listar_resultados, remover_resultado,
+)
 from integracoes.config import shooting_house_configurado
 from integracoes.gmail import enviar_email, gmail_configurado
 from motor_ia.atualizador_memoria import atualizar_memoria
@@ -694,6 +697,89 @@ def campeonatos_atualizar(campeonato_id):
 def campeonatos_remover(campeonato_id):
     try:
         remover_campeonato(campeonato_id)
+    except ValueError as e:
+        return jsonify(erro=str(e)), 404
+    return jsonify(ok=True)
+
+
+@app.route("/api/clientes/buscar-cpf/<cpf>")
+@login_required
+def clientes_buscar_cpf(cpf):
+    """Autocompletar nome + cliente_id ao digitar um CPF na tela de
+    Resultados -- o cliente_id resolvido aqui é o que o formulário manda
+    de volta ao salvar (nunca recalculado a partir do CPF no servidor,
+    pra editar um resultado sem re-digitar o CPF não desvincular o
+    cliente por engano)."""
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+    cliente = con.execute(
+        "SELECT cliente_id, nome FROM cliente WHERE cpf = ?", (cpf.strip(),)
+    ).fetchone()
+    con.close()
+    if not cliente:
+        return jsonify(erro="Nenhum cliente com esse CPF."), 404
+    return jsonify(cliente_id=cliente["cliente_id"], nome=cliente["nome"])
+
+
+@app.route("/api/campeonatos/<campeonato_id>/resultados")
+@login_required
+def resultados_lista(campeonato_id):
+    return jsonify(listar_resultados(campeonato_id))
+
+
+@app.route("/api/campeonatos/<campeonato_id>/resultados", methods=["POST"])
+@login_required
+def resultados_criar(campeonato_id):
+    corpo = request.get_json(force=True)
+    nome_atirador = (corpo.get("nome_atirador") or "").strip()
+    if not nome_atirador:
+        return jsonify(erro="Nome do atirador é obrigatório."), 400
+
+    colocacao = corpo.get("colocacao")
+    try:
+        resultado_id = criar_resultado(
+            campeonato_id,
+            nome_atirador,
+            cliente_id=(corpo.get("cliente_id") or "").strip() or None,
+            modalidade=(corpo.get("modalidade") or "").strip() or None,
+            colocacao=int(colocacao) if colocacao not in (None, "") else None,
+            pontuacao=(corpo.get("pontuacao") or "").strip() or None,
+            observacoes=(corpo.get("observacoes") or "").strip() or None,
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True, resultado_id=resultado_id)
+
+
+@app.route("/api/resultados/<resultado_id>", methods=["POST"])
+@login_required
+def resultados_atualizar(resultado_id):
+    corpo = request.get_json(force=True)
+    nome_atirador = (corpo.get("nome_atirador") or "").strip()
+    if not nome_atirador:
+        return jsonify(erro="Nome do atirador é obrigatório."), 400
+
+    colocacao = corpo.get("colocacao")
+    try:
+        atualizar_resultado(
+            resultado_id,
+            nome_atirador,
+            cliente_id=(corpo.get("cliente_id") or "").strip() or None,
+            modalidade=(corpo.get("modalidade") or "").strip() or None,
+            colocacao=int(colocacao) if colocacao not in (None, "") else None,
+            pontuacao=(corpo.get("pontuacao") or "").strip() or None,
+            observacoes=(corpo.get("observacoes") or "").strip() or None,
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 404
+    return jsonify(ok=True)
+
+
+@app.route("/api/resultados/<resultado_id>/remover", methods=["POST"])
+@login_required
+def resultados_remover(resultado_id):
+    try:
+        remover_resultado(resultado_id)
     except ValueError as e:
         return jsonify(erro=str(e)), 404
     return jsonify(ok=True)
