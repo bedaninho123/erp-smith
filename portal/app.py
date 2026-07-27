@@ -60,6 +60,10 @@ if not os.getenv("PORTAL_SECRET_KEY"):
 app = Flask(__name__)
 app.secret_key = os.environ["PORTAL_SECRET_KEY"]
 app.config["TEMPLATES_AUTO_RELOAD"] = True
+# Cookie de sessão só trafega em HTTPS quando COOKIE_HTTPS=Sim no .env --
+# mesma lógica de webapp/app.py, desligado por padrão porque o Portal
+# ainda roda em HTTP puro (127.0.0.1).
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("COOKIE_HTTPS", "").strip().lower() == "sim"
 # Nome de cookie próprio -- por padrão o Flask usa "session" pros dois
 # apps, e como painel admin (porta 5000) e Portal (porta 5002) podem
 # rodar no mesmo navegador ao mesmo tempo em localhost, cookies com o

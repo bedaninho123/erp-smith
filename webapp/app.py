@@ -72,6 +72,11 @@ LOGIN_JANELA_SEGUNDOS = 300
 
 app = Flask(__name__)
 app.secret_key = os.environ["WEBAPP_SECRET_KEY"]
+# Cookie de sessão só trafega em HTTPS quando COOKIE_HTTPS=Sim no .env --
+# desligado por padrão porque hoje o painel roda em HTTP puro
+# (127.0.0.1); ligar em True sem HTTPS de verdade na frente quebraria o
+# login (o navegador simplesmente não manda o cookie de volta).
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("COOKIE_HTTPS", "").strip().lower() == "sim"
 # Recarrega o template (.html) a cada requisição mesmo sem o modo debug
 # do Flask ligado -- TEMPLATES_AUTO_RELOAD por padrão segue app.debug, e
 # desligamos debug (ver comentário no app.run() no fim do arquivo) pelo
