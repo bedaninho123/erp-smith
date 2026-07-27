@@ -17,6 +17,7 @@ from werkzeug.security import check_password_hash
 
 from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
 from core import motor_checklist, motor_documentos, motor_mensagens
+from core.limitador_tentativas import excedeu_limite
 from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
 from core.motor_notificacoes import destinatario_para_notificar
 from core.motor_processos import atualizar_processo, criar_processo
@@ -62,6 +63,12 @@ if not os.getenv("WEBAPP_SECRET_KEY"):
 # Mesma variável de portal/app.py -- o link do e-mail de notificação de
 # mudança de status aponta pro Portal do Cliente (porta própria, 5002).
 PORTAL_URL_BASE = os.environ.get("PORTAL_URL_BASE", "http://127.0.0.1:5002")
+
+# Limite de tentativas de login por IP -- dificulta força bruta de senha
+# (core/limitador_tentativas.py). Por IP, não por e-mail: o risco real aqui
+# é alguém tentando várias senhas contra a mesma máquina, não distribuído.
+LOGIN_MAX_TENTATIVAS = 5
+LOGIN_JANELA_SEGUNDOS = 300
 
 app = Flask(__name__)
 app.secret_key = os.environ["WEBAPP_SECRET_KEY"]
@@ -112,6 +119,11 @@ def _notificar_cliente_mudanca_status(caso_id: str) -> None:
 def login():
     erro = None
     if request.method == "POST":
+        if excedeu_limite(f"login_webapp:{request.remote_addr}", LOGIN_MAX_TENTATIVAS, LOGIN_JANELA_SEGUNDOS):
+            return render_template(
+                "login.html",
+                erro="Muitas tentativas de login. Aguarde alguns minutos e tente novamente.",
+            )
         email = (request.form.get("email") or "").strip().lower()
         senha = request.form.get("senha") or ""
         con = sqlite3.connect(CORE_DB)

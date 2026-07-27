@@ -22,6 +22,7 @@ from flask import Flask, flash, jsonify, redirect, render_template, request, sen
 
 from core import motor_checklist, motor_documentos
 from core.conexao import CORE_DB
+from core.limitador_tentativas import excedeu_limite
 from core.motor_portal_auth import criar_token, localizar_cliente_por_cpf_ou_email, validar_e_consumir_token
 from domain.clube_tiro.motor_campeonatos import listar_campeonatos, obter_campeonato
 from domain.clube_tiro.motor_resultados import listar_resultados
@@ -42,6 +43,13 @@ MESES_PT = [
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ]
 MESES_PT_ABREV = [m[:3].upper() for m in MESES_PT]
+
+# Limite de pedidos de link mágico por IP -- sem isso, alguém poderia
+# martelar o formulário pra spammar a caixa de entrada de terceiro com
+# e-mail de acesso, ou tentar enumerar CPF/e-mail cadastrado mais rápido
+# (core/limitador_tentativas.py).
+LOGIN_MAX_TENTATIVAS = 5
+LOGIN_JANELA_SEGUNDOS = 300
 
 load_dotenv(ENV_PATH)
 if not os.getenv("PORTAL_SECRET_KEY"):
@@ -96,6 +104,11 @@ def cliente_login_required(f):
 def login():
     mensagem = None
     if request.method == "POST":
+        if excedeu_limite(f"login_portal:{request.remote_addr}", LOGIN_MAX_TENTATIVAS, LOGIN_JANELA_SEGUNDOS):
+            return render_template(
+                "portal_login.html",
+                mensagem="Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+            )
         identificador = (request.form.get("identificador") or "").strip()
         cliente = localizar_cliente_por_cpf_ou_email(identificador) if identificador else None
         if cliente:
