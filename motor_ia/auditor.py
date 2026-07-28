@@ -36,7 +36,7 @@ class ResultadoAuditoria(BaseModel):
 
 
 def _auditar_consistencia_factual(
-    resposta: str, bloco_dados: str, modelo: str,
+    empresa_id: str, resposta: str, bloco_dados: str, modelo: str,
     caso_id: Optional[str], sessao_id: Optional[str],
 ) -> ResultadoAuditoriaFactual:
     client = OpenAI(api_key=OPENAI_API_KEY)
@@ -55,7 +55,7 @@ def _auditar_consistencia_factual(
         )
     except Exception as e:
         registrar_log(
-            prompt_key="AUDITOR", modelo=modelo, resultado="Erro",
+            empresa_id, prompt_key="AUDITOR", modelo=modelo, resultado="Erro",
             tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
             caso_id=caso_id, sessao_id=sessao_id, erro=f"{type(e).__name__}: {e}",
         )
@@ -63,7 +63,7 @@ def _auditar_consistencia_factual(
 
     uso = completude.usage
     registrar_log(
-        prompt_key="AUDITOR", modelo=modelo, resultado="Sucesso",
+        empresa_id, prompt_key="AUDITOR", modelo=modelo, resultado="Sucesso",
         tokens_entrada=uso.prompt_tokens if uso else None,
         tokens_saida=uso.completion_tokens if uso else None,
         tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
@@ -73,13 +73,15 @@ def _auditar_consistencia_factual(
 
 
 def auditar(
-    resposta: str, dados: dict, cliente_nome: str, plano: Plano,
+    empresa_id: str, resposta: str, dados: dict, cliente_nome: str, plano: Plano,
     caso_id: Optional[str] = None, sessao_id: Optional[str] = None,
 ) -> ResultadoAuditoria:
     # Regra determinística primeiro, sem gastar chamada de IA: se o
     # Planejador já sinalizou que precisa de humano, a resposta gerada
     # nunca deve ser enviada automaticamente, não importa o que diga.
     # Sem chamada à OpenAI aqui, então não há nada pra registrar em log_ia.
+    # (Também é por isso que este bloco não toca o banco: o freio precisa
+    # funcionar mesmo que a configuração da empresa esteja indisponível.)
     if plano.encaminhar_humano:
         return ResultadoAuditoria(
             aprovado=False,
@@ -87,11 +89,11 @@ def auditar(
             motivo=plano.motivo_humano or "Sinalizado para atendimento humano.",
         )
 
-    config = obter_configuracoes()
+    config = obter_configuracoes(empresa_id)
     modelo = config.get("modelo_openai", "gpt-5-mini")
     bloco_dados = montar_bloco_dados(dados, cliente_nome, config)
     resultado_factual = _auditar_consistencia_factual(
-        resposta, bloco_dados, modelo, caso_id, sessao_id
+        empresa_id, resposta, bloco_dados, modelo, caso_id, sessao_id
     )
 
     if not resultado_factual.consistente:

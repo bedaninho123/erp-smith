@@ -21,14 +21,16 @@ def _proximo_id(con) -> str:
     return f"DCK-{maior + 1:06d}"
 
 
-def status_checklist(con, processo_id: str) -> list:
+def status_checklist(con, empresa_id: str, processo_id: str) -> list:
     """Itens exigidos pelo serviço do processo + quais documentos já foram
     marcados atendendo cada um. Aceita uma conexão já aberta (chamado de
     dentro de webapp/app.py, que já tem uma pra montar o resto da tela de
     Detalhe do Caso) -- não abre/fecha conexão própria, diferente de
-    marcar_documento()/desmarcar()."""
+    marcar_documento()/desmarcar(). Por isso recebe empresa_id como
+    parâmetro em vez de tirar da conexão."""
     linha = con.execute(
-        "SELECT servico_id FROM processo WHERE processo_id = ?", (processo_id,)
+        "SELECT servico_id FROM processo WHERE processo_id = ? AND empresa_id = ?",
+        (processo_id, empresa_id),
     ).fetchone()
     if not linha:
         raise ValueError(f"Processo não encontrado: {processo_id}")
@@ -36,8 +38,8 @@ def status_checklist(con, processo_id: str) -> list:
 
     itens = con.execute(
         "SELECT documento_exigido_id, grupo, item, ordem FROM documento_exigido "
-        "WHERE servico_id = ? AND ativo = 'Sim' ORDER BY ordem",
-        (servico_id,),
+        "WHERE servico_id = ? AND empresa_id = ? AND ativo = 'Sim' ORDER BY ordem",
+        (servico_id, empresa_id),
     ).fetchall()
 
     resultado = []
@@ -46,8 +48,8 @@ def status_checklist(con, processo_id: str) -> list:
             "SELECT dck.documento_checklist_id, dck.documento_id, d.nome_arquivo "
             "FROM documento_checklist dck "
             "JOIN documento d ON d.documento_id = dck.documento_id "
-            "WHERE dck.processo_id = ? AND dck.documento_exigido_id = ?",
-            (processo_id, item["documento_exigido_id"]),
+            "WHERE dck.processo_id = ? AND dck.documento_exigido_id = ? AND dck.empresa_id = ?",
+            (processo_id, item["documento_exigido_id"], empresa_id),
         ).fetchall()
         resultado.append({
             "documento_exigido_id": item["documento_exigido_id"],
@@ -61,26 +63,31 @@ def status_checklist(con, processo_id: str) -> list:
 
 
 def marcar_documento(
-    processo_id: str, documento_exigido_id: str, documento_id: str,
+    empresa_id: str, processo_id: str, documento_exigido_id: str, documento_id: str,
     marcado_por: str = "Painel administrativo",
 ) -> str:
-    con = conectar()
+    con = conectar(empresa_id)
     try:
+        # Cada um dos três IDs é conferido contra a empresa: processo,
+        # item de checklist e documento têm que ser todos dela.
         processo = con.execute(
-            "SELECT servico_id FROM processo WHERE processo_id = ?", (processo_id,)
+            "SELECT servico_id FROM processo WHERE processo_id = ? AND empresa_id = ?",
+            (processo_id, empresa_id),
         ).fetchone()
         if not processo:
             raise ValueError(f"Processo não encontrado: {processo_id}")
 
         existe_item = con.execute(
-            "SELECT 1 FROM documento_exigido WHERE documento_exigido_id = ? AND servico_id = ?",
-            (documento_exigido_id, processo["servico_id"]),
+            "SELECT 1 FROM documento_exigido WHERE documento_exigido_id = ? "
+            "AND servico_id = ? AND empresa_id = ?",
+            (documento_exigido_id, processo["servico_id"], empresa_id),
         ).fetchone()
         if not existe_item:
             raise ValueError("Este item de checklist não pertence ao serviço deste processo.")
 
         existe_documento = con.execute(
-            "SELECT 1 FROM documento WHERE documento_id = ?", (documento_id,)
+            "SELECT 1 FROM documento WHERE documento_id = ? AND empresa_id = ?",
+            (documento_id, empresa_id),
         ).fetchone()
         if not existe_documento:
             raise ValueError(f"Documento não encontrado: {documento_id}")
@@ -95,8 +102,11 @@ def marcar_documento(
 
         novo_id = _proximo_id(con)
         con.execute(
-            "INSERT INTO documento_checklist VALUES (?,?,?,?,?,?)",
-            (novo_id, processo_id, documento_exigido_id, documento_id, _agora_iso(), marcado_por),
+            "INSERT INTO documento_checklist (documento_checklist_id, empresa_id, "
+            "processo_id, documento_exigido_id, documento_id, marcado_em, marcado_por) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (novo_id, empresa_id, processo_id, documento_exigido_id, documento_id,
+             _agora_iso(), marcado_por),
         )
         con.commit()
         return novo_id
@@ -104,18 +114,18 @@ def marcar_documento(
         con.close()
 
 
-def desmarcar(documento_checklist_id: str) -> None:
-    con = conectar()
+def desmarcar(empresa_id: str, documento_checklist_id: str) -> None:
+    con = conectar(empresa_id)
     try:
         existe = con.execute(
-            "SELECT 1 FROM documento_checklist WHERE documento_checklist_id = ?",
-            (documento_checklist_id,),
+            "SELECT 1 FROM documento_checklist WHERE documento_checklist_id = ? AND empresa_id = ?",
+            (documento_checklist_id, empresa_id),
         ).fetchone()
         if not existe:
             raise ValueError(f"Marcação não encontrada: {documento_checklist_id}")
         con.execute(
-            "DELETE FROM documento_checklist WHERE documento_checklist_id = ?",
-            (documento_checklist_id,),
+            "DELETE FROM documento_checklist WHERE documento_checklist_id = ? AND empresa_id = ?",
+            (documento_checklist_id, empresa_id),
         )
         con.commit()
     finally:
@@ -123,13 +133,16 @@ def desmarcar(documento_checklist_id: str) -> None:
 
 
 if __name__ == "__main__":
-    con = conectar()
+    EMPRESA = "EMP-000001"
+    con = conectar(EMPRESA)
     try:
-        processo = con.execute("SELECT processo_id FROM processo LIMIT 1").fetchone()
+        processo = con.execute(
+            "SELECT processo_id FROM processo WHERE empresa_id = ? LIMIT 1", (EMPRESA,)
+        ).fetchone()
         if not processo:
             print("Nenhum processo cadastrado para testar.")
         else:
-            status = status_checklist(con, processo["processo_id"])
+            status = status_checklist(con, EMPRESA, processo["processo_id"])
             print(f"Checklist de {processo['processo_id']}: {len(status)} itens.")
             for item in status:
                 marca = "recebido" if item["recebido"] else "faltando"

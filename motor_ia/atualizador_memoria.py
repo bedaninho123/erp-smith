@@ -102,6 +102,7 @@ def _proximo_memoria_id(con) -> str:
 
 
 def atualizar_memoria(
+    empresa_id: str,
     cliente_id: str,
     classificacao: ResultadoClassificacao,
     dados: dict,
@@ -109,11 +110,11 @@ def atualizar_memoria(
     caso_id: Optional[str] = None,
     sessao_id: Optional[str] = None,
 ) -> str:
-    con = conectar()
+    con = conectar(empresa_id)
     try:
         linha = con.execute(
-            "SELECT * FROM memoria_ia WHERE cliente_id = ? AND ativo = 'Sim'",
-            (cliente_id,),
+            "SELECT * FROM memoria_ia WHERE empresa_id = ? AND cliente_id = ? AND ativo = 'Sim'",
+            (empresa_id, cliente_id),
         ).fetchone()
         memoria_antiga = dict(linha) if linha else None
 
@@ -132,21 +133,26 @@ def atualizar_memoria(
 
         if memoria_antiga:
             con.execute(
-                "UPDATE memoria_ia SET ativo = 'Não' WHERE memoria_id = ?",
-                (memoria_antiga["memoria_id"],),
+                "UPDATE memoria_ia SET ativo = 'Não' WHERE memoria_id = ? AND empresa_id = ?",
+                (memoria_antiga["memoria_id"], empresa_id),
             )
 
         con.execute(
-            "INSERT INTO memoria_ia VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO memoria_ia (memoria_id, empresa_id, cliente_id, resumo_cliente, "
+            "assuntos_recentes, servicos_recentes, processos_recentes, ultima_intencao, "
+            "preferencia_canal, tom_recomendado, informacoes_importantes, "
+            "restricoes_atendimento, ultima_sessao_id, atualizada_em, atualizada_por, "
+            "versao, ativo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                novo_id, cliente_id, resumo.resumo_cliente, resumo.assuntos_recentes,
-                servicos_recentes, processos_recentes, classificacao.intencao,
+                novo_id, empresa_id, cliente_id, resumo.resumo_cliente,
+                resumo.assuntos_recentes, servicos_recentes, processos_recentes,
+                classificacao.intencao,
                 (memoria_antiga or {}).get("preferencia_canal"),
                 (memoria_antiga or {}).get("tom_recomendado"),
                 resumo.informacoes_importantes or (memoria_antiga or {}).get("informacoes_importantes"),
                 (memoria_antiga or {}).get("restricoes_atendimento"),
                 (memoria_antiga or {}).get("ultima_sessao_id"),
-                agora, "Motor IA", nova_versao, "Sim", None,
+                agora, "Motor IA", nova_versao, "Sim",
             ),
         )
         con.commit()
@@ -161,16 +167,17 @@ if __name__ == "__main__":
     from motor_ia.planejador import planejar
     from motor_ia.redator import redigir
 
+    EMPRESA = "EMP-000001"
     texto = "Meu CPF é 123.456.789-00, quero saber como está o processo PROTO-2026-001"
-    classificacao = classificar(texto)
+    classificacao = classificar(EMPRESA, texto)
     plano = planejar(classificacao)
-    dados = consultar(plano, cliente_id="CLI-000001", classificacao=classificacao)
-    resposta = redigir(dados, cliente_nome=dados["cliente"]["nome"])
+    dados = consultar(plano, empresa_id=EMPRESA, cliente_id="CLI-000001", classificacao=classificacao)
+    resposta = redigir(EMPRESA, dados, cliente_nome=dados["cliente"]["nome"])
 
-    novo_id = atualizar_memoria("CLI-000001", classificacao, dados, resposta)
+    novo_id = atualizar_memoria(EMPRESA, "CLI-000001", classificacao, dados, resposta)
     print(f"Memória atualizada: {novo_id}")
 
-    con = conectar()
+    con = conectar(EMPRESA)
     for row in con.execute("SELECT memoria_id, versao, ativo, resumo_cliente FROM memoria_ia WHERE cliente_id = 'CLI-000001' ORDER BY versao"):
         print(dict(row))
     con.close()

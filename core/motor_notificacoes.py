@@ -16,22 +16,24 @@ from core.conexao import conectar
 from core.configuracoes import obter_configuracoes
 
 
-def destinatario_para_notificar(caso_id: str) -> Optional[dict]:
+def destinatario_para_notificar(empresa_id: str, caso_id: str) -> Optional[dict]:
     """Nome e e-mail do cliente dono do caso, só se a notificação estiver
     ligada em configuracoes e o cliente tiver e-mail cadastrado. Devolve
     None quando não deve notificar (não é erro -- e-mail é opcional no
     cadastro do cliente, ver docs/portal_cliente_arquitetura.md seção 2)."""
-    config = obter_configuracoes()
+    config = obter_configuracoes(empresa_id)
     if config.get("notificar_cliente_mudanca_status") != "Sim":
         return None
 
-    con = conectar()
+    con = conectar(empresa_id)
     try:
+        # Filtra os dois lados do JOIN: um caso_id de outra empresa não
+        # pode devolver o e-mail do cliente dela.
         linha = con.execute(
             "SELECT cl.nome, cl.email FROM caso ca "
-            "JOIN cliente cl ON cl.cliente_id = ca.cliente_id "
-            "WHERE ca.caso_id = ?",
-            (caso_id,),
+            "JOIN cliente cl ON cl.cliente_id = ca.cliente_id AND cl.empresa_id = ca.empresa_id "
+            "WHERE ca.caso_id = ? AND ca.empresa_id = ?",
+            (caso_id, empresa_id),
         ).fetchone()
     finally:
         con.close()
@@ -42,8 +44,11 @@ def destinatario_para_notificar(caso_id: str) -> Optional[dict]:
 
 
 if __name__ == "__main__":
-    con = conectar()
-    caso_id = con.execute("SELECT caso_id FROM caso LIMIT 1").fetchone()["caso_id"]
+    EMPRESA = "EMP-000001"
+    con = conectar(EMPRESA)
+    caso_id = con.execute(
+        "SELECT caso_id FROM caso WHERE empresa_id = ? LIMIT 1", (EMPRESA,)
+    ).fetchone()["caso_id"]
     con.close()
     print(f"Caso de teste: {caso_id}")
-    print("Destinatário:", destinatario_para_notificar(caso_id))
+    print("Destinatário:", destinatario_para_notificar(EMPRESA, caso_id))

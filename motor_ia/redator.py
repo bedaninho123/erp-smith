@@ -119,10 +119,10 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
 
 
 def redigir(
-    dados: dict, cliente_nome: str,
+    empresa_id: str, dados: dict, cliente_nome: str,
     caso_id: Optional[str] = None, sessao_id: Optional[str] = None,
 ) -> str:
-    config = obter_configuracoes()
+    config = obter_configuracoes(empresa_id)
     bloco = montar_bloco_dados(dados, cliente_nome, config)
     modelo = config.get("modelo_openai", "gpt-5-mini")
 
@@ -138,7 +138,7 @@ def redigir(
         )
     except Exception as e:
         registrar_log(
-            prompt_key="REDATOR", modelo=modelo, resultado="Erro",
+            empresa_id, prompt_key="REDATOR", modelo=modelo, resultado="Erro",
             tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
             caso_id=caso_id, sessao_id=sessao_id, erro=f"{type(e).__name__}: {e}",
         )
@@ -146,7 +146,7 @@ def redigir(
 
     uso = resposta.usage
     registrar_log(
-        prompt_key="REDATOR", modelo=modelo, resultado="Sucesso",
+        empresa_id, prompt_key="REDATOR", modelo=modelo, resultado="Sucesso",
         tokens_entrada=uso.prompt_tokens if uso else None,
         tokens_saida=uso.completion_tokens if uso else None,
         tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
@@ -160,11 +160,12 @@ if __name__ == "__main__":
     from motor_ia.consultor import consultar
     from motor_ia.planejador import planejar
 
+    EMPRESA = "EMP-000001"
     texto = "Meu CPF é 123.456.789-00, quero saber como está o processo PROTO-2026-001"
-    classificacao = classificar(texto)
+    classificacao = classificar(EMPRESA, texto)
     plano = planejar(classificacao)
-    dados = consultar(plano, cliente_id="CLI-000001", classificacao=classificacao)
-    resposta = redigir(dados, cliente_nome=dados["cliente"]["nome"])
+    dados = consultar(plano, empresa_id=EMPRESA, cliente_id="CLI-000001", classificacao=classificacao)
+    resposta = redigir(EMPRESA, dados, cliente_nome=dados["cliente"]["nome"])
 
     print(f"Mensagem do cliente: {texto}\n")
     print("Resposta gerada:\n")

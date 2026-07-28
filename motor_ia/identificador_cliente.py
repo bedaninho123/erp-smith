@@ -5,10 +5,9 @@ nome, do identificador mais confiável pro menos confiável (nome não é
 único; CPF e e-mail são).
 """
 import re
-import sqlite3
 from typing import Optional
 
-from motor_ia.conexao import CORE_DB
+from motor_ia.conexao import conectar
 
 
 def _limpar_cpf(cpf: str) -> str:
@@ -16,37 +15,48 @@ def _limpar_cpf(cpf: str) -> str:
 
 
 def identificar_cliente(
+    empresa_id: str,
     nome: Optional[str] = None,
     cpf: Optional[str] = None,
     email: Optional[str] = None,
 ) -> Optional[dict]:
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    """A busca é sempre DENTRO de uma empresa.
+
+    Este é um dos pontos mais sensíveis do multi-tenant: o poller entrega
+    aqui o e-mail de quem escreveu, e sem o filtro por empresa um
+    remetente que é cliente de outro despachante seria identificado como
+    cliente desta -- e receberia de volta o dado dele. A busca por nome
+    (aproximada, com LIKE) é a mais arriscada das três, justamente por
+    não ser exata."""
+    con = conectar(empresa_id)
     try:
         if cpf:
             linha = con.execute(
-                "SELECT * FROM cliente WHERE cpf = ?", (_limpar_cpf(cpf),)
+                "SELECT * FROM cliente WHERE empresa_id = ? AND cpf = ?",
+                (empresa_id, _limpar_cpf(cpf)),
             ).fetchone()
             if linha:
                 return dict(linha)
 
         if email:
             linha = con.execute(
-                "SELECT * FROM cliente WHERE LOWER(email) = LOWER(?)", (email,)
+                "SELECT * FROM cliente WHERE empresa_id = ? AND LOWER(email) = LOWER(?)",
+                (empresa_id, email),
             ).fetchone()
             if linha:
                 return dict(linha)
 
         if nome:
             linha = con.execute(
-                "SELECT * FROM cliente WHERE LOWER(nome) = LOWER(?)", (nome,)
+                "SELECT * FROM cliente WHERE empresa_id = ? AND LOWER(nome) = LOWER(?)",
+                (empresa_id, nome),
             ).fetchone()
             if linha:
                 return dict(linha)
             # Não achou exato -- tenta por aproximação (nome contém o texto).
             linha = con.execute(
-                "SELECT * FROM cliente WHERE LOWER(nome) LIKE LOWER(?)",
-                (f"%{nome}%",),
+                "SELECT * FROM cliente WHERE empresa_id = ? AND LOWER(nome) LIKE LOWER(?)",
+                (empresa_id, f"%{nome}%"),
             ).fetchone()
             if linha:
                 return dict(linha)
@@ -57,6 +67,7 @@ def identificar_cliente(
 
 
 if __name__ == "__main__":
+    EMPRESA = "EMP-000001"
     testes = [
         {"cpf": "123.456.789-00"},
         {"email": "joao.teste@example.com"},
@@ -65,6 +76,6 @@ if __name__ == "__main__":
         {"cpf": "000.000.000-00"},
     ]
     for entrada in testes:
-        resultado = identificar_cliente(**entrada)
+        resultado = identificar_cliente(EMPRESA, **entrada)
         achado = f"{resultado['cliente_id']} - {resultado['nome']}" if resultado else "não encontrado"
         print(f"{entrada} -> {achado}")

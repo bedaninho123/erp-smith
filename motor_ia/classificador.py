@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from core.configuracoes import obter_configuracoes
 from core.motor_log_ia import registrar_log
 from motor_ia.config import OPENAI_API_KEY
-from motor_ia.conexao import CORE_DB
+from motor_ia.conexao import DOMAIN_DB, conectar
 
 PROMPT_PATH = Path(__file__).parent / "prompts" / "classificador.md"
 
@@ -40,11 +40,10 @@ class ResultadoClassificacao(BaseModel):
     precisa_humano: bool
 
 
-DOMAIN_DB = "domain/clube_tiro/db/dominio_clube_tiro.db"
-
-
-def _carregar_servicos_ativos() -> list[str]:
-    con = sqlite3.connect(CORE_DB)
+def _carregar_servicos_ativos(empresa_id: str) -> list[str]:
+    # Via conectar() e não sqlite3.connect direto: VW_SERVICO agora
+    # filtra por empresa_atual(), que só existe numa conexão do Core.
+    con = conectar(empresa_id)
     try:
         return [
             r[0] for r in con.execute(
@@ -56,6 +55,8 @@ def _carregar_servicos_ativos() -> list[str]:
 
 
 def _carregar_categorias_conhecimento() -> list[str]:
+    # Sem empresa_id de propósito: conhecimento é legislação federal,
+    # compartilhada entre todas as empresas do domínio.
     con = sqlite3.connect(DOMAIN_DB)
     try:
         return [
@@ -77,11 +78,11 @@ def _carregar_prompt(servicos: list[str], categorias_conhecimento: list[str]) ->
     return texto
 
 
-def classificar(mensagem: str) -> ResultadoClassificacao:
-    config = obter_configuracoes()
+def classificar(empresa_id: str, mensagem: str) -> ResultadoClassificacao:
+    config = obter_configuracoes(empresa_id)
     modelo = config.get("modelo_openai", "gpt-5-mini")
     temperatura = float(config.get("temperatura_ia", 0.2))
-    servicos = _carregar_servicos_ativos()
+    servicos = _carregar_servicos_ativos(empresa_id)
     categorias_conhecimento = _carregar_categorias_conhecimento()
 
     client = OpenAI(api_key=OPENAI_API_KEY)
@@ -107,7 +108,7 @@ def classificar(mensagem: str) -> ResultadoClassificacao:
             )
     except Exception as e:
         registrar_log(
-            prompt_key="CLASSIFICADOR", modelo=modelo, resultado="Erro",
+            empresa_id, prompt_key="CLASSIFICADOR", modelo=modelo, resultado="Erro",
             tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
             erro=f"{type(e).__name__}: {e}",
         )
@@ -118,7 +119,7 @@ def classificar(mensagem: str) -> ResultadoClassificacao:
     # classificação acontece antes de qualquer um dos dois ser
     # localizado/criado no orquestrador.
     registrar_log(
-        prompt_key="CLASSIFICADOR", modelo=modelo, resultado="Sucesso",
+        empresa_id, prompt_key="CLASSIFICADOR", modelo=modelo, resultado="Sucesso",
         tokens_entrada=uso.prompt_tokens if uso else None,
         tokens_saida=uso.completion_tokens if uso else None,
         tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
@@ -133,7 +134,7 @@ if __name__ == "__main__":
         "Isso é um absurdo, ninguém me responde há uma semana, quero falar com uma pessoa AGORA",
     ]
     for texto in exemplos:
-        resultado = classificar(texto)
+        resultado = classificar("EMP-000001", texto)
         print(f"Mensagem: {texto}")
         print(f"  -> {resultado.model_dump()}")
         print()

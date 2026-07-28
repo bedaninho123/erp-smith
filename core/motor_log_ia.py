@@ -22,6 +22,7 @@ def _proximo_id(con, tabela: str, coluna_id: str, prefixo: str) -> str:
 
 
 def registrar_log(
+    empresa_id: str,
     prompt_key: str,
     modelo: str,
     resultado: str,
@@ -32,16 +33,21 @@ def registrar_log(
     sessao_id: Optional[str] = None,
     erro: Optional[str] = None,
 ) -> str:
+    """empresa_id não é burocracia aqui: é o que permite responder quanto
+    de IA cada empresa consumiu -- base do billing por assinatura
+    (docs/schema_multi_tenant.md §3)."""
     if resultado not in ("Sucesso", "Erro"):
         raise ValueError(f"resultado inválido: {resultado} (use 'Sucesso' ou 'Erro')")
 
-    con = conectar()
+    con = conectar(empresa_id)
     try:
         log_id = _proximo_id(con, "log_ia", "log_id", "LOG")
         con.execute(
-            "INSERT INTO log_ia VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO log_ia (log_id, empresa_id, caso_id, sessao_id, prompt_key, "
+            "modelo, tokens_entrada, tokens_saida, tempo_processamento_ms, resultado, "
+            "erro, criado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                log_id, caso_id, sessao_id, prompt_key, modelo,
+                log_id, empresa_id, caso_id, sessao_id, prompt_key, modelo,
                 tokens_entrada, tokens_saida, tempo_processamento_ms,
                 resultado, erro, _agora_iso(),
             ),

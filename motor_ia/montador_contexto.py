@@ -16,11 +16,14 @@ def _row_to_dict(row: sqlite3.Row | None) -> dict | None:
     return dict(row) if row is not None else None
 
 
-def montar_contexto(caso_id: str) -> dict:
-    con = conectar()
+def montar_contexto(empresa_id: str, caso_id: str) -> dict:
+    con = conectar(empresa_id)
     try:
         caso = _row_to_dict(
-            con.execute("SELECT * FROM caso WHERE caso_id = ?", (caso_id,)).fetchone()
+            con.execute(
+                "SELECT * FROM caso WHERE caso_id = ? AND empresa_id = ?",
+                (caso_id, empresa_id),
+            ).fetchone()
         )
         if caso is None:
             raise ValueError(f"Caso não encontrado: {caso_id}")

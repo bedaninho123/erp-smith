@@ -45,13 +45,14 @@ _INTENCOES_QUE_EXIGEM_CADASTRO = {
 }
 
 
-def _categoria_do_caso(classificacao: ResultadoClassificacao) -> str:
+def _categoria_do_caso(empresa_id: str, classificacao: ResultadoClassificacao) -> str:
     if classificacao.servico_mencionado:
-        con = conectar()
+        con = conectar(empresa_id)
         try:
             linha = con.execute(
-                "SELECT categoria FROM servico WHERE nome_servico = ? AND ativo = 'Sim'",
-                (classificacao.servico_mencionado,),
+                "SELECT categoria FROM servico WHERE nome_servico = ? "
+                "AND empresa_id = ? AND ativo = 'Sim'",
+                (classificacao.servico_mencionado, empresa_id),
             ).fetchone()
             if linha:
                 return linha["categoria"]
@@ -61,6 +62,7 @@ def _categoria_do_caso(classificacao: ResultadoClassificacao) -> str:
 
 
 def atender_mensagem(
+    empresa_id: str,
     mensagem: str,
     canal: str = "Email",
     identificador_canal: Optional[str] = None,
@@ -69,19 +71,23 @@ def atender_mensagem(
     cpf: Optional[str] = None,
     email: Optional[str] = None,
 ) -> dict:
+    """empresa_id é o primeiro parâmetro de propósito: tudo daqui pra
+    frente (identificação do cliente, consulta, memória) acontece dentro
+    de uma empresa só. Quem chama é o canal de entrada, que sabe por qual
+    caixa de e-mail/portal a mensagem chegou."""
     if not cliente_id:
-        cliente = identificar_cliente(nome=nome, cpf=cpf, email=email)
+        cliente = identificar_cliente(empresa_id, nome=nome, cpf=cpf, email=email)
         if cliente:
             cliente_id = cliente["cliente_id"]
 
-    classificacao = classificar(mensagem)
+    classificacao = classificar(empresa_id, mensagem)
     plano = planejar(classificacao)
 
     if not cliente_id and classificacao.intencao in _INTENCOES_QUE_EXIGEM_CADASTRO:
         # Não dá pra consultar processo/cadastro/habitualidade de
         # ninguém específico -- responde pedindo identificação em vez
         # de ficar em silêncio ou inventar que "não encontrou nada".
-        config = obter_configuracoes()
+        config = obter_configuracoes(empresa_id)
         return {
             "cliente_id": None,
             "sessao_id": None,
@@ -101,28 +107,31 @@ def atender_mensagem(
         }
 
     sessao_id = (
-        localizar_ou_criar_sessao(cliente_id, canal, identificador_canal)
+        localizar_ou_criar_sessao(empresa_id, cliente_id, canal, identificador_canal)
         if cliente_id else None
     )
 
     caso_id = None
     if cliente_id and not plano.encaminhar_humano:
-        categoria = _categoria_do_caso(classificacao)
+        categoria = _categoria_do_caso(empresa_id, classificacao)
         caso_id = localizar_ou_criar_caso(
-            cliente_id, titulo=classificacao.resumo[:120], categoria=categoria,
+            empresa_id, cliente_id, titulo=classificacao.resumo[:120], categoria=categoria,
             canal_origem=canal, descricao=classificacao.resumo,
         )
 
-    dados = consultar(plano, cliente_id=cliente_id, classificacao=classificacao)
+    dados = consultar(plano, empresa_id=empresa_id, cliente_id=cliente_id, classificacao=classificacao)
     cliente_nome = (dados.get("cliente") or {}).get("nome") or (nome or "Cliente")
-    resposta = redigir(dados, cliente_nome=cliente_nome, caso_id=caso_id, sessao_id=sessao_id)
+    resposta = redigir(
+        empresa_id, dados, cliente_nome=cliente_nome, caso_id=caso_id, sessao_id=sessao_id
+    )
     resultado_auditoria = auditar(
-        resposta, dados, cliente_nome, plano, caso_id=caso_id, sessao_id=sessao_id
+        empresa_id, resposta, dados, cliente_nome, plano, caso_id=caso_id, sessao_id=sessao_id
     )
 
     memoria_id = None
     if cliente_id and resultado_auditoria.acao == "enviar":
         atualizar_sessao(
+            empresa_id,
             sessao_id,
             caso_id=caso_id,
             ultima_intencao=classificacao.intencao,
@@ -131,11 +140,12 @@ def atender_mensagem(
             resumo_sessao=classificacao.resumo,
         )
         memoria_id = atualizar_memoria(
-            cliente_id, classificacao, dados, resposta,
+            empresa_id, cliente_id, classificacao, dados, resposta,
             caso_id=caso_id, sessao_id=sessao_id,
         )
 
     return {
+        "empresa_id": empresa_id,
         "cliente_id": cliente_id,
         "sessao_id": sessao_id,
         "caso_id": caso_id,
@@ -150,6 +160,7 @@ def atender_mensagem(
 
 if __name__ == "__main__":
     resultado = atender_mensagem(
+        "EMP-000001",
         "Quais documentos preciso para transferir uma arma?",
         cliente_id="CLI-000002",
         canal="Email",

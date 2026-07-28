@@ -26,19 +26,23 @@ def _proximo_id(con) -> str:
 
 
 def _registrar_historico_caso(
-    con, caso_id: str, tipo_evento: str, descricao: str, criado_por: str,
+    con, empresa_id: str, caso_id: str, tipo_evento: str, descricao: str, criado_por: str,
 ) -> None:
     historico_id = con.execute(
         "SELECT MAX(CAST(SUBSTR(historico_id, 5) AS INTEGER)) FROM historico"
     ).fetchone()[0] or 0
     novo_id = f"HIS-{historico_id + 1:06d}"
     con.execute(
-        "INSERT INTO historico VALUES (?,?,?,?,?,?,?,?)",
-        (novo_id, caso_id, tipo_evento, descricao, None, None, _agora_iso(), criado_por),
+        "INSERT INTO historico (historico_id, empresa_id, caso_id, tipo_evento, "
+        "descricao, valor_anterior, valor_novo, criado_em, criado_por) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (novo_id, empresa_id, caso_id, tipo_evento, descricao, None, None,
+         _agora_iso(), criado_por),
     )
 
 
 def criar_processo(
+    empresa_id: str,
     caso_id: str,
     cliente_id: str,
     servico_id: str,
@@ -50,25 +54,40 @@ def criar_processo(
     observacoes: Optional[str] = None,
     criado_por: str = "Painel administrativo",
 ) -> str:
-    con = conectar()
+    con = conectar(empresa_id)
     try:
         existe_servico = con.execute(
-            "SELECT 1 FROM servico WHERE service_id = ? AND ativo = 'Sim'", (servico_id,)
+            "SELECT 1 FROM servico WHERE service_id = ? AND empresa_id = ? AND ativo = 'Sim'",
+            (servico_id, empresa_id),
         ).fetchone()
         if not existe_servico:
             raise ValueError(f"Serviço não encontrado ou inativo: {servico_id}")
 
+        # O caso também tem que ser desta empresa -- caso contrário o
+        # processo nasceria ligando dado de duas empresas.
+        existe_caso = con.execute(
+            "SELECT 1 FROM caso WHERE caso_id = ? AND empresa_id = ?",
+            (caso_id, empresa_id),
+        ).fetchone()
+        if not existe_caso:
+            raise ValueError(f"Caso não encontrado nesta empresa: {caso_id}")
+
         novo_id = _proximo_id(con)
         agora = _agora_iso()
         con.execute(
-            "INSERT INTO processo VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO processo (processo_id, empresa_id, caso_id, cliente_id, "
+            "servico_id, protocolo, status, data_abertura, prazo_estimado, "
+            "proxima_acao, responsavel_id, ultima_atualizacao, observacoes) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                novo_id, caso_id, cliente_id, servico_id, protocolo, status,
-                agora, prazo_estimado, proxima_acao, responsavel_id, agora, observacoes,
+                novo_id, empresa_id, caso_id, cliente_id, servico_id, protocolo,
+                status, agora, prazo_estimado, proxima_acao, responsavel_id,
+                agora, observacoes,
             ),
         )
         _registrar_historico_caso(
-            con, caso_id, "outro", f"Processo criado: {novo_id}.", criado_por=criado_por,
+            con, empresa_id, caso_id, "outro", f"Processo criado: {novo_id}.",
+            criado_por=criado_por,
         )
         con.commit()
         return novo_id
@@ -77,6 +96,7 @@ def criar_processo(
 
 
 def atualizar_processo(
+    empresa_id: str,
     processo_id: str,
     status: str,
     protocolo: Optional[str],
@@ -88,10 +108,11 @@ def atualizar_processo(
 ) -> tuple[str, str]:
     """Devolve (status_anterior, caso_id) -- quem chama usa isso pra saber
     se o status realmente mudou e a qual caso notificar."""
-    con = conectar()
+    con = conectar(empresa_id)
     try:
         linha = con.execute(
-            "SELECT caso_id, status FROM processo WHERE processo_id = ?", (processo_id,)
+            "SELECT caso_id, status FROM processo WHERE processo_id = ? AND empresa_id = ?",
+            (processo_id, empresa_id),
         ).fetchone()
         if not linha:
             raise ValueError(f"Processo não encontrado: {processo_id}")
@@ -99,20 +120,22 @@ def atualizar_processo(
 
         if responsavel_id:
             existe_usuario = con.execute(
-                "SELECT 1 FROM usuario WHERE usuario_id = ? AND ativo = 'Sim'", (responsavel_id,)
+                "SELECT 1 FROM usuario WHERE usuario_id = ? AND empresa_id = ? AND ativo = 'Sim'",
+                (responsavel_id, empresa_id),
             ).fetchone()
             if not existe_usuario:
                 raise ValueError(f"Usuário não encontrado ou inativo: {responsavel_id}")
 
         con.execute(
             "UPDATE processo SET status=?, protocolo=?, prazo_estimado=?, proxima_acao=?, "
-            "responsavel_id=?, observacoes=?, ultima_atualizacao=? WHERE processo_id=?",
+            "responsavel_id=?, observacoes=?, ultima_atualizacao=? "
+            "WHERE processo_id=? AND empresa_id=?",
             (status, protocolo, prazo_estimado, proxima_acao, responsavel_id,
-             observacoes, _agora_iso(), processo_id),
+             observacoes, _agora_iso(), processo_id, empresa_id),
         )
         if status != status_antigo:
             _registrar_historico_caso(
-                con, linha["caso_id"], "outro",
+                con, empresa_id, linha["caso_id"], "outro",
                 f"Status do processo {processo_id} alterado de {status_antigo!r} para {status!r}.",
                 criado_por=alterado_por,
             )

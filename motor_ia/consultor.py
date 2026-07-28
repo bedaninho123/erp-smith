@@ -34,10 +34,16 @@ def _montar_checklist_texto(con, servico_id: str) -> Optional[str]:
 
 def consultar(
     plano: Plano,
+    empresa_id: str,
     cliente_id: str,
     classificacao: Optional[ResultadoClassificacao] = None,
 ) -> dict:
-    con = conectar()
+    """As views do Core já se filtram por empresa (empresa_atual() é
+    registrada pela conexão), então VW_CLIENTE/VW_SERVICO/VW_PROCESSO/
+    VW_CHECKLIST_SERVICO não precisam de filtro à mão aqui. A tabela
+    `conhecimento` do Domínio é compartilhada de propósito -- é
+    legislação federal, igual para toda empresa."""
+    con = conectar(empresa_id)
     try:
         # O cliente já foi identificado antes da classificação acontecer
         # (fluxo real: Identificar cliente -> Classificar intenção), então
@@ -125,9 +131,9 @@ if __name__ == "__main__":
     from motor_ia.planejador import planejar
 
     texto = "Meu CPF é 123.456.789-00, quero saber como está o processo PROTO-2026-001"
-    classificacao = classificar(texto)
+    classificacao = classificar("EMP-000001", texto)
     plano = planejar(classificacao)
-    dados = consultar(plano, cliente_id="CLI-000001", classificacao=classificacao)
+    dados = consultar(plano, empresa_id="EMP-000001", cliente_id="CLI-000001", classificacao=classificacao)
 
     print(f"Mensagem: {texto}")
     print(f"Intenção: {classificacao.intencao}")

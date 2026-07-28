@@ -41,6 +41,7 @@ def _nome_seguro(nome_original: str) -> str:
 
 
 def salvar_documento(
+    empresa_id: str,
     cliente_id: str,
     conteudo: bytes,
     nome_arquivo_original: str,
@@ -53,22 +54,36 @@ def salvar_documento(
     if not caso_id and not processo_id:
         raise ValueError("Documento precisa de caso_id ou processo_id (restrição do banco).")
 
-    con = conectar()
+    con = conectar(empresa_id)
     try:
+        # O cliente tem que ser desta empresa antes de qualquer arquivo
+        # ser gravado em disco -- checar depois de escrever deixaria
+        # arquivo órfão na pasta de outra empresa.
+        dono = con.execute(
+            "SELECT 1 FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+            (cliente_id, empresa_id),
+        ).fetchone()
+        if not dono:
+            raise ValueError(f"Cliente não encontrado nesta empresa: {cliente_id}")
+
         documento_id = _proximo_id(con)
 
-        pasta_cliente = PASTA_DOCUMENTOS / cliente_id
+        # Pasta por empresa e depois por cliente -- dado de empresas
+        # diferentes nunca divide diretório no disco.
+        pasta_cliente = PASTA_DOCUMENTOS / empresa_id / cliente_id
         pasta_cliente.mkdir(parents=True, exist_ok=True)
         nome_salvo = f"{documento_id}_{_nome_seguro(nome_arquivo_original)}"
         caminho = pasta_cliente / nome_salvo
         caminho.write_bytes(conteudo)
 
         con.execute(
-            "INSERT INTO documento VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO documento (documento_id, empresa_id, cliente_id, caso_id, "
+            "processo_id, tipo_documento, nome_arquivo, link_arquivo, status, "
+            "data_envio, observacoes, mensagem_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                documento_id, cliente_id, caso_id, processo_id, tipo_documento,
-                nome_arquivo_original, str(caminho), STATUS_RECEBIDO, _agora_iso(),
-                None, None, observacoes, mensagem_id,
+                documento_id, empresa_id, cliente_id, caso_id, processo_id,
+                tipo_documento, nome_arquivo_original, str(caminho),
+                STATUS_RECEBIDO, _agora_iso(), observacoes, mensagem_id,
             ),
         )
         con.commit()
@@ -77,12 +92,13 @@ def salvar_documento(
         con.close()
 
 
-def listar_por_mensagem(mensagem_id: str) -> list:
-    con = conectar()
+def listar_por_mensagem(empresa_id: str, mensagem_id: str) -> list:
+    con = conectar(empresa_id)
     try:
         linhas = con.execute(
-            "SELECT * FROM documento WHERE mensagem_id = ? ORDER BY data_envio",
-            (mensagem_id,),
+            "SELECT * FROM documento WHERE mensagem_id = ? AND empresa_id = ? "
+            "ORDER BY data_envio",
+            (mensagem_id, empresa_id),
         ).fetchall()
         return [dict(linha) for linha in linhas]
     finally:

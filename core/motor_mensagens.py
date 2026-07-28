@@ -31,6 +31,7 @@ def _proximo_id(con, tabela: str, coluna_id: str, prefixo: str) -> str:
 
 
 def registrar_mensagem(
+    empresa_id: str,
     cliente_id: Optional[str],
     texto_recebido: str,
     resposta_ia: Optional[str],
@@ -50,16 +51,19 @@ def registrar_mensagem(
     if not cliente_id:
         return None
 
-    con = conectar()
+    con = conectar(empresa_id)
     try:
         mensagem_id = _proximo_id(con, "mensagem", "mensagem_id", "MSG")
         con.execute(
-            "INSERT INTO mensagem VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO mensagem (mensagem_id, empresa_id, cliente_id, caso_id, canal, "
+            "data_hora, origem, email_remetente, assunto, mensagem, intent, "
+            "precisa_humano, status_processamento, resposta_ia, modelo_ia, observacoes_ia) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                mensagem_id, cliente_id, caso_id, None, None, canal, _agora_iso(),
-                "Cliente", email_remetente, assunto, texto_recebido, intent, None,
-                precisa_humano, status_processamento, None, resposta_ia, None, None,
-                modelo_ia, observacoes_ia,
+                mensagem_id, empresa_id, cliente_id, caso_id, canal, _agora_iso(),
+                "Cliente", email_remetente, assunto, texto_recebido, intent,
+                precisa_humano, status_processamento, resposta_ia, modelo_ia,
+                observacoes_ia,
             ),
         )
         con.commit()
@@ -68,28 +72,28 @@ def registrar_mensagem(
         con.close()
 
 
-def listar_pendentes() -> list:
-    con = conectar()
+def listar_pendentes(empresa_id: str) -> list:
+    con = conectar(empresa_id)
     try:
         linhas = con.execute(
             "SELECT m.*, c.nome AS cliente_nome, c.email AS cliente_email "
             "FROM mensagem m JOIN cliente c ON c.cliente_id = m.cliente_id "
-            "WHERE m.status_processamento = ? ORDER BY m.data_hora",
-            (STATUS_AGUARDANDO_REVISAO,),
+            "WHERE m.empresa_id = ? AND m.status_processamento = ? ORDER BY m.data_hora",
+            (empresa_id, STATUS_AGUARDANDO_REVISAO),
         ).fetchall()
         return [dict(linha) for linha in linhas]
     finally:
         con.close()
 
 
-def obter_mensagem(mensagem_id: str) -> Optional[dict]:
-    con = conectar()
+def obter_mensagem(empresa_id: str, mensagem_id: str) -> Optional[dict]:
+    con = conectar(empresa_id)
     try:
         linha = con.execute(
             "SELECT m.*, c.nome AS cliente_nome, c.email AS cliente_email "
             "FROM mensagem m JOIN cliente c ON c.cliente_id = m.cliente_id "
-            "WHERE m.mensagem_id = ?",
-            (mensagem_id,),
+            "WHERE m.mensagem_id = ? AND m.empresa_id = ?",
+            (mensagem_id, empresa_id),
         ).fetchone()
         return dict(linha) if linha else None
     finally:
@@ -97,22 +101,22 @@ def obter_mensagem(mensagem_id: str) -> Optional[dict]:
 
 
 def marcar_status(
-    mensagem_id: str, status: str, resposta_final: Optional[str] = None,
-    responsavel_id: Optional[str] = None,
+    empresa_id: str, mensagem_id: str, status: str,
+    resposta_final: Optional[str] = None, responsavel_id: Optional[str] = None,
 ) -> None:
-    con = conectar()
+    con = conectar(empresa_id)
     try:
         if resposta_final is not None:
             con.execute(
                 "UPDATE mensagem SET status_processamento = ?, resposta_ia = ?, "
-                "responsavel_id = ? WHERE mensagem_id = ?",
-                (status, resposta_final, responsavel_id, mensagem_id),
+                "responsavel_id = ? WHERE mensagem_id = ? AND empresa_id = ?",
+                (status, resposta_final, responsavel_id, mensagem_id, empresa_id),
             )
         else:
             con.execute(
                 "UPDATE mensagem SET status_processamento = ?, responsavel_id = ? "
-                "WHERE mensagem_id = ?",
-                (status, responsavel_id, mensagem_id),
+                "WHERE mensagem_id = ? AND empresa_id = ?",
+                (status, responsavel_id, mensagem_id, empresa_id),
             )
         con.commit()
     finally:
