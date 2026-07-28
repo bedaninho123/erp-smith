@@ -1,0 +1,212 @@
+# Schema — Multi-tenant (`empresa_id`) — rascunho para revisão
+
+> **Status: RASCUNHO — nada foi criado no banco ainda.** Este documento existe para fechar as decisões antes de qualquer migração, seguindo a regra do `PROJETO_1.md` §8 ("não pular etapas de projeto/documentação/validação antes de implementar").
+> Fonte: `PROJETO_1.md` §7 (Fase 6 — Produto), `core/db/schema.sql` (18 tabelas), `docs/portal_cliente_arquitetura.md` (isolamento de dado).
+> Pré-requisito já entregue: suíte de testes de isolamento (`tests/`), commit `0c71e42` — é ela que vai provar que a migração não abriu vazamento.
+
+---
+
+## Como ler este documento
+
+- **Tenant** = inquilino. Cada empresa que usa o sistema é um tenant. "Multi-tenant" = um sistema só, atendendo várias empresas, sem que uma enxergue o dado da outra.
+- **`empresa_id`** = a coluna que responde "de quem é esta linha?".
+- **Constraint `UNIQUE`** = regra do banco que proíbe valor repetido numa coluna.
+- **RLS** (*Row Level Security*) = recurso do PostgreSQL onde o próprio banco recusa devolver linha de outra empresa, mesmo se o programador esquecer o filtro.
+
+---
+
+## 1. O problema, em uma frase
+
+Hoje toda linha do banco pertence implicitamente à Smith. Não existe coluna dizendo isso porque só existe uma empresa. No minuto em que um segundo despachante entrar, cada linha precisa dizer de quem ela é — senão a Smith vê o cliente do concorrente, e vice-versa.
+
+Num domínio de documentação de arma de fogo, esse vazamento não é um bug comum: é dado pessoal sensível de terceiro, com implicação regulatória.
+
+---
+
+## 2. Tabela nova: `empresa`
+
+| Campo | Tipo | Obrigatório | Chave | Observação |
+|---|---|---|---|---|
+| `empresa_id` | TEXT | Sim | PK | Formato `EMP-000001`, mesmo padrão de ID do resto do projeto. |
+| `nome` | TEXT | Sim | — | Ex.: `Smith Clube de Tiro`. |
+| `dominio` | TEXT | Sim | — | Qual pacote de Domínio a empresa usa: `clube_tiro`, `advocacia`… É o campo que liga a Fase 5 (domínio como plugin) à Fase 6 (produto). |
+| `ativo` | TEXT (`Sim`/`Não`) | Sim | — | Empresa suspensa por falta de pagamento fica `Não`, nunca é apagada. |
+| `criado_em` | TEXT (ISO 8601) | Sim | — | Imutável. |
+
+A Smith vira `EMP-000001` e todo o dado existente hoje passa a ser dela.
+
+---
+
+## 3. As 18 tabelas do Core, em três grupos
+
+### Grupo A — dado de atendimento (recebe `empresa_id` direto)
+
+`cliente` · `caso` · `processo` · `documento` · `sessao` · `memoria_ia` · `conversa` · `mensagem` · `tarefas` · `log_ia`
+
+São 10 tabelas. Nenhuma surpresa aqui: é dado de cliente, e cliente pertence a uma empresa.
+
+Destaque para **`log_ia`**: com `empresa_id`, ele passa a responder *quanto de IA cada empresa consumiu* — que é literalmente a base para cobrar assinatura depois. Vale a pena não deixar essa de fora achando que log é "só técnico".
+
+### Grupo B — catálogo e configuração da empresa (recebe também)
+
+`servico` · `documento_exigido` · `configuracoes` · `template` · `usuario`
+
+São 5 tabelas, e é o grupo que costuma passar batido:
+
+- **`servico`** tem `prazo_estimado_dias` e `valor_referencia`. Outro despachante cobra outro preço e promete outro prazo. Hoje esses valores são globais.
+- **`configuracoes`** guarda `nome_empresa`, `telefone`, `horario_semana`, `assinatura_email`. Tudo isso é por empresa — inclusive `revisao_humana_ativa`: uma empresa pode querer o freio de revisão ligado e outra não.
+- **`usuario`** — funcionário pertence a uma empresa.
+
+### Grupo C — herda pelo pai (não precisa da coluna, mas eu colocaria)
+
+`historico` (herda de `caso`) · `documento_checklist` (herda de `processo`) · `portal_token` (herda de `cliente`)
+
+Tecnicamente dá para descobrir a empresa por JOIN. **Proposta: duplicar `empresa_id` mesmo assim**, porque toda query pode filtrar direto sem JOIN, e uma query mais simples é uma query com menos chance de esquecer o filtro. A redundância paga por si em segurança.
+
+---
+
+## 4. As cinco `UNIQUE` que quebram em silêncio
+
+Este é o ponto mais importante do documento, porque **não dá erro na migração — dá comportamento errado meses depois**.
+
+| Tabela | Constraint hoje | Precisa virar | Por quê |
+|---|---|---|---|
+| `cliente` | `cpf UNIQUE` (linha 16) | `UNIQUE(empresa_id, cpf)` | **A mesma pessoa pode ser cliente de dois despachantes.** Do jeito atual, o segundo a cadastrar aquele CPF recebe um erro sem sentido. |
+| `usuario` | `email UNIQUE` (linha 238) | `UNIQUE(empresa_id, email)` | Duas empresas podem ter funcionários com e-mail pessoal parecido, ou o mesmo contador terceirizado. |
+| `servico` | `service_key UNIQUE` (linha 69) | `UNIQUE(empresa_id, service_key)` | Toda empresa vai querer ter um serviço com a chave `renovacao_cr`. |
+| `configuracoes` | `chave UNIQUE` (linha 366) | `UNIQUE(empresa_id, chave)` | Hoje só pode existir **uma** linha com `chave = 'telefone'` no banco inteiro. |
+| `template` | `template_key UNIQUE` (linha 318) | `UNIQUE(empresa_id, template_key)` | Cada empresa tem sua assinatura de e-mail. |
+
+### Uma exceção proposital
+
+**`portal_token.token` continua `UNIQUE` global.** É um segredo aleatório de autenticação; dois tokens iguais em empresas diferentes seria uma falha de segurança, não uma conveniência.
+
+As outras constraints já estão protegidas pelo pai e não mudam:
+- `idx_memoria_ia_cliente_ativo` — escopo já é `cliente_id`
+- `idx_documento_checklist_par` — escopo já é `processo_id`
+
+---
+
+## 5. Como impedir o vazamento de verdade
+
+Espalhar `WHERE empresa_id = ?` à mão por dezenas de queries é frágil: basta esquecer **uma vez** para vazar. Precisamos de um ponto único de estrangulamento.
+
+### Proposta: função de contexto na conexão + views filtradas
+
+O SQLite permite registrar uma função Python que a SQL enxerga. Isso dá para transformar as views (que já são a fronteira de leitura obrigatória do Motor IA) em views que se filtram sozinhas:
+
+```python
+# core/conexao.py
+def conectar(empresa_id: str) -> sqlite3.Connection:
+    con = sqlite3.connect(CORE_DB)
+    con.row_factory = sqlite3.Row
+    con.execute("PRAGMA foreign_keys = ON")
+    con.create_function("empresa_atual", 0, lambda: empresa_id)
+    return con
+```
+
+```sql
+-- core/db/views.sql
+CREATE VIEW VW_CLIENTE AS
+SELECT ... FROM cliente c
+LEFT JOIN memoria_ia m ON ...
+WHERE c.empresa_id = empresa_atual();
+```
+
+Três motivos para eu preferir esse caminho:
+
+1. **Aproveita uma regra que o projeto já tem.** O `CLAUDE.md` já obriga o Motor IA a ler só por view. Com isso, o Motor IA fica isolado por construção, sem alterar nenhum módulo dele.
+2. **Vira RLS de graça depois.** Quando o PostgreSQL entrar, essa mesma ideia é a `CREATE POLICY` nativa — o desenho não é jogado fora, só troca de mecanismo.
+3. **Falha fechado.** Se `empresa_atual()` não for definida, a query dá erro em vez de devolver tudo. Vazar por engano fica mais difícil do que negar por engano.
+
+**Limite honesto desta proposta:** ela protege leitura via view. `webapp/app.py` e `portal/app.py` fazem `SELECT` direto em tabela, então esses continuam precisando do filtro à mão — e é por isso que a suíte de testes de isolamento tem que crescer junto com a migração, não depois.
+
+### Verificado, não presumido — 2026-07-28
+
+A ideia foi testada em SQLite antes de entrar neste documento, e as três propriedades se confirmaram:
+
+| O que se esperava | Resultado |
+|---|---|
+| A view devolve só o cliente da empresa conectada | ✅ `EMP-000001` viu só a Ana; `EMP-000002` viu só o Bruno |
+| Dá para trocar de empresa na mesma conexão | ✅ `create_function` redefinida na hora, sem reconectar |
+| Sem contexto de empresa, falha em vez de vazar | ✅ `OperationalError: no such function: empresa_atual` |
+
+A terceira é a que mais importa: o modo de falha é *negar*, não *devolver tudo*.
+
+---
+
+## 6. O que muda fora do banco
+
+| Onde | O que muda | Peso |
+|---|---|---|
+| `integracoes/gmail.py` + `atendimento/poller.py` | Hoje o sistema vigia **uma** caixa do Gmail, com **um** `token.json`. Cada empresa tem a caixa dela → uma credencial OAuth por empresa. | **Alto** — provavelmente o item mais trabalhoso de todos |
+| `webapp/app.py` | `session["empresa_id"]` junto do `usuario_id`; toda rota `/api/*` filtra por ele | Médio |
+| `portal/app.py` | O cliente já pertence a uma empresa via `cliente.empresa_id`; a sessão herda daí | Baixo |
+| `PORTAL_URL_BASE` | Hoje é um endereço só. Com várias empresas: `smith.portal.com`, com a marca de cada uma | Médio |
+| `core/db/views.sql` | As 4 views passam a filtrar por `empresa_atual()` | Baixo |
+| `integracoes/shooting_house.py` | `SHOOTING_HOUSE_USER`/`PASSWORD` viram credencial por empresa, não do `.env` global | Médio |
+| `motor_ia/*` | **Nada**, se a proposta da seção 5 for adotada | Nenhum |
+
+### Gerador de ID: manter global
+
+Os IDs são gerados com `MAX(CAST(SUBSTR(id, N) AS INTEGER)) + 1`, reimplementado em 5 módulos. **Proposta: manter a numeração global**, não por empresa.
+
+Ficaria estranho o `CAS-000001` da Smith e o `CAS-000002` de outra empresa? Fica. Mas numerar por empresa exige `WHERE empresa_id = ?` em todos os 5 lugares e abre risco de duas empresas gerarem o mesmo ID ao mesmo tempo. Estranho é melhor que colidido.
+
+---
+
+## 7. Decisões em aberto (preciso da sua)
+
+### 7.1 O banco de Domínio mistura duas coisas
+
+`domain/clube_tiro/db/` tem hoje:
+
+| Tabela | Natureza | Proposta |
+|---|---|---|
+| `conhecimento` | O Decreto nº 11.615/2023 é **a mesma lei para todo despachante de clube de tiro** | Compartilhado — **sem** `empresa_id` |
+| `campeonato` | Calendário de provas **da Smith** | Por empresa — **com** `empresa_id` |
+| `resultado_campeonato` | Classificação das provas da Smith | Por empresa — **com** `empresa_id` |
+
+Ou seja: o pacote de Domínio hoje junta *conhecimento compartilhado* com *dado próprio da empresa*. Isso precisa de uma decisão sua, porque muda a arquitetura: ou o banco de Domínio ganha `empresa_id` em duas das três tabelas, ou `campeonato`/`resultado_campeonato` migram para o Core.
+
+### 7.2 Quando migrar para PostgreSQL
+
+- **Antes** do `empresa_id`: a segurança já nasce com RLS de verdade, sem escrever filtro à mão duas vezes.
+- **Depois**: mais incremental, mas o isolamento fica dependendo de disciplina no meio-tempo.
+
+O desenho de schema deste documento **é o mesmo nos dois caminhos** — só muda o mecanismo de enforcement. Minha recomendação: implementar em SQLite com a proposta da seção 5, que é justamente a que não vira trabalho jogado fora.
+
+### 7.3 Uma empresa pode ter mais de um domínio?
+
+Um despachante que atenda clube de tiro **e** veículos teria duas linhas em `empresa`, ou uma linha com vários domínios? A proposta atual (`empresa.dominio` como campo único) assume **um domínio por empresa** — mais simples, e dá para evoluir depois sem migração dolorosa.
+
+---
+
+## 8. Plano de migração
+
+Como você lembrou, os 23 clientes são fictícios (`core/db/gerar_clientes_ficticios.py`) — o que **simplifica muito** esta etapa. O SQLite não permite alterar uma constraint `UNIQUE` sem recriar a tabela e copiar os dados; com dado descartável, não precisamos desse cuidado cirúrgico.
+
+1. Atualizar `core/db/schema.sql` com `empresa` + `empresa_id` nas 18 tabelas + as 5 `UNIQUE` compostas
+2. Atualizar `core/db/views.sql` com o filtro `empresa_atual()`
+3. Recriar o banco do zero e repopular (`migrate_dados_teste` → `gerar_clientes_ficticios` → `popular_documentos_exigidos`), tudo sob `EMP-000001`
+4. Ajustar `core/conexao.py` e os motores do Core para propagar `empresa_id`
+5. Ajustar `webapp/` e `portal/` (sessão + filtros diretos)
+6. **Ampliar `tests/` com um segundo tenant** — cliente da empresa A tentando alcançar dado da empresa B, no mesmo espírito dos testes de cliente que já existem
+7. Rodar a suíte inteira: os 26 testes atuais precisam continuar verdes
+
+O passo 6 não é opcional. Foi exatamente esse tipo de teste que provou, por mutação, que o isolamento entre clientes funciona — e o isolamento entre empresas é o mesmo problema, uma camada acima.
+
+### Dado real que não é fictício
+
+`CLI-000001` é o próprio usuário, e as 7 linhas de `mensagem` + 117 de `log_ia` vieram de testes por e-mail de verdade. Não é dado de cliente de terceiro, mas é histórico real de uso — vale exportar antes de recriar o banco, se você quiser preservar.
+
+---
+
+## 9. O que este documento deliberadamente NÃO cobre
+
+Fica para depois, e de propósito — são problemas diferentes que costumam ser confundidos com multi-tenancy:
+
+- **Papéis e permissões** (`usuario.papel` hoje é texto livre e ninguém consulta). É a Fase 6 também, mas é outra decisão: separa *o que cada pessoa pode fazer* de *que dado a empresa dela enxerga*.
+- **Billing / assinatura** — depende de `log_ia.empresa_id` existir primeiro
+- **Deploy e hospedagem** — hoje `127.0.0.1` (ver `project_portal_hospedagem_decisao`)
+- **Onboarding de nova empresa** (tela de cadastro, configuração inicial, serviços padrão)
