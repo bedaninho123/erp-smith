@@ -13,9 +13,12 @@ sempre obrigatório e cliente_id é opcional (só quando o atirador também
 from datetime import datetime, timezone
 from typing import Optional
 
+import os
 import sqlite3
 
-DB_PATH = "domain/clube_tiro/db/dominio_clube_tiro.db"
+DB_PATH = os.environ.get(
+    "ERP_DOMAIN_DB", "domain/clube_tiro/db/dominio_clube_tiro.db"
+)
 
 
 def conectar() -> sqlite3.Connection:
@@ -35,17 +38,17 @@ def _proximo_id(con) -> str:
     return f"RES-{maior + 1:06d}"
 
 
-def listar_resultados(campeonato_id: str) -> list:
+def listar_resultados(empresa_id: str, campeonato_id: str) -> list:
     """Classificação completa da prova, ordenada por modalidade e depois
     colocação (quem não tem colocação registrada vai para o fim de cada
     grupo, não para o topo)."""
     con = conectar()
     try:
         linhas = con.execute(
-            "SELECT * FROM resultado_campeonato WHERE campeonato_id = ? "
+            "SELECT * FROM resultado_campeonato WHERE campeonato_id = ? AND empresa_id = ? "
             "ORDER BY COALESCE(modalidade, ''), "
             "CASE WHEN colocacao IS NULL THEN 1 ELSE 0 END, colocacao",
-            (campeonato_id,),
+            (campeonato_id, empresa_id),
         ).fetchall()
         return [dict(linha) for linha in linhas]
     finally:
@@ -53,6 +56,7 @@ def listar_resultados(campeonato_id: str) -> list:
 
 
 def criar_resultado(
+    empresa_id: str,
     campeonato_id: str,
     nome_atirador: str,
     cliente_id: Optional[str] = None,
@@ -65,7 +69,8 @@ def criar_resultado(
     con = conectar()
     try:
         existe_campeonato = con.execute(
-            "SELECT 1 FROM campeonato WHERE campeonato_id = ?", (campeonato_id,)
+            "SELECT 1 FROM campeonato WHERE campeonato_id = ? AND empresa_id = ?",
+            (campeonato_id, empresa_id),
         ).fetchone()
         if not existe_campeonato:
             raise ValueError(f"Campeonato não encontrado: {campeonato_id}")
@@ -74,12 +79,12 @@ def criar_resultado(
         agora = _agora_iso()
         con.execute(
             "INSERT INTO resultado_campeonato "
-            "(resultado_id, campeonato_id, cliente_id, nome_atirador, modalidade, "
-            "colocacao, pontuacao, observacoes, origem, criado_em, atualizado_em) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "(resultado_id, empresa_id, campeonato_id, cliente_id, nome_atirador, "
+            "modalidade, colocacao, pontuacao, observacoes, origem, criado_em, "
+            "atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                novo_id, campeonato_id, cliente_id, nome_atirador, modalidade,
-                colocacao, pontuacao, observacoes, origem, agora, agora,
+                novo_id, empresa_id, campeonato_id, cliente_id, nome_atirador,
+                modalidade, colocacao, pontuacao, observacoes, origem, agora, agora,
             ),
         )
         con.commit()
@@ -89,6 +94,7 @@ def criar_resultado(
 
 
 def atualizar_resultado(
+    empresa_id: str,
     resultado_id: str,
     nome_atirador: str,
     cliente_id: Optional[str] = None,
@@ -100,17 +106,18 @@ def atualizar_resultado(
     con = conectar()
     try:
         existe = con.execute(
-            "SELECT 1 FROM resultado_campeonato WHERE resultado_id = ?", (resultado_id,)
+            "SELECT 1 FROM resultado_campeonato WHERE resultado_id = ? AND empresa_id = ?",
+            (resultado_id, empresa_id),
         ).fetchone()
         if not existe:
             raise ValueError(f"Resultado não encontrado: {resultado_id}")
         con.execute(
             "UPDATE resultado_campeonato SET cliente_id = ?, nome_atirador = ?, "
             "modalidade = ?, colocacao = ?, pontuacao = ?, observacoes = ?, "
-            "atualizado_em = ? WHERE resultado_id = ?",
+            "atualizado_em = ? WHERE resultado_id = ? AND empresa_id = ?",
             (
                 cliente_id, nome_atirador, modalidade, colocacao, pontuacao,
-                observacoes, _agora_iso(), resultado_id,
+                observacoes, _agora_iso(), resultado_id, empresa_id,
             ),
         )
         con.commit()
@@ -118,15 +125,19 @@ def atualizar_resultado(
         con.close()
 
 
-def remover_resultado(resultado_id: str) -> None:
+def remover_resultado(empresa_id: str, resultado_id: str) -> None:
     con = conectar()
     try:
         existe = con.execute(
-            "SELECT 1 FROM resultado_campeonato WHERE resultado_id = ?", (resultado_id,)
+            "SELECT 1 FROM resultado_campeonato WHERE resultado_id = ? AND empresa_id = ?",
+            (resultado_id, empresa_id),
         ).fetchone()
         if not existe:
             raise ValueError(f"Resultado não encontrado: {resultado_id}")
-        con.execute("DELETE FROM resultado_campeonato WHERE resultado_id = ?", (resultado_id,))
+        con.execute(
+            "DELETE FROM resultado_campeonato WHERE resultado_id = ? AND empresa_id = ?",
+            (resultado_id, empresa_id),
+        )
         con.commit()
     finally:
         con.close()
@@ -135,17 +146,18 @@ def remover_resultado(resultado_id: str) -> None:
 if __name__ == "__main__":
     from domain.clube_tiro.motor_campeonatos import criar_campeonato, remover_campeonato
 
-    campeonato_id = criar_campeonato("Prova de fumaça (resultados)", "2026-01-01")
+    EMPRESA = "EMP-000001"
+    campeonato_id = criar_campeonato(EMPRESA, "Prova de fumaça (resultados)", "2026-01-01")
     print(f"Campeonato de teste: {campeonato_id}")
 
-    r1 = criar_resultado(campeonato_id, "Felipe Bedani", cliente_id="CLI-000001", modalidade="Tiro Prático", colocacao=1, pontuacao="285/300")
-    r2 = criar_resultado(campeonato_id, "Atirador Convidado", modalidade="Tiro Prático", colocacao=2, pontuacao="270/300")
+    r1 = criar_resultado(EMPRESA, campeonato_id, "Felipe Bedani", cliente_id="CLI-000001", modalidade="Tiro Prático", colocacao=1, pontuacao="285/300")
+    r2 = criar_resultado(EMPRESA, campeonato_id, "Atirador Convidado", modalidade="Tiro Prático", colocacao=2, pontuacao="270/300")
     print("Resultados criados:", r1, r2)
 
-    print("Classificação:", listar_resultados(campeonato_id))
+    print("Classificação:", listar_resultados(EMPRESA, campeonato_id))
 
-    atualizar_resultado(r2, "Atirador Convidado (corrigido)", modalidade="Tiro Prático", colocacao=2, pontuacao="271/300")
-    remover_resultado(r1)
-    print("Após atualizar/remover:", listar_resultados(campeonato_id))
+    atualizar_resultado(EMPRESA, r2, "Atirador Convidado (corrigido)", modalidade="Tiro Prático", colocacao=2, pontuacao="271/300")
+    remover_resultado(EMPRESA, r1)
+    print("Após atualizar/remover:", listar_resultados(EMPRESA, campeonato_id))
 
-    remover_campeonato(campeonato_id)
+    remover_campeonato(EMPRESA, campeonato_id)

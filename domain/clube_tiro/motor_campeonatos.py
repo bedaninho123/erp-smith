@@ -10,9 +10,12 @@ em vez de manter duas fontes de verdade permanentes.
 from datetime import datetime, timezone
 from typing import Optional
 
+import os
 import sqlite3
 
-DB_PATH = "domain/clube_tiro/db/dominio_clube_tiro.db"
+DB_PATH = os.environ.get(
+    "ERP_DOMAIN_DB", "domain/clube_tiro/db/dominio_clube_tiro.db"
+)
 
 
 def conectar() -> sqlite3.Connection:
@@ -32,11 +35,13 @@ def _proximo_id(con) -> str:
     return f"CAM-{maior + 1:06d}"
 
 
-def listar_campeonatos(ano: Optional[int] = None, apenas_ativos: bool = True) -> list:
+def listar_campeonatos(
+    empresa_id: str, ano: Optional[int] = None, apenas_ativos: bool = True
+) -> list:
     con = conectar()
     try:
-        query = "SELECT * FROM campeonato WHERE 1=1"
-        params: list = []
+        query = "SELECT * FROM campeonato WHERE empresa_id = ?"
+        params: list = [empresa_id]
         if apenas_ativos:
             query += " AND ativo = 'Sim'"
         if ano:
@@ -48,11 +53,12 @@ def listar_campeonatos(ano: Optional[int] = None, apenas_ativos: bool = True) ->
         con.close()
 
 
-def obter_campeonato(campeonato_id: str) -> Optional[dict]:
+def obter_campeonato(empresa_id: str, campeonato_id: str) -> Optional[dict]:
     con = conectar()
     try:
         linha = con.execute(
-            "SELECT * FROM campeonato WHERE campeonato_id = ?", (campeonato_id,)
+            "SELECT * FROM campeonato WHERE campeonato_id = ? AND empresa_id = ?",
+            (campeonato_id, empresa_id),
         ).fetchone()
         return dict(linha) if linha else None
     finally:
@@ -60,7 +66,7 @@ def obter_campeonato(campeonato_id: str) -> Optional[dict]:
 
 
 def criar_campeonato(
-    nome: str, data_inicio: str, data_fim: Optional[str] = None,
+    empresa_id: str, nome: str, data_inicio: str, data_fim: Optional[str] = None,
     local: Optional[str] = None, observacoes: Optional[str] = None,
     origem: str = "manual",
 ) -> str:
@@ -70,11 +76,12 @@ def criar_campeonato(
         agora = _agora_iso()
         con.execute(
             "INSERT INTO campeonato "
-            "(campeonato_id, nome, data_inicio, data_fim, local, observacoes, "
-            "origem, ativo, criado_em, atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "(campeonato_id, empresa_id, nome, data_inicio, data_fim, local, "
+            "observacoes, origem, ativo, criado_em, atualizado_em) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (
-                novo_id, nome, data_inicio, data_fim or data_inicio, local,
-                observacoes, origem, "Sim", agora, agora,
+                novo_id, empresa_id, nome, data_inicio, data_fim or data_inicio,
+                local, observacoes, origem, "Sim", agora, agora,
             ),
         )
         con.commit()
@@ -84,22 +91,24 @@ def criar_campeonato(
 
 
 def atualizar_campeonato(
-    campeonato_id: str, nome: str, data_inicio: str, data_fim: Optional[str] = None,
+    empresa_id: str, campeonato_id: str, nome: str, data_inicio: str, data_fim: Optional[str] = None,
     local: Optional[str] = None, observacoes: Optional[str] = None,
 ) -> None:
     con = conectar()
     try:
         existe = con.execute(
-            "SELECT 1 FROM campeonato WHERE campeonato_id = ?", (campeonato_id,)
+            "SELECT 1 FROM campeonato WHERE campeonato_id = ? AND empresa_id = ?",
+            (campeonato_id, empresa_id),
         ).fetchone()
         if not existe:
             raise ValueError(f"Campeonato não encontrado: {campeonato_id}")
         con.execute(
             "UPDATE campeonato SET nome = ?, data_inicio = ?, data_fim = ?, "
-            "local = ?, observacoes = ?, atualizado_em = ? WHERE campeonato_id = ?",
+            "local = ?, observacoes = ?, atualizado_em = ? "
+            "WHERE campeonato_id = ? AND empresa_id = ?",
             (
                 nome, data_inicio, data_fim or data_inicio, local, observacoes,
-                _agora_iso(), campeonato_id,
+                _agora_iso(), campeonato_id, empresa_id,
             ),
         )
         con.commit()
@@ -107,19 +116,21 @@ def atualizar_campeonato(
         con.close()
 
 
-def remover_campeonato(campeonato_id: str) -> None:
+def remover_campeonato(empresa_id: str, campeonato_id: str) -> None:
     """Soft delete -- mesmo padrão de conhecimento.ativo, nunca DELETE de
     verdade (mantém histórico do que já foi divulgado)."""
     con = conectar()
     try:
         existe = con.execute(
-            "SELECT 1 FROM campeonato WHERE campeonato_id = ?", (campeonato_id,)
+            "SELECT 1 FROM campeonato WHERE campeonato_id = ? AND empresa_id = ?",
+            (campeonato_id, empresa_id),
         ).fetchone()
         if not existe:
             raise ValueError(f"Campeonato não encontrado: {campeonato_id}")
         con.execute(
-            "UPDATE campeonato SET ativo = 'Não', atualizado_em = ? WHERE campeonato_id = ?",
-            (_agora_iso(), campeonato_id),
+            "UPDATE campeonato SET ativo = 'Não', atualizado_em = ? "
+            "WHERE campeonato_id = ? AND empresa_id = ?",
+            (_agora_iso(), campeonato_id, empresa_id),
         )
         con.commit()
     finally:
@@ -127,11 +138,12 @@ def remover_campeonato(campeonato_id: str) -> None:
 
 
 if __name__ == "__main__":
+    EMPRESA = "EMP-000001"
     novo_id = criar_campeonato(
-        "Prova de fumaça", "2026-01-01", "2026-01-02", local="Sede Smith",
+        EMPRESA, "Prova de fumaça", "2026-01-01", "2026-01-02", local="Sede Smith",
     )
     print(f"Campeonato criado: {novo_id}")
-    print(listar_campeonatos(ano=2026))
-    atualizar_campeonato(novo_id, "Prova de fumaça (editada)", "2026-01-01", "2026-01-02")
-    remover_campeonato(novo_id)
-    print("Removido (soft delete):", obter_campeonato(novo_id))
+    print(listar_campeonatos(EMPRESA, ano=2026))
+    atualizar_campeonato(EMPRESA, novo_id, "Prova de fumaça (editada)", "2026-01-01", "2026-01-02")
+    remover_campeonato(EMPRESA, novo_id)
+    print("Removido (soft delete):", obter_campeonato(EMPRESA, novo_id))
