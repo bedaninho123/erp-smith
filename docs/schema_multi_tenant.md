@@ -200,6 +200,33 @@ Como você lembrou, os 23 clientes são fictícios (`core/db/gerar_clientes_fict
 
 O passo 6 não é opcional. Foi exatamente esse tipo de teste que provou, por mutação, que o isolamento entre clientes funciona — e o isolamento entre empresas é o mesmo problema, uma camada acima.
 
+### Estado da implementação — 2026-07-28
+
+> ⚠️ **O sistema não roda enquanto esta tabela tiver linha pendente.** O schema já mudou, mas `webapp/` e `portal/` ainda não passam `empresa_id` — subir o painel agora dá erro. Isso é esperado no meio do refactor; cada commit é um bloco coerente.
+
+| Etapa | Estado | Commit |
+|---|---|---|
+| `core/db/schema.sql` + as 5 UNIQUE compostas | ✅ | `4e1e1cf` |
+| `core/db/views.sql` com `empresa_atual()` | ✅ | `4e1e1cf` |
+| Schema do Domínio (duas naturezas) | ✅ | `4e1e1cf` |
+| `core/*.py` — 13 módulos | ✅ | `0563d8b` |
+| `motor_ia/*.py` — 8 módulos | ✅ | `0563d8b` |
+| `domain/clube_tiro/motor_*.py` | ✅ | `f6d0548` |
+| **`core/db/*.py` (scripts de dados)** | ⬜ **próximo** | |
+| Recriar o banco sob `EMP-000001` | ⬜ | |
+| `atendimento/` (processar, poller, webhook) | ⬜ | |
+| `webapp/app.py` (906 linhas) e `portal/app.py` (656) | ⬜ | |
+| Testes de isolamento entre empresas | ⬜ | |
+| Suíte inteira verde | ⬜ | |
+
+**Backups pré-migração** (fora do git, `*.db` é ignorado):
+`core/db/backup_pre_multitenant_20260728.db` e `domain/clube_tiro/db/backup_pre_multitenant_20260728.db`.
+
+**Dois achados do refactor que valem registro:**
+
+1. `motor_ia/identificador_cliente.py` era o ponto mais perigoso — é onde o poller entrega o e-mail de quem escreveu, e a busca por nome usa `LIKE`. Sem filtro por empresa, um remetente que fosse cliente de outro despachante seria identificado como cliente desta.
+2. `core/configuracoes.py` tinha o caminho do banco hardcoded, ignorando `ERP_CORE_DB` — lia o banco real mesmo durante os testes. Corrigido junto.
+
 ### Dado real que não é fictício
 
 `CLI-000001` é o próprio usuário, e as 7 linhas de `mensagem` + 117 de `log_ia` vieram de testes por e-mail de verdade. Não é dado de cliente de terceiro, mas é histórico real de uso — vale exportar antes de recriar o banco, se você quiser preservar.
