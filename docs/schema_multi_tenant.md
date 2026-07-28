@@ -1,6 +1,6 @@
-# Schema — Multi-tenant (`empresa_id`) — rascunho para revisão
+# Schema — Multi-tenant (`empresa_id`)
 
-> **Status: RASCUNHO — nada foi criado no banco ainda.** Este documento existe para fechar as decisões antes de qualquer migração, seguindo a regra do `PROJETO_1.md` §8 ("não pular etapas de projeto/documentação/validação antes de implementar").
+> **Status: DECISÕES FECHADAS (2026-07-28) — implementação em andamento.** Este documento fechou as decisões antes da migração, seguindo a regra do `PROJETO_1.md` §8 ("não pular etapas de projeto/documentação/validação antes de implementar"). As três decisões que estavam em aberto foram resolvidas na seção 7.
 > Fonte: `PROJETO_1.md` §7 (Fase 6 — Produto), `core/db/schema.sql` (18 tabelas), `docs/portal_cliente_arquitetura.md` (isolamento de dado).
 > Pré-requisito já entregue: suíte de testes de isolamento (`tests/`), commit `0c71e42` — é ela que vai provar que a migração não abriu vazamento.
 
@@ -155,30 +155,34 @@ Ficaria estranho o `CAS-000001` da Smith e o `CAS-000002` de outra empresa? Fica
 
 ---
 
-## 7. Decisões em aberto (preciso da sua)
+## 7. Decisões tomadas — 2026-07-28
 
-### 7.1 O banco de Domínio mistura duas coisas
+### 7.1 O Domínio passa a ter duas naturezas explícitas ✅
 
-`domain/clube_tiro/db/` tem hoje:
+O pacote de Domínio hoje junta coisas de natureza diferente. A separação fica assim:
 
-| Tabela | Natureza | Proposta |
+| Tabela | Natureza | `empresa_id`? |
 |---|---|---|
-| `conhecimento` | O Decreto nº 11.615/2023 é **a mesma lei para todo despachante de clube de tiro** | Compartilhado — **sem** `empresa_id` |
-| `campeonato` | Calendário de provas **da Smith** | Por empresa — **com** `empresa_id` |
-| `resultado_campeonato` | Classificação das provas da Smith | Por empresa — **com** `empresa_id` |
+| `conhecimento` | O Decreto nº 11.615/2023 é **a mesma lei para todo despachante de clube de tiro** | **Não** — compartilhado entre todas as empresas do domínio |
+| `campeonato` | Calendário de provas **de uma empresa específica** | **Sim** |
+| `resultado_campeonato` | Classificação das provas dessa empresa | **Sim** |
 
-Ou seja: o pacote de Domínio hoje junta *conhecimento compartilhado* com *dado próprio da empresa*. Isso precisa de uma decisão sua, porque muda a arquitetura: ou o banco de Domínio ganha `empresa_id` em duas das três tabelas, ou `campeonato`/`resultado_campeonato` migram para o Core.
+**Por que não mover `campeonato` para o Core** (opção considerada e descartada): o `PROJETO_1.md` §7 (Fase 5) define como teste de sucesso "validar que o Core funciona sem nenhuma referência hardcoded ao domínio de clube de tiro". Um escritório de advocacia nunca terá um campeonato — colocar essa tabela no Core faria a validação da Fase 5 falhar por construção, e é justamente a pureza do Core que sustenta a tese de produto multi-domínio.
 
-### 7.2 Quando migrar para PostgreSQL
+**O padrão que isso estabelece para domínios futuros:** todo pacote de Domínio pode ter as duas áreas.
 
-- **Antes** do `empresa_id`: a segurança já nasce com RLS de verdade, sem escrever filtro à mão duas vezes.
-- **Depois**: mais incremental, mas o isolamento fica dependendo de disciplina no meio-tempo.
+| Domínio | Conhecimento (compartilhado) | Dado operacional (por empresa) |
+|---|---|---|
+| `clube_tiro` | Legislação de CR/CRAF, habitualidade | `campeonato`, `resultado_campeonato` |
+| `advocacia` (futuro) | Prazos processuais, ritos | `audiencia`, `peticao` |
 
-O desenho de schema deste documento **é o mesmo nos dois caminhos** — só muda o mecanismo de enforcement. Minha recomendação: implementar em SQLite com a proposta da seção 5, que é justamente a que não vira trabalho jogado fora.
+### 7.2 Implementar em SQLite agora, PostgreSQL depois ✅
 
-### 7.3 Uma empresa pode ter mais de um domínio?
+O desenho de schema deste documento é idêntico nos dois caminhos — só muda o mecanismo de enforcement. Com a proposta da seção 5 (views que se filtram sozinhas), nada do trabalho é jogado fora: quando o PostgreSQL entrar, `empresa_atual()` vira `CREATE POLICY` nativa.
 
-Um despachante que atenda clube de tiro **e** veículos teria duas linhas em `empresa`, ou uma linha com vários domínios? A proposta atual (`empresa.dominio` como campo único) assume **um domínio por empresa** — mais simples, e dá para evoluir depois sem migração dolorosa.
+### 7.3 Um domínio por empresa ✅
+
+`empresa.dominio` é campo único. Um despachante que atendesse clube de tiro **e** veículos teria duas linhas em `empresa`. Mais simples agora, e evolui para vários domínios depois sem migração dolorosa.
 
 ---
 

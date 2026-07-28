@@ -2,6 +2,17 @@
 -- usar para ler dados. Nenhum módulo de IA deve fazer "SELECT * FROM
 -- cliente" direto; sempre through uma destas views.
 --
+-- MULTI-TENANT (docs/schema_multi_tenant.md §5): toda view filtra por
+-- empresa_atual(), uma função registrada na conexão por
+-- core/conexao.py::conectar(empresa_id). Isso faz o Motor IA ficar
+-- isolado por construção -- ele já era obrigado a ler só por view, então
+-- nenhum módulo dele precisou mudar.
+--
+-- O modo de falha é o ponto: se a conexão não definir empresa_atual(),
+-- a query levanta "no such function" em vez de devolver o banco inteiro.
+-- Falha fechado, não aberto. Quando o PostgreSQL entrar, essa mesma
+-- ideia vira CREATE POLICY (RLS) nativa.
+--
 -- VW_ATENDIMENTO_COMPLETO (a view "mestre" do PROJETO_1.md) fica pendente:
 -- depende de conhecimento (Domínio, banco separado) e ainda vai ser
 -- responsabilidade do futuro Montador de Contexto combinar Core + Domínio,
@@ -13,6 +24,7 @@
 CREATE VIEW VW_CLIENTE AS
 SELECT
     c.cliente_id,
+    c.empresa_id,
     c.nome,
     c.cpf,
     c.email,
@@ -29,7 +41,8 @@ SELECT
     m.restricoes_atendimento,
     m.informacoes_importantes
 FROM cliente c
-LEFT JOIN memoria_ia m ON m.cliente_id = c.cliente_id AND m.ativo = 'Sim';
+LEFT JOIN memoria_ia m ON m.cliente_id = c.cliente_id AND m.ativo = 'Sim'
+WHERE c.empresa_id = empresa_atual();
 
 -- Serviço + o texto de prazo/valor já montado a partir dos templates
 -- (mostra na prática o padrão template + dado real que o Redator vai usar).
@@ -37,9 +50,13 @@ LEFT JOIN memoria_ia m ON m.cliente_id = c.cliente_id AND m.ativo = 'Sim';
 -- ainda não informado pelo usuário), cai num texto "a confirmar" em vez de
 -- quebrar (REPLACE com NULL vira NULL) ou de inventar um número -- mesmo
 -- princípio do Redator de nunca fabricar prazo/valor.
+--
+-- O JOIN com template também é filtrado por empresa: cada empresa tem o
+-- texto institucional dela.
 CREATE VIEW VW_SERVICO AS
 SELECT
     s.service_id,
+    s.empresa_id,
     s.service_key,
     s.nome_servico,
     s.descricao,
@@ -53,8 +70,9 @@ SELECT
     CASE WHEN s.valor_referencia IS NULL THEN 'Valor de referência: a confirmar com nossa equipe.'
          ELSE REPLACE(tv.conteudo, '{valor_referencia}', printf('%.2f', s.valor_referencia)) END AS valor_texto
 FROM servico s
-LEFT JOIN template tp ON tp.template_key = 'prazo_texto_servico'
-LEFT JOIN template tv ON tv.template_key = 'valor_texto_servico';
+LEFT JOIN template tp ON tp.template_key = 'prazo_texto_servico' AND tp.empresa_id = s.empresa_id
+LEFT JOIN template tv ON tv.template_key = 'valor_texto_servico' AND tv.empresa_id = s.empresa_id
+WHERE s.empresa_id = empresa_atual();
 
 -- Checklist completo de documentos por serviço, um item por linha
 -- (grupo/item/ordem) -- o Consultor agrupa e formata em Python antes de
@@ -63,6 +81,7 @@ LEFT JOIN template tv ON tv.template_key = 'valor_texto_servico';
 CREATE VIEW VW_CHECKLIST_SERVICO AS
 SELECT
     de.servico_id,
+    de.empresa_id,
     s.nome_servico,
     de.grupo,
     de.item,
@@ -70,6 +89,7 @@ SELECT
 FROM documento_exigido de
 JOIN servico s ON s.service_id = de.servico_id
 WHERE de.ativo = 'Sim' AND s.ativo = 'Sim'
+  AND de.empresa_id = empresa_atual()
 ORDER BY de.servico_id, de.ordem;
 
 -- Processo com tudo que a rota "Consulta Documentos/Processo" do Make
@@ -77,6 +97,7 @@ ORDER BY de.servico_id, de.ordem;
 CREATE VIEW VW_PROCESSO AS
 SELECT
     p.processo_id,
+    p.empresa_id,
     p.protocolo,
     p.status,
     p.data_abertura,
@@ -100,4 +121,5 @@ FROM processo p
 JOIN cliente c ON c.cliente_id = p.cliente_id
 JOIN caso ca ON ca.caso_id = p.caso_id
 JOIN servico s ON s.service_id = p.servico_id
-LEFT JOIN usuario u ON u.usuario_id = p.responsavel_id;
+LEFT JOIN usuario u ON u.usuario_id = p.responsavel_id
+WHERE p.empresa_id = empresa_atual();
