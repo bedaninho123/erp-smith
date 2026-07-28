@@ -3,10 +3,18 @@ que ainda não foram aprovadas. Rode com `python -m
 domain.clube_tiro.db.aprovar_conhecimento` e responda s/n/p (pular)
 para cada uma -- só entradas aprovadas (aprovado='Sim') são usadas pelo
 Consultor com clientes reais.
+
+Sem empresa_id: conhecimento é compartilhado entre todas as empresas do
+domínio (docs/schema_multi_tenant.md, 7.1). Aprovar uma entrada aqui
+vale para todo mundo -- o que é justamente o ponto, já que a fonte é
+legislação federal.
 """
+import os
 import sqlite3
 
-DB_PATH = "domain/clube_tiro/db/dominio_clube_tiro.db"
+DB_PATH = os.environ.get(
+    "ERP_DOMAIN_DB", "domain/clube_tiro/db/dominio_clube_tiro.db"
+)
 
 
 def main():

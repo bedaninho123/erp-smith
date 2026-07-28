@@ -212,15 +212,16 @@ O passo 6 não é opcional. Foi exatamente esse tipo de teste que provou, por mu
 | `core/*.py` — 13 módulos | ✅ | `0563d8b` |
 | `motor_ia/*.py` — 8 módulos | ✅ | `0563d8b` |
 | `domain/clube_tiro/motor_*.py` | ✅ | `f6d0548` |
-| **`core/db/*.py` (scripts de dados)** | ⬜ **próximo** | |
-| Recriar o banco sob `EMP-000001` | ⬜ | |
-| `atendimento/` (processar, poller, webhook) | ⬜ | |
+| `core/motor_empresas.py` (tabela `empresa`) | ✅ | |
+| Scripts de dados do Core e do Domínio | ✅ | |
+| Recriar o banco sob `EMP-000001` | ✅ | |
+| **`atendimento/` (processar, poller, webhook)** | ⬜ **próximo** | |
 | `webapp/app.py` (906 linhas) e `portal/app.py` (656) | ⬜ | |
 | Testes de isolamento entre empresas | ⬜ | |
-| Suíte inteira verde | ⬜ | |
+| Suíte inteira verde | ⬜ (hoje: 3 passam, 3 falham, 20 erram — `tests/conftest.py` monta o banco sem `empresa_id`) | |
 
 **Backups pré-migração** (fora do git, `*.db` é ignorado):
-`core/db/backup_pre_multitenant_20260728.db` e `domain/clube_tiro/db/backup_pre_multitenant_20260728.db`.
+`core/db/backup_pre_multitenant_20260728.db` e `domain/clube_tiro/db/backup_pre_multitenant_20260728.db`, mais os `backup_20260728_0104*.db` que o próprio `criar_banco --recriar` guardou na hora de recriar.
 
 **Dois achados do refactor que valem registro:**
 
@@ -230,6 +231,22 @@ O passo 6 não é opcional. Foi exatamente esse tipo de teste que provou, por mu
 ### Dado real que não é fictício
 
 `CLI-000001` é o próprio usuário, e as 7 linhas de `mensagem` + 117 de `log_ia` vieram de testes por e-mail de verdade. Não é dado de cliente de terceiro, mas é histórico real de uso — vale exportar antes de recriar o banco, se você quiser preservar.
+
+**O que o banco recriado perdeu (2026-07-28):** ele nasceu só do que os scripts de dados sabem produzir, então o que tinha se acumulado pelo uso ficou para trás — 117 linhas de `log_ia`, 39 de `memoria_ia`, 17 de `historico`, 7 `portal_token`, 5 de `mensagem` (das 7, sobraram as 2 que a migração da planilha recria) e 9 casos criados pelo painel. Está tudo em `core/db/backup_20260728_010417.db`, de onde dá para reimportar se algum dia fizer falta. O `senha_hash` dos usuários também sumiu junto: quando o painel voltar a subir, rodar `webapp/definir_senha.py` de novo.
+
+### Terceiro achado do refactor
+
+Os scripts de dados usavam `INSERT INTO tabela VALUES (?,?,?…)` posicional, e isso já tinha quebrado em silêncio antes do multi-tenant: `usuario.senha_hash` e `documento.mensagem_id` entraram no schema depois e deixaram `migrate_dados_teste.py` desatualizado sem ninguém perceber (ele só quebraria no dia em que alguém recriasse o banco). Todos os INSERTs dos scripts agora listam as colunas pelo nome — acrescentar coluna ao schema deixa de ser um problema silencioso.
+
+### A prova de que funciona
+
+Antes de recriar o banco de verdade, a sequência inteira rodou contra um banco descartável com **duas** empresas — a Smith e uma concorrente fictícia. As três propriedades que interessam se confirmaram nos scripts reais, não em SQL de laboratório:
+
+| O que se esperava | Resultado |
+|---|---|
+| Cada empresa vê só o dado dela pelas views | ✅ `VW_CLIENTE` devolveu 23 para uma e 20 para a outra, com 43 linhas cruas na tabela |
+| O mesmo CPF pode ser cliente das duas | ✅ 20 CPFs repetidos entre empresas, nenhum erro de `UNIQUE` |
+| Conexão sem empresa não vaza | ✅ `no such function: empresa_atual` |
 
 ---
 

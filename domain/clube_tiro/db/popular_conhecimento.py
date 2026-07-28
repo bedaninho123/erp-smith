@@ -12,11 +12,23 @@ projeto (conteúdo novo/não revisado deve nascer 'Não', ver
 domain/clube_tiro/db/aprovar_conhecimento.py). Qualquer pergunta NOVA
 adicionada aqui no futuro deve voltar a nascer 'Não' até ser revisada
 com a mesma atenção.
+
+MULTI-TENANT: conhecimento NÃO tem empresa_id, e isso é decisão tomada
+(docs/schema_multi_tenant.md, 7.1) -- o Decreto nº 11.615/2023 é a mesma
+lei para todo despachante de clube de tiro. Duplicar a legislação por
+empresa seria manter N cópias que divergem com o tempo. Por isso este
+script roda uma vez só, e vale para todas as empresas do domínio.
 """
+import os
 import sqlite3
 from datetime import datetime, timezone
 
-DB_PATH = "domain/clube_tiro/db/dominio_clube_tiro.db"
+# Mesma variável de ambiente dos motores do Domínio: sem isso, o script
+# escreveria no banco real mesmo com ERP_DOMAIN_DB apontando pra outro
+# lugar (foi exatamente o problema encontrado em core/configuracoes.py).
+DB_PATH = os.environ.get(
+    "ERP_DOMAIN_DB", "domain/clube_tiro/db/dominio_clube_tiro.db"
+)
 
 
 def _agora_iso() -> str:
@@ -98,17 +110,29 @@ def main():
             "SELECT MAX(CAST(SUBSTR(conhecimento_id, 5) AS INTEGER)) FROM conhecimento"
         ).fetchone()[0] or 0
 
+        # Idempotente pela pergunta em si -- rodar de novo depois de
+        # acrescentar uma entrada nova insere só a que falta, em vez de
+        # duplicar as dez que já estavam lá.
+        ja_existem = {
+            linha[0] for linha in
+            con.execute("SELECT pergunta FROM conhecimento").fetchall()
+        }
+        novas = [p for p in PERGUNTAS if p[1] not in ja_existem]
+
         agora = _agora_iso()
         linhas = [
             (f"KNW-{maior + i + 1:06d}", categoria, pergunta, resposta, "Sim", "Sim", agora)
-            for i, (categoria, pergunta, resposta) in enumerate(PERGUNTAS)
+            for i, (categoria, pergunta, resposta) in enumerate(novas)
         ]
         con.executemany(
-            "INSERT INTO conhecimento VALUES (?,?,?,?,?,?,?)", linhas
+            "INSERT INTO conhecimento (conhecimento_id, categoria, pergunta, "
+            "resposta, aprovado, ativo, criado_em) VALUES (?,?,?,?,?,?,?)",
+            linhas,
         )
         con.commit()
-        print(f"{len(linhas)} perguntas inseridas, já aprovadas "
-              "(revisadas com base no Decreto nº 11.615/2023 em 2026-07-23).")
+        print(f"{len(linhas)} pergunta(s) inserida(s), já aprovada(s) "
+              "(revisadas com base no Decreto nº 11.615/2023 em 2026-07-23). "
+              f"{len(PERGUNTAS) - len(linhas)} já existiam.")
     finally:
         con.close()
 

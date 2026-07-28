@@ -14,8 +14,19 @@ CR, Apostilamento e Transferência. Decisões confirmadas com o usuário:
 
 Idempotente: pode rodar de novo sem duplicar (verifica por service_key
 antes de criar serviço, e por servico_id antes de inserir checklist).
+
+MULTI-TENANT: serviço e checklist são catálogo DA EMPRESA, não
+conhecimento compartilhado -- outro despachante pode oferecer outros
+serviços, cobrar outro preço e exigir outra lista. Por isso toda busca
+por service_key aqui filtra por empresa: sem isso, rodar o script para a
+segunda empresa acharia o serviço da primeira e não criaria nada.
+
+Uso: `python -m core.db.popular_documentos_exigidos [EMP-00000X]`
 """
+import sys
+
 from core.conexao import conectar
+from core.motor_empresas import EMPRESA_PADRAO, exigir_empresa
 
 SERVICOS_NOVOS = [
     # (service_key, nome_servico, descricao, categoria)
@@ -99,6 +110,8 @@ CHECKLISTS = {
 CHECKLIST_CR_APLICA_A = ["renovacao_cr", "primeiro_cr"]
 
 
+# Os dois geradores de ID abaixo varrem a tabela inteira, sem filtrar por
+# empresa: a numeração é global no projeto (docs/schema_multi_tenant.md §6).
 def _proximo_service_id(con) -> str:
     maior = con.execute(
         "SELECT MAX(CAST(SUBSTR(service_id, 5) AS INTEGER)) FROM servico"
@@ -113,43 +126,50 @@ def _proximo_dex_id(con) -> str:
     return f"DEX-{maior + 1:06d}"
 
 
-def _garantir_servicos_novos(con) -> None:
+def _garantir_servicos_novos(con, empresa_id: str) -> None:
     for service_key, nome, descricao, categoria in SERVICOS_NOVOS:
         existe = con.execute(
-            "SELECT 1 FROM servico WHERE service_key = ?", (service_key,)
+            "SELECT 1 FROM servico WHERE service_key = ? AND empresa_id = ?",
+            (service_key, empresa_id),
         ).fetchone()
         if existe:
             continue
         novo_id = _proximo_service_id(con)
         con.execute(
-            "INSERT INTO servico VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO servico (service_id, empresa_id, service_key, "
+            "nome_servico, descricao, categoria, prazo_estimado_dias, "
+            "valor_referencia, documentos_obrigatorios, ativo, observacoes) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (
-                novo_id, service_key, nome, descricao, categoria,
+                novo_id, empresa_id, service_key, nome, descricao, categoria,
                 None, None, DIGEST_CURTO[service_key], "Sim", None,
             ),
         )
         print(f"Serviço criado: {novo_id} -- {nome}")
 
 
-def _atualizar_digest_existentes(con) -> None:
+def _atualizar_digest_existentes(con, empresa_id: str) -> None:
     for service_key in ("renovacao_cr", "primeiro_cr", "transferencia_arma"):
         con.execute(
-            "UPDATE servico SET documentos_obrigatorios = ? WHERE service_key = ?",
-            (DIGEST_CURTO[service_key], service_key),
+            "UPDATE servico SET documentos_obrigatorios = ? "
+            "WHERE service_key = ? AND empresa_id = ?",
+            (DIGEST_CURTO[service_key], service_key, empresa_id),
         )
     print("Resumo curto (documentos_obrigatorios) atualizado para CR/Transferência.")
 
 
-def _inserir_checklist(con, service_key: str, itens: list) -> None:
+def _inserir_checklist(con, empresa_id: str, service_key: str, itens: list) -> None:
     servico_id = con.execute(
-        "SELECT service_id FROM servico WHERE service_key = ?", (service_key,)
+        "SELECT service_id FROM servico WHERE service_key = ? AND empresa_id = ?",
+        (service_key, empresa_id),
     ).fetchone()
     if not servico_id:
-        raise ValueError(f"Serviço não encontrado: {service_key}")
+        raise ValueError(f"Serviço não encontrado em {empresa_id}: {service_key}")
     servico_id = servico_id[0]
 
     ja_tem = con.execute(
-        "SELECT 1 FROM documento_exigido WHERE servico_id = ?", (servico_id,)
+        "SELECT 1 FROM documento_exigido WHERE servico_id = ? AND empresa_id = ?",
+        (servico_id, empresa_id),
     ).fetchone()
     if ja_tem:
         print(f"Checklist de {service_key} ({servico_id}) já existe -- pulando.")
@@ -158,22 +178,26 @@ def _inserir_checklist(con, service_key: str, itens: list) -> None:
     for ordem, (grupo, item) in enumerate(itens, start=1):
         novo_id = _proximo_dex_id(con)
         con.execute(
-            "INSERT INTO documento_exigido VALUES (?,?,?,?,?,?)",
-            (novo_id, servico_id, grupo, item, ordem, "Sim"),
+            "INSERT INTO documento_exigido (documento_exigido_id, empresa_id, "
+            "servico_id, grupo, item, ordem, ativo) VALUES (?,?,?,?,?,?,?)",
+            (novo_id, empresa_id, servico_id, grupo, item, ordem, "Sim"),
         )
     print(f"{len(itens)} itens de checklist inseridos para {service_key} ({servico_id}).")
 
 
-def main():
-    con = conectar()
+def main(empresa_id: str = EMPRESA_PADRAO):
+    empresa = exigir_empresa(empresa_id)
+    print(f"Populando catálogo de {empresa_id} -- {empresa['nome']}.")
+
+    con = conectar(empresa_id)
     try:
-        _garantir_servicos_novos(con)
-        _atualizar_digest_existentes(con)
+        _garantir_servicos_novos(con, empresa_id)
+        _atualizar_digest_existentes(con, empresa_id)
 
         for service_key in CHECKLIST_CR_APLICA_A:
-            _inserir_checklist(con, service_key, CHECKLISTS["cr"])
+            _inserir_checklist(con, empresa_id, service_key, CHECKLISTS["cr"])
         for service_key in ("craf", "aquisicao_arma", "transferencia_arma", "guia_trafego"):
-            _inserir_checklist(con, service_key, CHECKLISTS[service_key])
+            _inserir_checklist(con, empresa_id, service_key, CHECKLISTS[service_key])
 
         con.commit()
         print("Concluído.")
@@ -182,4 +206,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1] if len(sys.argv) > 1 else EMPRESA_PADRAO)

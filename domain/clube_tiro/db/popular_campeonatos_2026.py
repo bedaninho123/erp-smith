@@ -12,8 +12,20 @@ quebra por mês.
 
 Rode com `python -m domain.clube_tiro.db.popular_campeonatos_2026`.
 Idempotente checando pelo nome + data_inicio antes de inserir.
+
+MULTI-TENANT (docs/schema_multi_tenant.md, decisão 7.1): campeonato é
+dado operacional DA EMPRESA, não conhecimento compartilhado do domínio
+-- este é o calendário da Smith, e outro despachante de clube de tiro
+teria o dele. Para popular o calendário de outra empresa:
+`python -m domain.clube_tiro.db.popular_campeonatos_2026 EMP-00000X`.
 """
+import sys
+
 from domain.clube_tiro.motor_campeonatos import conectar, criar_campeonato
+
+# Constante local em vez de importar do Core de propósito: o Domínio não
+# depende do Core (a dependência é sempre no sentido contrário).
+EMPRESA_PADRAO = "EMP-000001"
 
 CAMPEONATOS_2026 = [
     ("Prova 4 Armas Smith Clube", "2026-01-27", "2026-01-31"),
@@ -73,12 +85,18 @@ CAMPEONATOS_2026 = [
 ]
 
 
-def main():
+def main(empresa_id: str = EMPRESA_PADRAO):
     con = conectar()
     try:
+        # A checagem de duplicata é por empresa: duas empresas podem ter
+        # uma prova com o mesmo nome no mesmo dia (o REINIT, por exemplo,
+        # é interclubes -- todo mundo participa da mesma etapa).
         existentes = {
             (row["nome"], row["data_inicio"])
-            for row in con.execute("SELECT nome, data_inicio FROM campeonato").fetchall()
+            for row in con.execute(
+                "SELECT nome, data_inicio FROM campeonato WHERE empresa_id = ?",
+                (empresa_id,),
+            ).fetchall()
         }
     finally:
         con.close()
@@ -87,11 +105,12 @@ def main():
     for nome, data_inicio, data_fim in CAMPEONATOS_2026:
         if (nome, data_inicio) in existentes:
             continue
-        criar_campeonato(nome, data_inicio, data_fim, origem="manual")
+        criar_campeonato(empresa_id, nome, data_inicio, data_fim, origem="manual")
         criados += 1
 
-    print(f"{criados} campeonato(s) inserido(s) ({len(CAMPEONATOS_2026) - criados} já existiam).")
+    print(f"{criados} campeonato(s) inserido(s) em {empresa_id} "
+          f"({len(CAMPEONATOS_2026) - criados} já existiam).")
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1] if len(sys.argv) > 1 else EMPRESA_PADRAO)

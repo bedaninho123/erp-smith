@@ -9,10 +9,17 @@ diferentes no Shooting House simulado).
 Não substitui a migração de dados reais (ver recomendação do Claude no
 chat) -- serve para testar amplitude de cenários enquanto não há
 cliente real disponível para teste.
+
+MULTI-TENANT: todos os clientes gerados aqui pertencem a uma empresa só
+(EMP-000001 por padrão). Para popular uma segunda empresa de teste --
+útil justamente para provar isolamento -- passe o empresa_id na linha de
+comando: `python -m core.db.gerar_clientes_ficticios EMP-000002`.
 """
+import sys
 from datetime import datetime, timezone
 
 from core.conexao import conectar
+from core.motor_empresas import EMPRESA_PADRAO, exigir_empresa
 
 CIDADES = ["Marília", "Bauru", "Assis", "Ourinhos", "Tupã", "Garça", "Lins"]
 
@@ -22,6 +29,9 @@ def _agora_iso() -> str:
 
 
 def _proximo_id(con, tabela: str, coluna_id: str, prefixo: str) -> int:
+    # Sem filtro por empresa de propósito: a numeração de ID é global
+    # (docs/schema_multi_tenant.md §6). Duas empresas nunca geram o mesmo
+    # CLI-000042, mesmo que a sequência fique com buracos em cada uma.
     maior = con.execute(
         f"SELECT MAX(CAST(SUBSTR({coluna_id}, {len(prefixo) + 2}) AS INTEGER)) FROM {tabela}"
     ).fetchone()[0] or 0
@@ -55,8 +65,11 @@ PERFIS = [
 ]
 
 
-def main():
-    con = conectar()
+def main(empresa_id: str = EMPRESA_PADRAO):
+    empresa = exigir_empresa(empresa_id)
+    print(f"Gerando dado fictício para {empresa_id} -- {empresa['nome']}.")
+
+    con = conectar(empresa_id)
     try:
         prox_cliente = _proximo_id(con, "cliente", "cliente_id", "CLI")
         prox_caso = _proximo_id(con, "caso", "caso_id", "CAS")
@@ -76,8 +89,10 @@ def main():
             telefone = f"551499990{prox_cliente + i:04d}"
 
             con.execute(
-                "INSERT INTO cliente VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (cliente_id, nome, cpf, email, telefone, cidade, status,
+                "INSERT INTO cliente (cliente_id, empresa_id, nome, cpf, email, "
+                "telefone, cidade, status, atendimento_ia, data_cadastro, "
+                "ultima_interacao, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (cliente_id, empresa_id, nome, cpf, email, telefone, cidade, status,
                  atendimento_ia, agora, agora,
                  f"[FICTÍCIO -- dado de teste] {cenario}"),
             )
@@ -93,9 +108,16 @@ def main():
                 motivo_encerramento = "Solicitação cancelada pelo cliente"
 
             con.execute(
-                "INSERT INTO caso VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO caso (caso_id, empresa_id, cliente_id, titulo, "
+                "descricao, categoria, tipo_caso, origem, canal_origem, status, "
+                "fase, prioridade, responsavel_id, equipe_responsavel, "
+                "sessao_principal_id, memoria_id, criado_em, atualizado_em, "
+                "prazo_previsto, encerrado_em, criado_por, alterado_por, versao, "
+                "ativo, motivo_encerramento, observacoes) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    caso_id, cliente_id, f"{tipo_caso} - {categoria_caso}", cenario,
+                    caso_id, empresa_id, cliente_id,
+                    f"{tipo_caso} - {categoria_caso}", cenario,
                     categoria_caso, tipo_caso, origem, canal_origem, status_caso,
                     fase, prioridade, None, "Despachante", None, None,
                     agora, agora, None, encerrado_em, "Migração", "Migração",
@@ -106,16 +128,25 @@ def main():
             criados["caso"] += 1
 
             if servico_key:
+                # O serviço tem que ser desta empresa: o catálogo é por
+                # empresa, e a mesma service_key existe em todas elas.
                 servico = con.execute(
-                    "SELECT service_id FROM servico WHERE service_key = ?", (servico_key,)
+                    "SELECT service_id FROM servico WHERE service_key = ? "
+                    "AND empresa_id = ?",
+                    (servico_key, empresa_id),
                 ).fetchone()
                 if servico:
                     processo_id = f"PRO-{prox_processo:06d}"
                     prox_processo += 1
                     con.execute(
-                        "INSERT INTO processo VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "INSERT INTO processo (processo_id, empresa_id, caso_id, "
+                        "cliente_id, servico_id, protocolo, status, data_abertura, "
+                        "prazo_estimado, proxima_acao, responsavel_id, "
+                        "ultima_atualizacao, observacoes) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (
-                            processo_id, caso_id, cliente_id, servico["service_id"],
+                            processo_id, empresa_id, caso_id, cliente_id,
+                            servico["service_id"],
                             None, status_processo or "Em análise", agora, None,
                             None, None, agora,
                             f"[FICTÍCIO -- dado de teste] {cenario}",
@@ -131,4 +162,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1] if len(sys.argv) > 1 else EMPRESA_PADRAO)

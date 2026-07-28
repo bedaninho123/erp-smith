@@ -45,10 +45,18 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m motor_ia.orquestrador
 .venv\Scripts\python.exe -m motor_ia.demo_pipeline   # pipeline completo com dado real
 
-# Recriar/migrar os bancos SQLite a partir do schema + dados de teste
-.venv\Scripts\python.exe -m core.db.migrate_dados_teste
-.venv\Scripts\python.exe -m core.db.gerar_clientes_ficticios
+# Recriar os bancos SQLite do zero, na ordem (o --recriar guarda o banco atual
+# como backup_AAAAMMDD_HHMMSS.db na mesma pasta antes de apagar)
+.venv\Scripts\python.exe -m core.db.criar_banco --recriar
+.venv\Scripts\python.exe -m core.db.migrate_dados_teste        # cria EMP-000001 + dado migrado da planilha
+.venv\Scripts\python.exe -m core.db.gerar_clientes_ficticios   # aceita um empresa_id como argumento
+.venv\Scripts\python.exe -m core.db.popular_documentos_exigidos
+.venv\Scripts\python.exe -m domain.clube_tiro.db.criar_banco --recriar
 .venv\Scripts\python.exe -m domain.clube_tiro.db.popular_conhecimento
+.venv\Scripts\python.exe -m domain.clube_tiro.db.popular_campeonatos_2026
+
+# Listar as empresas cadastradas (multi-tenant)
+.venv\Scripts\python.exe -m core.motor_empresas
 
 # Autorizar o Gmail (OAuth2 -- interativo, roda uma vez por máquina, o usuário faz o consentimento no navegador)
 .venv\Scripts\python.exe -m integracoes.gmail_autorizar
@@ -72,6 +80,14 @@ webapp/        -- painel administrativo Flask (ferramenta de uso real, não só 
 ### Dois bancos SQLite físicos, uma conexão lógica
 
 `core/db/erp_smith.db` (Core) e `domain/clube_tiro/db/dominio_clube_tiro.db` (Domínio) são arquivos separados de propósito — a separação física é o que garante que o Core nunca tenha uma referência hardcoded ao domínio de clube de tiro (pré-requisito para o dia em que um segundo domínio, ex. advocacia, for plugado). `core/conexao.py` conecta só ao Core; `motor_ia/conexao.py` importa `CORE_DB` de lá e faz `ATTACH DATABASE` do banco de Domínio na mesma conexão sob o alias `dominio`, permitindo joins entre os dois numa única query sem misturar os arquivos. SQLite não aplica FK entre bancos ATTACHed — a integridade referencial cross-domínio é responsabilidade do código, não do banco.
+
+### Multi-tenant: toda linha pertence a uma empresa (migração em andamento)
+
+Ver `docs/schema_multi_tenant.md` — inclusive a tabela de estado no fim dele, que diz o que já foi migrado e o que ainda não. Em resumo: toda tabela do Core tem `empresa_id`, e `core/conexao.py::conectar(empresa_id)` **exige** a empresa — registra a função SQL `empresa_atual()`, que é o que faz as views do Core se filtrarem sozinhas. Quem precisa enxergar o banco inteiro (só scripts de setup e `core/motor_empresas.py`) usa `conectar_admin()`, que de propósito **não** registra a função: uma view consultada por ali levanta `no such function: empresa_atual` em vez de devolver dado de todas as empresas misturado. Falha fechado, não aberto.
+
+No Domínio a regra se divide em duas: `conhecimento` é compartilhado (legislação federal, sem `empresa_id`), `campeonato` e `resultado_campeonato` são dado operacional da empresa e têm a coluna — e como o banco de Domínio é anexado, não passa pelas views do Core: filtro por `empresa_id` na mão, sempre.
+
+Os IDs (`CLI-000001`…) continuam com numeração **global**, não por empresa. Fica estranho ver `CAS-000001` numa empresa e `CAS-000002` na outra, e é de propósito: numerar por empresa exigiria o filtro nos 5 geradores e abriria risco de colisão.
 
 ### O Caso é a entidade central, não Cliente nem Processo
 
