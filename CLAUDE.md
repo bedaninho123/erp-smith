@@ -8,11 +8,14 @@ ERP Smith: um ERP inteligente de atendimento e gestão de processos, desenhado p
 
 ## Comandos
 
-Não existe suíte de testes automatizada (nenhum `pytest`/`unittest`). A validação é feita rodando os módulos diretamente — a maioria tem um bloco `if __name__ == "__main__":` com um teste de fumaça usando dado real do banco — e testando o fluxo completo pelo painel web ou por e-mail real.
+A suíte automatizada (`pytest`) cobre só o que dói perder: isolamento de dado entre clientes do Portal, o token de login sem senha e o freio determinístico do Auditor. O resto continua sendo validado rodando os módulos diretamente — a maioria tem um bloco `if __name__ == "__main__":` com um teste de fumaça usando dado real do banco — e testando o fluxo completo pelo painel web ou por e-mail real.
 
 ```bash
 # Ambiente (sempre usar o venv, nunca o Python global)
 .venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# Suíte de testes
+.venv\Scripts\python.exe -m pytest tests/ -v
 
 # Painel administrativo (localhost:5000) -- ferramenta principal de dev e uso diário
 .venv\Scripts\python.exe -m webapp.app

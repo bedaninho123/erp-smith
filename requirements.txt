@@ -21,13 +21,16 @@ httpcore==1.0.9
 httplib2==0.32.0
 httpx==0.28.1
 idna==3.18
+iniconfig==2.3.0
 itsdangerous==2.2.0
 Jinja2==3.1.6
 jiter==0.16.0
 MarkupSafe==3.0.3
 oauthlib==3.3.1
 openai==2.47.0
+packaging==26.2
 playwright==1.61.0
+pluggy==1.6.0
 proto-plus==1.28.2
 protobuf==7.35.1
 pyasn1==0.6.4
@@ -37,6 +40,7 @@ pydantic==2.13.4
 pydantic_core==2.46.4
 pyee==13.0.1
 pyparsing==3.3.2
+pytest==9.1.1
 python-dotenv==1.2.2
 requests==2.34.2
 requests-oauthlib==2.0.0

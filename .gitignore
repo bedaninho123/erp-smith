@@ -10,3 +10,4 @@ atendimento/poller.log
 atendimento/ultimo_alerta.json
 atendimento/documentos_recebidos/
 atendimento/poller.lock
+.pytest_cache/
