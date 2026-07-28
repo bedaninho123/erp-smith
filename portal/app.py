@@ -8,10 +8,26 @@ pública do sistema, domínio regulado de arma de fogo).
 Login sem senha, link mágico por e-mail (core/motor_portal_auth.py).
 MVP (decisão 1 do documento de arquitetura): status do caso + checklist
 de documentos + upload -- sem chat com a IA pelo Portal por enquanto.
+
+MULTI-TENANT: o Portal tem duas camadas de isolamento empilhadas, e as
+duas precisam valer.
+
+1. Por EMPRESA. Esta instalação atende uma empresa (PORTAL_EMPRESA_ID no
+   .env, padrão EMP-000001) -- coerente com PORTAL_URL_BASE ser um
+   endereço só. Quando cada empresa tiver o endereço dela
+   (docs/schema_multi_tenant.md §6), a empresa passa a sair do domínio
+   acessado; até lá, sai da configuração, nunca do que o visitante
+   digita: quem não está logado ainda não tem identidade nenhuma.
+2. Por CLIENTE, que já existia e continua sendo a checagem mais
+   importante -- toda rota confere se o dono do caso/documento bate com
+   session["cliente_id"].
+
+A empresa da sessão vem do cliente que logou (cliente.empresa_id), não
+da configuração: se um dia a configuração mudar, uma sessão viva não
+passa a enxergar dado de outra empresa.
 """
 import os
 import secrets
-import sqlite3
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
@@ -21,7 +37,8 @@ from dotenv import load_dotenv, set_key
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 
 from core import motor_checklist, motor_documentos
-from core.conexao import CORE_DB
+from core.conexao import conectar
+from core.configuracoes import obter_configuracoes
 from core.limitador_tentativas import excedeu_limite
 from core.motor_portal_auth import criar_token, localizar_cliente_por_cpf_ou_email, validar_e_consumir_token
 from domain.clube_tiro.motor_campeonatos import listar_campeonatos, obter_campeonato
@@ -72,6 +89,11 @@ app.config["SESSION_COOKIE_NAME"] = "portal_session"
 
 URL_BASE = os.environ.get("PORTAL_URL_BASE", "http://127.0.0.1:5002")
 
+# De qual empresa é este Portal (ver a nota de multi-tenant no topo do
+# arquivo). Usado só na tela de login, antes de existir sessão; depois
+# de logado, a empresa vem sempre de session["empresa_id"].
+PORTAL_EMPRESA_ID = os.environ.get("PORTAL_EMPRESA_ID", "EMP-000001")
+
 
 def _data_br(data_iso: Optional[str]) -> Optional[str]:
     """Converte um datetime ISO (ex.: '2026-08-09T00:00:00Z') pro formato
@@ -98,10 +120,19 @@ def _classe_selo(status: str) -> str:
 def cliente_login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if not session.get("cliente_id"):
+        # Exige os dois: sessão antiga (de antes do multi-tenant) não tem
+        # empresa_id e precisa refazer o login em vez de cair num
+        # KeyError dentro da rota.
+        if not (session.get("cliente_id") and session.get("empresa_id")):
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return wrapper
+
+
+def empresa_atual() -> str:
+    """Empresa do cliente logado. Só dentro de rota com
+    @cliente_login_required, que é quem garante que a chave existe."""
+    return session["empresa_id"]
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -114,21 +145,29 @@ def login():
                 mensagem="Muitas tentativas. Aguarde alguns minutos e tente novamente.",
             )
         identificador = (request.form.get("identificador") or "").strip()
-        cliente = localizar_cliente_por_cpf_ou_email(identificador) if identificador else None
+        # Busca dentro da empresa deste Portal. Sem o filtro, um CPF que
+        # existe nas duas empresas mandaria link de acesso ao cadastro
+        # errado -- e o link dá acesso a documento de arma de fogo.
+        cliente = (
+            localizar_cliente_por_cpf_ou_email(PORTAL_EMPRESA_ID, identificador)
+            if identificador else None
+        )
         if cliente:
-            token = criar_token(cliente["cliente_id"])
+            token = criar_token(PORTAL_EMPRESA_ID, cliente["cliente_id"])
             link = f"{URL_BASE}/entrar/{token}"
             if gmail_configurado():
+                config = obter_configuracoes(PORTAL_EMPRESA_ID)
+                nome_empresa = config.get("nome_empresa", "nosso escritório")
                 enviar_email(
                     destinatario=cliente["email"],
-                    assunto="Acesso ao Portal do Cliente -- Smith Clube de Tiro",
+                    assunto=f"Acesso ao Portal do Cliente -- {nome_empresa}",
                     corpo=(
                         f"Olá {cliente['nome']},\n\n"
                         "Use o link abaixo para acessar o Portal (válido por 15 minutos, "
                         "uso único):\n\n"
                         f"{link}\n\n"
                         "Se você não solicitou esse acesso, é só ignorar este e-mail.\n\n"
-                        "Equipe Smith Clube de Tiro"
+                        f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
                     ),
                 )
             else:
@@ -144,16 +183,24 @@ def login():
 
 @app.route("/entrar/<token>")
 def entrar(token):
-    cliente_id = validar_e_consumir_token(token)
+    cliente_id = validar_e_consumir_token(PORTAL_EMPRESA_ID, token)
     if not cliente_id:
         return render_template("portal_expirado.html")
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
-    cliente = con.execute("SELECT nome FROM cliente WHERE cliente_id = ?", (cliente_id,)).fetchone()
+    # A empresa da sessão sai da linha do cliente, não da configuração:
+    # é o cliente que define de quem é o dado que ele vai enxergar pelo
+    # resto da sessão.
+    con = conectar(PORTAL_EMPRESA_ID)
+    cliente = con.execute(
+        "SELECT nome, empresa_id FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+        (cliente_id, PORTAL_EMPRESA_ID),
+    ).fetchone()
     con.close()
+    if not cliente:
+        return render_template("portal_expirado.html")
     session.clear()
     session["cliente_id"] = cliente_id
-    session["cliente_nome"] = cliente["nome"] if cliente else ""
+    session["cliente_nome"] = cliente["nome"]
+    session["empresa_id"] = cliente["empresa_id"]
     return redirect(url_for("dashboard"))
 
 
@@ -163,7 +210,7 @@ def sair():
     return redirect(url_for("login"))
 
 
-def _processos_com_checklist(con, caso_id: str) -> list:
+def _processos_com_checklist(con, empresa_id: str, caso_id: str) -> list:
     """Processos de um caso, cada um já com o checklist de documentos e
     as contagens pra o alvo de progresso -- usado tanto no resumo do
     dashboard (agregado por caso) quanto na tela de detalhe (completo)."""
@@ -171,15 +218,15 @@ def _processos_com_checklist(con, caso_id: str) -> list:
         "SELECT p.processo_id, p.protocolo, p.status, p.prazo_estimado, "
         "p.proxima_acao, s.nome_servico "
         "FROM processo p JOIN servico s ON s.service_id = p.servico_id "
-        "WHERE p.caso_id = ? ORDER BY p.data_abertura",
-        (caso_id,),
+        "WHERE p.caso_id = ? AND p.empresa_id = ? ORDER BY p.data_abertura",
+        (caso_id, empresa_id),
     ).fetchall()
     resultado = []
     for linha_processo in processos:
         processo = dict(linha_processo)
         processo["status_classe"] = _classe_selo(processo["status"])
         processo["prazo_estimado_fmt"] = _data_br(processo["prazo_estimado"])
-        checklist = motor_checklist.status_checklist(con, processo["processo_id"])
+        checklist = motor_checklist.status_checklist(con, empresa_id, processo["processo_id"])
         processo["checklist"] = checklist
         processo["checklist_total"] = len(checklist)
         processo["checklist_recebidos"] = sum(1 for item in checklist if item["recebido"])
@@ -191,18 +238,18 @@ def _processos_com_checklist(con, caso_id: str) -> list:
     return resultado
 
 
-def _casos_com_resumo(con, cliente_id: str) -> list:
+def _casos_com_resumo(con, empresa_id: str, cliente_id: str) -> list:
     casos = con.execute(
         "SELECT caso_id, titulo, status, categoria "
-        "FROM caso WHERE cliente_id = ? ORDER BY atualizado_em DESC",
-        (cliente_id,),
+        "FROM caso WHERE cliente_id = ? AND empresa_id = ? ORDER BY atualizado_em DESC",
+        (cliente_id, empresa_id),
     ).fetchall()
 
     casos_resumo = []
     for linha_caso in casos:
         caso = dict(linha_caso)
         caso["status_classe"] = _classe_selo(caso["status"])
-        processos = _processos_com_checklist(con, caso["caso_id"])
+        processos = _processos_com_checklist(con, empresa_id, caso["caso_id"])
         caso["checklist_total"] = sum(p["checklist_total"] for p in processos)
         caso["checklist_recebidos"] = sum(p["checklist_recebidos"] for p in processos)
         caso["checklist_pct"] = (
@@ -232,12 +279,15 @@ def _resumo_habitualidade(cpf: str) -> dict:
 @cliente_login_required
 def dashboard():
     cliente_id = session["cliente_id"]
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
 
-    cliente = con.execute("SELECT cpf FROM cliente WHERE cliente_id = ?", (cliente_id,)).fetchone()
+    cliente = con.execute(
+        "SELECT cpf FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+        (cliente_id, empresa_id),
+    ).fetchone()
 
-    casos_resumo = _casos_com_resumo(con, cliente_id)
+    casos_resumo = _casos_com_resumo(con, empresa_id, cliente_id)
     casos_abertos = [c for c in casos_resumo if c["status"] not in ("Encerrado", "Cancelado")]
 
     processos_rows = con.execute(
@@ -246,22 +296,22 @@ def dashboard():
         "FROM processo p "
         "JOIN servico s ON s.service_id = p.servico_id "
         "JOIN caso ca ON ca.caso_id = p.caso_id "
-        "WHERE p.cliente_id = ? ORDER BY p.ultima_atualizacao DESC",
-        (cliente_id,),
+        "WHERE p.cliente_id = ? AND p.empresa_id = ? ORDER BY p.ultima_atualizacao DESC",
+        (cliente_id, empresa_id),
     ).fetchall()
 
     processos_em_andamento = []
     documentos_pendentes = 0
     for linha in processos_rows:
         proc = dict(linha)
-        checklist = motor_checklist.status_checklist(con, proc["processo_id"])
+        checklist = motor_checklist.status_checklist(con, empresa_id, proc["processo_id"])
         documentos_pendentes += sum(1 for item in checklist if not item["recebido"])
         if proc["status"] not in ("Concluído", "Cancelado"):
             proc["status_classe"] = _classe_selo(proc["status"])
             processos_em_andamento.append(proc)
     con.close()
 
-    proximos_campeonatos = _proximos_campeonatos()
+    proximos_campeonatos = _proximos_campeonatos(empresa_id)
 
     habitualidade_resumo = None
     if cliente and cliente["cpf"]:
@@ -285,9 +335,9 @@ def dashboard():
 @cliente_login_required
 def casos_lista():
     cliente_id = session["cliente_id"]
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
-    casos_resumo = _casos_com_resumo(con, cliente_id)
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
+    casos_resumo = _casos_com_resumo(con, empresa_id, cliente_id)
     con.close()
 
     return render_template(
@@ -302,16 +352,16 @@ def casos_lista():
 @cliente_login_required
 def processos():
     cliente_id = session["cliente_id"]
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
     linhas = con.execute(
         "SELECT p.processo_id, p.protocolo, p.status, p.prazo_estimado, p.proxima_acao, "
         "s.nome_servico, ca.caso_id, ca.titulo AS caso_titulo "
         "FROM processo p "
         "JOIN servico s ON s.service_id = p.servico_id "
         "JOIN caso ca ON ca.caso_id = p.caso_id "
-        "WHERE p.cliente_id = ? ORDER BY p.ultima_atualizacao DESC",
-        (cliente_id,),
+        "WHERE p.cliente_id = ? AND p.empresa_id = ? ORDER BY p.ultima_atualizacao DESC",
+        (cliente_id, empresa_id),
     ).fetchall()
 
     processos_lista = []
@@ -319,7 +369,7 @@ def processos():
         proc = dict(linha)
         proc["status_classe"] = _classe_selo(proc["status"])
         proc["prazo_estimado_fmt"] = _data_br(proc["prazo_estimado"])
-        checklist = motor_checklist.status_checklist(con, proc["processo_id"])
+        checklist = motor_checklist.status_checklist(con, empresa_id, proc["processo_id"])
         proc["checklist_total"] = len(checklist)
         proc["checklist_recebidos"] = sum(1 for item in checklist if item["recebido"])
         processos_lista.append(proc)
@@ -337,9 +387,12 @@ def processos():
 @cliente_login_required
 def habitualidade():
     cliente_id = session["cliente_id"]
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
-    cliente = con.execute("SELECT cpf FROM cliente WHERE cliente_id = ?", (cliente_id,)).fetchone()
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
+    cliente = con.execute(
+        "SELECT cpf FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+        (cliente_id, empresa_id),
+    ).fetchone()
     con.close()
 
     cpf = cliente["cpf"] if cliente else None
@@ -363,7 +416,7 @@ def habitualidade():
     )
 
 
-def _proximos_campeonatos(hoje=None) -> list:
+def _proximos_campeonatos(empresa_id: str, hoje=None) -> list:
     """Campeonatos de hoje em diante, já formatados pra exibição (dia,
     mês abreviado, intervalo por extenso, rótulo de contagem regressiva)
     -- datas e contas nunca são feitas no template/IA, sempre aqui em
@@ -372,7 +425,7 @@ def _proximos_campeonatos(hoje=None) -> list:
     próximo) e a tela de Campeonatos (a lista inteira)."""
     hoje = hoje or datetime.now().date()
     eventos = []
-    for c in listar_campeonatos():
+    for c in listar_campeonatos(empresa_id):
         data_inicio = datetime.strptime(c["data_inicio"], "%Y-%m-%d").date()
         data_fim = datetime.strptime(c["data_fim"], "%Y-%m-%d").date()
         if data_fim < hoje:
@@ -428,18 +481,18 @@ def _intervalo_campeonato(c: dict, hoje) -> str:
     return intervalo
 
 
-def _campeonatos_com_resultado(hoje=None) -> list:
+def _campeonatos_com_resultado(empresa_id: str, hoje=None) -> list:
     """Campeonatos já ocorridos que têm classificação cadastrada -- lista
     enxuta (nome/data/local), sem a classificação em si: cada um vira só
     um link pra tela própria de resultado (/portal/resultados/<id>),
     não um bloco inteiro dentro da tela de Campeonatos."""
     hoje = hoje or datetime.now().date()
     resultado = []
-    for c in listar_campeonatos():
+    for c in listar_campeonatos(empresa_id):
         data_fim = datetime.strptime(c["data_fim"], "%Y-%m-%d").date()
         if data_fim >= hoje:
             continue
-        if not listar_resultados(c["campeonato_id"]):
+        if not listar_resultados(empresa_id, c["campeonato_id"]):
             continue
         resultado.append({**c, "intervalo": _intervalo_campeonato(c, hoje)})
 
@@ -451,7 +504,7 @@ def _campeonatos_com_resultado(hoje=None) -> list:
 @cliente_login_required
 def campeonatos():
     hoje = datetime.now().date()
-    eventos = _proximos_campeonatos(hoje)
+    eventos = _proximos_campeonatos(empresa_atual(), hoje)
     proximo = eventos[0] if eventos else None
     restantes = eventos[1:]
 
@@ -480,15 +533,16 @@ def resultados():
         "portal_resultados.html",
         ativo="resultados",
         cliente_nome=session.get("cliente_nome"),
-        campeonatos_com_resultado=_campeonatos_com_resultado(),
+        campeonatos_com_resultado=_campeonatos_com_resultado(empresa_atual()),
     )
 
 
 @app.route("/portal/resultados/<campeonato_id>")
 @cliente_login_required
 def resultado_detalhe(campeonato_id):
-    campeonato = obter_campeonato(campeonato_id)
-    resultados_lista = listar_resultados(campeonato_id) if campeonato else []
+    empresa_id = empresa_atual()
+    campeonato = obter_campeonato(empresa_id, campeonato_id)
+    resultados_lista = listar_resultados(empresa_id, campeonato_id) if campeonato else []
     if not campeonato or not resultados_lista:
         flash("Resultado não encontrado.", "erro")
         return redirect(url_for("resultados"))
@@ -515,16 +569,18 @@ def resultado_detalhe(campeonato_id):
 @cliente_login_required
 def caso_detalhe(caso_id):
     cliente_id = session["cliente_id"]
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
 
     # Mesmo princípio de isolamento do resto do Portal: o caso só é
     # encontrado se pertencer a este cliente -- nunca confia no caso_id
-    # da URL sozinho.
+    # da URL sozinho. Com multi-tenant a checagem ganha uma segunda
+    # camada (empresa), mas a de cliente continua sendo a que importa:
+    # dois clientes da MESMA empresa também não podem se enxergar.
     linha_caso = con.execute(
         "SELECT caso_id, titulo, descricao, status, categoria "
-        "FROM caso WHERE caso_id = ? AND cliente_id = ?",
-        (caso_id, cliente_id),
+        "FROM caso WHERE caso_id = ? AND cliente_id = ? AND empresa_id = ?",
+        (caso_id, cliente_id, empresa_id),
     ).fetchone()
     if not linha_caso:
         con.close()
@@ -533,7 +589,7 @@ def caso_detalhe(caso_id):
 
     caso = dict(linha_caso)
     caso["status_classe"] = _classe_selo(caso["status"])
-    caso["processos"] = _processos_com_checklist(con, caso_id)
+    caso["processos"] = _processos_com_checklist(con, empresa_id, caso_id)
 
     # Documentos que ainda faltam, agrupados por processo -- alimenta o
     # <select> do formulário de envio (o cliente escolhe da lista em vez
@@ -546,10 +602,10 @@ def caso_detalhe(caso_id):
 
     documentos = con.execute(
         "SELECT documento_id, tipo_documento, nome_arquivo, status, data_envio "
-        "FROM documento WHERE cliente_id = ? AND ("
+        "FROM documento WHERE cliente_id = ? AND empresa_id = ? AND ("
         "  caso_id = ? OR processo_id IN (SELECT processo_id FROM processo WHERE caso_id = ?)"
         ") ORDER BY data_envio DESC",
-        (cliente_id, caso_id, caso_id),
+        (cliente_id, empresa_id, caso_id, caso_id),
     ).fetchall()
     con.close()
 
@@ -567,6 +623,7 @@ def caso_detalhe(caso_id):
 @cliente_login_required
 def upload_documento():
     cliente_id = session["cliente_id"]
+    empresa_id = empresa_atual()
     caso_id = (request.form.get("caso_id") or "").strip() or None
 
     def _voltar():
@@ -604,9 +661,11 @@ def upload_documento():
     # Redirecionar de volta pro caso_id "cru" é seguro mesmo assim:
     # caso_detalhe() faz essa mesma checagem de novo antes de mostrar
     # qualquer coisa.
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
-    dono = con.execute("SELECT cliente_id FROM caso WHERE caso_id = ?", (caso_id,)).fetchone()
+    con = conectar(empresa_id)
+    dono = con.execute(
+        "SELECT cliente_id FROM caso WHERE caso_id = ? AND empresa_id = ?",
+        (caso_id, empresa_id),
+    ).fetchone()
     con.close()
     if not dono or dono["cliente_id"] != cliente_id:
         flash("Caso não encontrado.", "erro")
@@ -621,7 +680,7 @@ def upload_documento():
     tipo_documento = tipo_documento or "Anexo enviado pelo cliente (Portal)"
 
     motor_documentos.salvar_documento(
-        cliente_id, conteudo, arquivo.filename,
+        empresa_id, cliente_id, conteudo, arquivo.filename,
         caso_id=caso_id,
         tipo_documento=tipo_documento,
     )
@@ -633,11 +692,12 @@ def upload_documento():
 @cliente_login_required
 def download_documento(documento_id):
     cliente_id = session["cliente_id"]
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
     doc = con.execute(
-        "SELECT cliente_id, nome_arquivo, link_arquivo FROM documento WHERE documento_id = ?",
-        (documento_id,),
+        "SELECT cliente_id, nome_arquivo, link_arquivo FROM documento "
+        "WHERE documento_id = ? AND empresa_id = ?",
+        (documento_id, empresa_id),
     ).fetchone()
     con.close()
     # Mesma checagem de posse do upload -- documento de outro cliente

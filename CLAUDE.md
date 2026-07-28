@@ -81,13 +81,15 @@ webapp/        -- painel administrativo Flask (ferramenta de uso real, não só 
 
 `core/db/erp_smith.db` (Core) e `domain/clube_tiro/db/dominio_clube_tiro.db` (Domínio) são arquivos separados de propósito — a separação física é o que garante que o Core nunca tenha uma referência hardcoded ao domínio de clube de tiro (pré-requisito para o dia em que um segundo domínio, ex. advocacia, for plugado). `core/conexao.py` conecta só ao Core; `motor_ia/conexao.py` importa `CORE_DB` de lá e faz `ATTACH DATABASE` do banco de Domínio na mesma conexão sob o alias `dominio`, permitindo joins entre os dois numa única query sem misturar os arquivos. SQLite não aplica FK entre bancos ATTACHed — a integridade referencial cross-domínio é responsabilidade do código, não do banco.
 
-### Multi-tenant: toda linha pertence a uma empresa (migração em andamento)
+### Multi-tenant: toda linha pertence a uma empresa
 
-Ver `docs/schema_multi_tenant.md` — inclusive a tabela de estado no fim dele, que diz o que já foi migrado e o que ainda não. Em resumo: toda tabela do Core tem `empresa_id`, e `core/conexao.py::conectar(empresa_id)` **exige** a empresa — registra a função SQL `empresa_atual()`, que é o que faz as views do Core se filtrarem sozinhas. Quem precisa enxergar o banco inteiro (só scripts de setup e `core/motor_empresas.py`) usa `conectar_admin()`, que de propósito **não** registra a função: uma view consultada por ali levanta `no such function: empresa_atual` em vez de devolver dado de todas as empresas misturado. Falha fechado, não aberto.
+Ver `docs/schema_multi_tenant.md`. Em resumo: toda tabela do Core tem `empresa_id`, e `core/conexao.py::conectar(empresa_id)` **exige** a empresa — registra a função SQL `empresa_atual()`, que é o que faz as views do Core se filtrarem sozinhas. Quem precisa enxergar o banco inteiro (só scripts de setup e `core/motor_empresas.py`) usa `conectar_admin()`, que de propósito **não** registra a função: uma view consultada por ali levanta `no such function: empresa_atual` em vez de devolver dado de todas as empresas misturado. Falha fechado, não aberto.
 
 No Domínio a regra se divide em duas: `conhecimento` é compartilhado (legislação federal, sem `empresa_id`), `campeonato` e `resultado_campeonato` são dado operacional da empresa e têm a coluna — e como o banco de Domínio é anexado, não passa pelas views do Core: filtro por `empresa_id` na mão, sempre.
 
 Os IDs (`CLI-000001`…) continuam com numeração **global**, não por empresa. Fica estranho ver `CAS-000001` numa empresa e `CAS-000002` na outra, e é de propósito: numerar por empresa exigiria o filtro nos 5 geradores e abriria risco de colisão.
+
+Nos apps (`webapp/`, `portal/`) as views não protegem nada — os dois consultam tabela crua, então **todo `WHERE` precisa do filtro de empresa escrito à mão**. A empresa vem sempre da sessão (`session["empresa_id"]`, posta no login a partir de `usuario.empresa_id` ou `cliente.empresa_id`) e **nunca** da requisição. Nos canais de entrada (`atendimento/`), vem da configuração do servidor (`ERP_EMPRESA_ID`), também nunca do corpo do POST: o webhook só tem um segredo compartilhado como autenticador. Antes de dar por pronta qualquer consulta nova nesses arquivos, rodar `tests/test_isolamento_painel.py` e `tests/test_isolamento_portal.py`.
 
 ### O Caso é a entidade central, não Cliente nem Processo
 

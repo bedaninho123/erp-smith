@@ -2,6 +2,17 @@
 do pipeline do Motor IA, e fila de aprovações pendentes. Protegido por
 login (usuario.senha_hash) -- ver webapp/definir_senha.py para cadastrar
 a senha de um usuário antes do primeiro acesso.
+
+MULTI-TENANT (docs/schema_multi_tenant.md §6): a empresa vem do usuário
+que logou (`usuario.empresa_id` → `session["empresa_id"]`) e nunca da
+requisição. Toda rota chama `empresa_atual()` e passa esse valor adiante.
+
+Aqui as views do Core não protegem nada: este arquivo consulta tabela
+crua o tempo todo, então cada `WHERE` precisa do filtro de empresa
+escrito à mão. Os dois lugares em que esquecer doeria mais são
+`/api/documentos/<id>/arquivo` (baixaria arquivo de outra empresa) e
+`/api/clientes/buscar-cpf` (o mesmo CPF agora pode existir em duas
+empresas, de propósito -- ver a UNIQUE composta em core/db/schema.sql).
 """
 import os
 import secrets
@@ -17,6 +28,8 @@ from werkzeug.security import check_password_hash
 
 from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
 from core import motor_checklist, motor_documentos, motor_mensagens
+from core.conexao import conectar
+from core.configuracoes import obter_configuracoes
 from core.limitador_tentativas import excedeu_limite
 from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
 from core.motor_notificacoes import destinatario_para_notificar
@@ -32,7 +45,7 @@ from integracoes.gmail import enviar_email, gmail_configurado
 from motor_ia.atualizador_memoria import atualizar_memoria
 from motor_ia.auditor import auditar
 from motor_ia.classificador import classificar
-from motor_ia.conexao import CORE_DB, DOMAIN_DB, conectar
+from motor_ia.conexao import CORE_DB, DOMAIN_DB
 from motor_ia.consultor import consultar
 from motor_ia.identificador_cliente import identificar_cliente
 from motor_ia.planejador import planejar
@@ -89,7 +102,10 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if not session.get("usuario_id"):
+        # Exige empresa_id junto do usuario_id: sessão antiga, criada
+        # antes do multi-tenant, não tem a empresa e não pode continuar
+        # valendo -- sem isso, empresa_atual() estouraria dentro da rota.
+        if not (session.get("usuario_id") and session.get("empresa_id")):
             if request.path.startswith("/api/"):
                 return jsonify(erro="Não autenticado."), 401
             return redirect(url_for("login", proximo=request.path))
@@ -97,25 +113,36 @@ def login_required(f):
     return wrapper
 
 
-def _notificar_cliente_mudanca_status(caso_id: str) -> None:
+def empresa_atual() -> str:
+    """A empresa do usuário logado. Só é seguro chamar dentro de uma rota
+    com @login_required -- é ele que garante que a chave existe."""
+    return session["empresa_id"]
+
+
+def _notificar_cliente_mudanca_status(empresa_id: str, caso_id: str) -> None:
     """E-mail genérico (nunca revela o novo status no corpo -- domínio
     regulado de arma de fogo) avisando o cliente que algo mudou no
     atendimento dele, com link pro Portal. Silencioso quando a
     notificação está desligada, o cliente não tem e-mail cadastrado, ou
     o Gmail ainda não foi autorizado nesta máquina -- nenhum desses
     casos deve impedir a mudança de status em si de ter acontecido."""
-    destinatario = destinatario_para_notificar(caso_id)
+    destinatario = destinatario_para_notificar(empresa_id, caso_id)
     if not destinatario or not gmail_configurado():
         return
+    # O nome da empresa sai das configurações dela, não de um literal:
+    # com mais de um despachante no sistema, um "Smith Clube de Tiro"
+    # fixo aqui assinaria e-mail no nome da empresa errada.
+    config = obter_configuracoes(empresa_id)
+    nome_empresa = config.get("nome_empresa", "nosso escritório")
     enviar_email(
         destinatario=destinatario["email"],
-        assunto="Atualização no seu atendimento -- Smith Clube de Tiro",
+        assunto=f"Atualização no seu atendimento -- {nome_empresa}",
         corpo=(
             f"Olá {destinatario['nome']},\n\n"
             "Houve uma atualização no seu atendimento. Acesse o Portal do "
             "Cliente para ver os detalhes:\n\n"
             f"{PORTAL_URL_BASE}\n\n"
-            "Equipe Smith Clube de Tiro"
+            f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
         ),
     )
 
@@ -131,17 +158,25 @@ def login():
             )
         email = (request.form.get("email") or "").strip().lower()
         senha = request.form.get("senha") or ""
+        # Única consulta do painel sem filtro de empresa, e não tem como
+        # ser diferente: é justamente o login que descobre de que empresa
+        # a pessoa é. O e-mail agora só é único DENTRO de uma empresa
+        # (UNIQUE(empresa_id, email)), então o mesmo endereço pode
+        # aparecer em duas -- por isso a empresa vem da linha encontrada,
+        # nunca de algo digitado na tela.
         con = sqlite3.connect(CORE_DB)
         con.row_factory = sqlite3.Row
         linha = con.execute(
-            "SELECT usuario_id, nome, senha_hash FROM usuario "
-            "WHERE lower(email) = ? AND ativo = 'Sim'",
+            "SELECT u.usuario_id, u.nome, u.senha_hash, u.empresa_id FROM usuario u "
+            "JOIN empresa e ON e.empresa_id = u.empresa_id "
+            "WHERE lower(u.email) = ? AND u.ativo = 'Sim' AND e.ativo = 'Sim'",
             (email,),
         ).fetchone()
         con.close()
         if linha and linha["senha_hash"] and check_password_hash(linha["senha_hash"], senha):
             session["usuario_id"] = linha["usuario_id"]
             session["usuario_nome"] = linha["nome"]
+            session["empresa_id"] = linha["empresa_id"]
             return redirect(request.args.get("proximo") or url_for("index"))
         erro = "E-mail ou senha incorretos."
     return render_template("login.html", erro=erro)
@@ -162,6 +197,21 @@ def index():
 @app.route("/api/status")
 @login_required
 def status():
+    empresa_id = empresa_atual()
+
+    # Contagem por empresa, não do banco inteiro: o número de linhas de
+    # outra empresa não é informação desta aqui -- e o painel existe pra
+    # mostrar "quanto dado EU tenho". Tabela sem empresa_id (empresa, e
+    # conhecimento no Domínio) conta tudo mesmo, porque aí o total é
+    # compartilhado de propósito.
+    def _contar(con, tabela: str) -> int:
+        colunas = [c[1] for c in con.execute(f"PRAGMA table_info({tabela})")]
+        if "empresa_id" in colunas:
+            return con.execute(
+                f"SELECT COUNT(*) FROM {tabela} WHERE empresa_id = ?", (empresa_id,)
+            ).fetchone()[0]
+        return con.execute(f"SELECT COUNT(*) FROM {tabela}").fetchone()[0]
+
     con = sqlite3.connect(CORE_DB)
     tabelas_core = [
         r[0] for r in con.execute(
@@ -170,8 +220,7 @@ def status():
     ]
     tabelas = []
     for nome in tabelas_core:
-        n = con.execute(f"SELECT COUNT(*) FROM {nome}").fetchone()[0]
-        tabelas.append({"nome": nome, "linhas": n, "camada": "Core"})
+        tabelas.append({"nome": nome, "linhas": _contar(con, nome), "camada": "Core"})
     con.close()
 
     con_dom = sqlite3.connect(DOMAIN_DB)
@@ -181,8 +230,7 @@ def status():
         ).fetchall()
     ]
     for nome in tabelas_dom:
-        n = con_dom.execute(f"SELECT COUNT(*) FROM {nome}").fetchone()[0]
-        tabelas.append({"nome": nome, "linhas": n, "camada": "Domínio"})
+        tabelas.append({"nome": nome, "linhas": _contar(con_dom, nome), "camada": "Domínio"})
     con_dom.close()
 
     log = subprocess.run(
@@ -204,19 +252,23 @@ def status():
         {"nome": "Shooting House (habitualidade)", "configurado": shooting_house_configurado()},
     ]
 
-    con_log = sqlite3.connect(CORE_DB)
-    con_log.row_factory = sqlite3.Row
+    # Consumo de IA por empresa -- é este número que vira base de
+    # cobrança de assinatura um dia (docs/schema_multi_tenant.md §3), então
+    # misturar empresa aqui seria errado de duas formas ao mesmo tempo.
+    con_log = conectar(empresa_id)
     por_modulo = [
         dict(r) for r in con_log.execute(
             "SELECT prompt_key, COUNT(*) AS chamadas, "
             "SUM(tokens_entrada) AS tokens_entrada, SUM(tokens_saida) AS tokens_saida, "
             "SUM(CASE WHEN resultado = 'Erro' THEN 1 ELSE 0 END) AS erros "
-            "FROM log_ia GROUP BY prompt_key ORDER BY prompt_key"
+            "FROM log_ia WHERE empresa_id = ? GROUP BY prompt_key ORDER BY prompt_key",
+            (empresa_id,),
         ).fetchall()
     ]
     totais = con_log.execute(
         "SELECT COUNT(*) AS chamadas, SUM(tokens_entrada) AS tokens_entrada, "
-        "SUM(tokens_saida) AS tokens_saida FROM log_ia"
+        "SUM(tokens_saida) AS tokens_saida FROM log_ia WHERE empresa_id = ?",
+        (empresa_id,),
     ).fetchone()
     con_log.close()
     log_ia_resumo = {
@@ -235,11 +287,11 @@ def status():
 @app.route("/api/casos")
 @login_required
 def casos():
+    empresa_id = empresa_atual()
     status = request.args.get("status") or None
     categoria = request.args.get("categoria") or None
 
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    con = conectar(empresa_id)
     query = (
         "SELECT c.caso_id, c.titulo, c.categoria, c.status, c.prioridade, "
         "c.atualizado_em, c.criado_em, cl.cliente_id, cl.nome AS cliente_nome, "
@@ -247,9 +299,9 @@ def casos():
         "FROM caso c "
         "JOIN cliente cl ON cl.cliente_id = c.cliente_id "
         "LEFT JOIN usuario u ON u.usuario_id = c.responsavel_id "
-        "WHERE c.ativo = 'Sim'"
+        "WHERE c.ativo = 'Sim' AND c.empresa_id = ?"
     )
-    params = []
+    params = [empresa_id]
     if status:
         query += " AND c.status = ?"
         params.append(status)
@@ -259,14 +311,18 @@ def casos():
     query += " ORDER BY c.atualizado_em DESC"
 
     casos = [dict(r) for r in con.execute(query, params).fetchall()]
+    # Os filtros da tela também são por empresa: uma categoria que só
+    # existe na empresa vizinha não deve nem aparecer na lista suspensa.
     status_disponiveis = [
         r[0] for r in con.execute(
-            "SELECT DISTINCT status FROM caso WHERE ativo = 'Sim' ORDER BY status"
+            "SELECT DISTINCT status FROM caso WHERE ativo = 'Sim' AND empresa_id = ? "
+            "ORDER BY status", (empresa_id,),
         ).fetchall()
     ]
     categorias_disponiveis = [
         r[0] for r in con.execute(
-            "SELECT DISTINCT categoria FROM caso WHERE ativo = 'Sim' ORDER BY categoria"
+            "SELECT DISTINCT categoria FROM caso WHERE ativo = 'Sim' AND empresa_id = ? "
+            "ORDER BY categoria", (empresa_id,),
         ).fetchall()
     ]
     con.close()
@@ -280,9 +336,13 @@ def casos():
 @app.route("/api/casos/<caso_id>")
 @login_required
 def caso_detalhe(caso_id):
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
 
+    # O filtro por empresa aqui já decide tudo: caso de outra empresa dá
+    # 404 e a rota nem chega nas consultas de baixo. Mesmo assim elas
+    # repetem o filtro -- é a mesma escolha do schema (§3 do doc), custa
+    # uma linha e tira a dependência de a checagem de cima estar certa.
     caso = con.execute(
         "SELECT c.*, cl.nome AS cliente_nome, cl.cpf AS cliente_cpf, "
         "cl.email AS cliente_email, cl.telefone AS cliente_telefone, "
@@ -290,8 +350,8 @@ def caso_detalhe(caso_id):
         "FROM caso c "
         "JOIN cliente cl ON cl.cliente_id = c.cliente_id "
         "LEFT JOIN usuario u ON u.usuario_id = c.responsavel_id "
-        "WHERE c.caso_id = ?",
-        (caso_id,),
+        "WHERE c.caso_id = ? AND c.empresa_id = ?",
+        (caso_id, empresa_id),
     ).fetchone()
     if not caso:
         con.close()
@@ -300,38 +360,40 @@ def caso_detalhe(caso_id):
     processos = con.execute(
         "SELECT p.*, s.nome_servico FROM processo p "
         "JOIN servico s ON s.service_id = p.servico_id "
-        "WHERE p.caso_id = ? ORDER BY p.data_abertura",
-        (caso_id,),
+        "WHERE p.caso_id = ? AND p.empresa_id = ? ORDER BY p.data_abertura",
+        (caso_id, empresa_id),
     ).fetchall()
     processos_list = []
     for r in processos:
         p = dict(r)
-        p["checklist"] = motor_checklist.status_checklist(con, p["processo_id"])
+        p["checklist"] = motor_checklist.status_checklist(con, empresa_id, p["processo_id"])
         processos_list.append(p)
 
     documentos = con.execute(
-        "SELECT * FROM documento WHERE caso_id = ? "
-        "OR processo_id IN (SELECT processo_id FROM processo WHERE caso_id = ?) "
+        "SELECT * FROM documento WHERE empresa_id = ? AND (caso_id = ? "
+        "OR processo_id IN (SELECT processo_id FROM processo WHERE caso_id = ?)) "
         "ORDER BY data_envio",
-        (caso_id, caso_id),
+        (empresa_id, caso_id, caso_id),
     ).fetchall()
 
     historico = con.execute(
-        "SELECT * FROM historico WHERE caso_id = ? ORDER BY criado_em",
-        (caso_id,),
+        "SELECT * FROM historico WHERE caso_id = ? AND empresa_id = ? ORDER BY criado_em",
+        (caso_id, empresa_id),
     ).fetchall()
 
     mensagens = con.execute(
-        "SELECT * FROM mensagem WHERE caso_id = ? ORDER BY data_hora",
-        (caso_id,),
+        "SELECT * FROM mensagem WHERE caso_id = ? AND empresa_id = ? ORDER BY data_hora",
+        (caso_id, empresa_id),
     ).fetchall()
 
     usuarios = con.execute(
-        "SELECT usuario_id, nome FROM usuario WHERE ativo = 'Sim' ORDER BY nome"
+        "SELECT usuario_id, nome FROM usuario WHERE ativo = 'Sim' AND empresa_id = ? "
+        "ORDER BY nome", (empresa_id,),
     ).fetchall()
 
     servicos = con.execute(
-        "SELECT service_id, nome_servico FROM servico WHERE ativo = 'Sim' ORDER BY nome_servico"
+        "SELECT service_id, nome_servico FROM servico WHERE ativo = 'Sim' "
+        "AND empresa_id = ? ORDER BY nome_servico", (empresa_id,),
     ).fetchall()
 
     con.close()
@@ -355,15 +417,16 @@ def caso_atualizar_status(caso_id):
     motivo = (corpo.get("motivo") or "").strip() or None
     if not novo_status:
         return jsonify(erro="Informe o novo status."), 400
+    empresa_id = empresa_atual()
     try:
         status_antigo = atualizar_status(
-            caso_id, novo_status, motivo=motivo,
+            empresa_id, caso_id, novo_status, motivo=motivo,
             alterado_por=session.get("usuario_nome", "Painel administrativo"),
         )
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     if status_antigo != novo_status:
-        _notificar_cliente_mudanca_status(caso_id)
+        _notificar_cliente_mudanca_status(empresa_id, caso_id)
     return jsonify(ok=True)
 
 
@@ -374,7 +437,7 @@ def caso_atualizar_responsavel(caso_id):
     novo_responsavel_id = (corpo.get("responsavel_id") or "").strip() or None
     try:
         atualizar_responsavel(
-            caso_id, novo_responsavel_id,
+            empresa_atual(), caso_id, novo_responsavel_id,
             alterado_por=session.get("usuario_nome", "Painel administrativo"),
         )
     except ValueError as e:
@@ -389,7 +452,7 @@ def caso_atualizar_descricao(caso_id):
     nova_descricao = (corpo.get("descricao") or "").strip()
     try:
         atualizar_descricao(
-            caso_id, nova_descricao,
+            empresa_atual(), caso_id, nova_descricao,
             alterado_por=session.get("usuario_nome", "Painel administrativo"),
         )
     except ValueError as e:
@@ -405,16 +468,19 @@ def processo_criar(caso_id):
     if not servico_id:
         return jsonify(erro="Selecione um serviço."), 400
 
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
-    caso = con.execute("SELECT cliente_id FROM caso WHERE caso_id = ?", (caso_id,)).fetchone()
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
+    caso = con.execute(
+        "SELECT cliente_id FROM caso WHERE caso_id = ? AND empresa_id = ?",
+        (caso_id, empresa_id),
+    ).fetchone()
     con.close()
     if not caso:
         return jsonify(erro=f"Caso não encontrado: {caso_id}"), 404
 
     try:
         novo_id = criar_processo(
-            caso_id, caso["cliente_id"], servico_id,
+            empresa_id, caso_id, caso["cliente_id"], servico_id,
             protocolo=(corpo.get("protocolo") or "").strip() or None,
             status=(corpo.get("status") or "Aberto").strip(),
             prazo_estimado=(corpo.get("prazo_estimado") or "").strip() or None,
@@ -435,8 +501,10 @@ def processo_atualizar(processo_id):
     novo_status = (corpo.get("status") or "").strip()
     if not novo_status:
         return jsonify(erro="Informe o status."), 400
+    empresa_id = empresa_atual()
     try:
         status_antigo, caso_id = atualizar_processo(
+            empresa_id,
             processo_id,
             status=novo_status,
             protocolo=(corpo.get("protocolo") or "").strip() or None,
@@ -449,7 +517,7 @@ def processo_atualizar(processo_id):
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     if status_antigo != novo_status:
-        _notificar_cliente_mudanca_status(caso_id)
+        _notificar_cliente_mudanca_status(empresa_id, caso_id)
     return jsonify(ok=True)
 
 
@@ -463,7 +531,7 @@ def checklist_marcar(processo_id):
         return jsonify(erro="Informe o item do checklist e o documento."), 400
     try:
         novo_id = motor_checklist.marcar_documento(
-            processo_id, documento_exigido_id, documento_id,
+            empresa_atual(), processo_id, documento_exigido_id, documento_id,
             marcado_por=session.get("usuario_nome", "Painel administrativo"),
         )
     except ValueError as e:
@@ -475,7 +543,7 @@ def checklist_marcar(processo_id):
 @login_required
 def checklist_desmarcar(documento_checklist_id):
     try:
-        motor_checklist.desmarcar(documento_checklist_id)
+        motor_checklist.desmarcar(empresa_atual(), documento_checklist_id)
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True)
@@ -506,9 +574,12 @@ def documento_upload(caso_id):
     if len(conteudo) > DOCUMENTO_TAMANHO_MAXIMO:
         return jsonify(erro="Arquivo maior que 15MB."), 400
 
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
-    caso = con.execute("SELECT cliente_id FROM caso WHERE caso_id = ?", (caso_id,)).fetchone()
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
+    caso = con.execute(
+        "SELECT cliente_id FROM caso WHERE caso_id = ? AND empresa_id = ?",
+        (caso_id, empresa_id),
+    ).fetchone()
     con.close()
     if not caso:
         return jsonify(erro=f"Caso não encontrado: {caso_id}"), 404
@@ -519,7 +590,7 @@ def documento_upload(caso_id):
 
     try:
         documento_id = motor_documentos.salvar_documento(
-            caso["cliente_id"], conteudo, arquivo.filename,
+            empresa_id, caso["cliente_id"], conteudo, arquivo.filename,
             caso_id=caso_id, processo_id=processo_id,
             tipo_documento=tipo_documento, observacoes=observacoes,
         )
@@ -531,11 +602,15 @@ def documento_upload(caso_id):
 @app.route("/api/documentos/<documento_id>/arquivo")
 @login_required
 def documento_arquivo(documento_id):
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
+    # Rota de download: sem o filtro por empresa, bastaria adivinhar um
+    # DOC-000123 pra baixar documento de arma de fogo de cliente de outro
+    # despachante. É o mesmo cuidado que o Portal já toma por cliente.
     doc = con.execute(
-        "SELECT nome_arquivo, link_arquivo FROM documento WHERE documento_id = ?",
-        (documento_id,),
+        "SELECT nome_arquivo, link_arquivo FROM documento "
+        "WHERE documento_id = ? AND empresa_id = ?",
+        (documento_id, empresa_id),
     ).fetchone()
     con.close()
 
@@ -563,9 +638,11 @@ def documento_arquivo(documento_id):
 @app.route("/api/clientes")
 @login_required
 def clientes():
-    con = sqlite3.connect(CORE_DB)
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
     linhas = con.execute(
-        "SELECT cliente_id, nome FROM cliente ORDER BY nome"
+        "SELECT cliente_id, nome FROM cliente WHERE empresa_id = ? ORDER BY nome",
+        (empresa_id,),
     ).fetchall()
     con.close()
     return jsonify([{"cliente_id": r[0], "nome": r[1]} for r in linhas])
@@ -574,20 +651,23 @@ def clientes():
 @app.route("/api/clientes/lista")
 @login_required
 def clientes_lista():
+    empresa_id = empresa_atual()
     busca = (request.args.get("busca") or "").strip()
 
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    con = conectar(empresa_id)
     query = (
         "SELECT cl.cliente_id, cl.nome, cl.cpf, cl.email, cl.telefone, cl.cidade, "
         "cl.status, cl.data_cadastro, cl.ultima_interacao, "
         "(SELECT COUNT(*) FROM caso c WHERE c.cliente_id = cl.cliente_id "
         " AND c.ativo = 'Sim' AND c.status NOT IN ('Encerrado', 'Cancelado')) AS casos_abertos "
-        "FROM cliente cl"
+        "FROM cliente cl WHERE cl.empresa_id = ?"
     )
-    params = []
+    params = [empresa_id]
     if busca:
-        query += " WHERE cl.nome LIKE ? OR cl.cpf LIKE ? OR cl.email LIKE ?"
+        # Parênteses obrigatórios: sem eles o OR da busca se espalharia
+        # por cima do filtro de empresa e a busca por nome passaria a
+        # varrer o banco inteiro.
+        query += " AND (cl.nome LIKE ? OR cl.cpf LIKE ? OR cl.email LIKE ?)"
         curinga = f"%{busca}%"
         params += [curinga, curinga, curinga]
     query += " ORDER BY cl.nome"
@@ -600,11 +680,12 @@ def clientes_lista():
 @app.route("/api/clientes/<cliente_id>")
 @login_required
 def cliente_detalhe(cliente_id):
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
 
     cliente = con.execute(
-        "SELECT * FROM cliente WHERE cliente_id = ?", (cliente_id,)
+        "SELECT * FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+        (cliente_id, empresa_id),
     ).fetchone()
     if not cliente:
         con.close()
@@ -614,8 +695,9 @@ def cliente_detalhe(cliente_id):
         "SELECT c.caso_id, c.titulo, c.categoria, c.status, c.prioridade, "
         "c.atualizado_em, u.nome AS responsavel_nome "
         "FROM caso c LEFT JOIN usuario u ON u.usuario_id = c.responsavel_id "
-        "WHERE c.cliente_id = ? AND c.ativo = 'Sim' ORDER BY c.atualizado_em DESC",
-        (cliente_id,),
+        "WHERE c.cliente_id = ? AND c.empresa_id = ? AND c.ativo = 'Sim' "
+        "ORDER BY c.atualizado_em DESC",
+        (cliente_id, empresa_id),
     ).fetchall()
 
     con.close()
@@ -625,10 +707,11 @@ def cliente_detalhe(cliente_id):
 @app.route("/api/configuracoes")
 @login_required
 def configuracoes_lista():
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
     linhas = con.execute(
-        "SELECT * FROM configuracoes ORDER BY categoria, chave"
+        "SELECT * FROM configuracoes WHERE empresa_id = ? ORDER BY categoria, chave",
+        (empresa_id,),
     ).fetchall()
     con.close()
     return jsonify([dict(r) for r in linhas])
@@ -645,17 +728,22 @@ def configuracoes_atualizar(config_id):
     if ativo not in ("Sim", "Não"):
         return jsonify(erro="Campo 'ativo' inválido."), 400
 
-    con = sqlite3.connect(CORE_DB)
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
     existe = con.execute(
-        "SELECT 1 FROM configuracoes WHERE config_id = ?", (config_id,)
+        "SELECT 1 FROM configuracoes WHERE config_id = ? AND empresa_id = ?",
+        (config_id, empresa_id),
     ).fetchone()
     if not existe:
         con.close()
         return jsonify(erro=f"Configuração não encontrada: {config_id}"), 404
 
+    # Uma empresa mexendo na configuração da outra mudaria, entre outras
+    # coisas, o freio de revisão humana dela (CFG revisao_humana_ativa).
     con.execute(
-        "UPDATE configuracoes SET valor = ?, ativo = ? WHERE config_id = ?",
-        (str(valor).strip(), ativo, config_id),
+        "UPDATE configuracoes SET valor = ?, ativo = ? "
+        "WHERE config_id = ? AND empresa_id = ?",
+        (str(valor).strip(), ativo, config_id, empresa_id),
     )
     con.commit()
     con.close()
@@ -666,7 +754,7 @@ def configuracoes_atualizar(config_id):
 @login_required
 def campeonatos_lista():
     ano = request.args.get("ano", type=int)
-    return jsonify(listar_campeonatos(ano=ano))
+    return jsonify(listar_campeonatos(empresa_atual(), ano=ano))
 
 
 @app.route("/api/campeonatos", methods=["POST"])
@@ -682,7 +770,8 @@ def campeonatos_criar():
         return jsonify(erro="Nome e data de início são obrigatórios."), 400
 
     campeonato_id = criar_campeonato(
-        nome, data_inicio, data_fim=data_fim, local=local, observacoes=observacoes,
+        empresa_atual(), nome, data_inicio, data_fim=data_fim, local=local,
+        observacoes=observacoes,
     )
     return jsonify(ok=True, campeonato_id=campeonato_id)
 
@@ -701,8 +790,8 @@ def campeonatos_atualizar(campeonato_id):
 
     try:
         atualizar_campeonato(
-            campeonato_id, nome, data_inicio, data_fim=data_fim, local=local,
-            observacoes=observacoes,
+            empresa_atual(), campeonato_id, nome, data_inicio, data_fim=data_fim,
+            local=local, observacoes=observacoes,
         )
     except ValueError as e:
         return jsonify(erro=str(e)), 404
@@ -713,7 +802,7 @@ def campeonatos_atualizar(campeonato_id):
 @login_required
 def campeonatos_remover(campeonato_id):
     try:
-        remover_campeonato(campeonato_id)
+        remover_campeonato(empresa_atual(), campeonato_id)
     except ValueError as e:
         return jsonify(erro=str(e)), 404
     return jsonify(ok=True)
@@ -726,11 +815,18 @@ def clientes_buscar_cpf(cpf):
     Resultados -- o cliente_id resolvido aqui é o que o formulário manda
     de volta ao salvar (nunca recalculado a partir do CPF no servidor,
     pra editar um resultado sem re-digitar o CPF não desvincular o
-    cliente por engano)."""
-    con = sqlite3.connect(CORE_DB)
-    con.row_factory = sqlite3.Row
+    cliente por engano).
+
+    O filtro por empresa aqui não é formalidade: a UNIQUE de cpf virou
+    composta (UNIQUE(empresa_id, cpf)) justamente porque a mesma pessoa
+    pode ser cliente de dois despachantes. Sem o filtro, esta busca
+    devolveria o cliente_id da empresa errada -- e ele iria parar
+    gravado num resultado de campeonato desta aqui."""
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
     cliente = con.execute(
-        "SELECT cliente_id, nome FROM cliente WHERE cpf = ?", (cpf.strip(),)
+        "SELECT cliente_id, nome FROM cliente WHERE cpf = ? AND empresa_id = ?",
+        (cpf.strip(), empresa_id),
     ).fetchone()
     con.close()
     if not cliente:
@@ -741,7 +837,7 @@ def clientes_buscar_cpf(cpf):
 @app.route("/api/campeonatos/<campeonato_id>/resultados")
 @login_required
 def resultados_lista(campeonato_id):
-    return jsonify(listar_resultados(campeonato_id))
+    return jsonify(listar_resultados(empresa_atual(), campeonato_id))
 
 
 @app.route("/api/campeonatos/<campeonato_id>/resultados", methods=["POST"])
@@ -755,6 +851,7 @@ def resultados_criar(campeonato_id):
     colocacao = corpo.get("colocacao")
     try:
         resultado_id = criar_resultado(
+            empresa_atual(),
             campeonato_id,
             nome_atirador,
             cliente_id=(corpo.get("cliente_id") or "").strip() or None,
@@ -779,6 +876,7 @@ def resultados_atualizar(resultado_id):
     colocacao = corpo.get("colocacao")
     try:
         atualizar_resultado(
+            empresa_atual(),
             resultado_id,
             nome_atirador,
             cliente_id=(corpo.get("cliente_id") or "").strip() or None,
@@ -796,7 +894,7 @@ def resultados_atualizar(resultado_id):
 @login_required
 def resultados_remover(resultado_id):
     try:
-        remover_resultado(resultado_id)
+        remover_resultado(empresa_atual(), resultado_id)
     except ValueError as e:
         return jsonify(erro=str(e)), 404
     return jsonify(ok=True)
@@ -813,7 +911,7 @@ def identificar():
     if not (nome or cpf or email):
         return jsonify(erro="Informe nome, CPF ou e-mail."), 400
 
-    cliente = identificar_cliente(nome=nome, cpf=cpf, email=email)
+    cliente = identificar_cliente(empresa_atual(), nome=nome, cpf=cpf, email=email)
     if not cliente:
         return jsonify(encontrado=False), 200
 
@@ -836,17 +934,23 @@ def pipeline():
     if not mensagem or not cliente_id:
         return jsonify(erro="Preencha a mensagem e escolha um cliente."), 400
 
+    empresa_id = empresa_atual()
     try:
-        classificacao = classificar(mensagem)
+        classificacao = classificar(empresa_id, mensagem)
         plano = planejar(classificacao)
-        dados = consultar(plano, cliente_id=cliente_id, classificacao=classificacao)
+        dados = consultar(
+            plano, empresa_id=empresa_id, cliente_id=cliente_id,
+            classificacao=classificacao,
+        )
         cliente_nome = (dados.get("cliente") or {}).get("nome", "Cliente")
-        resposta = redigir(dados, cliente_nome=cliente_nome)
-        resultado = auditar(resposta, dados, cliente_nome, plano)
+        resposta = redigir(empresa_id, dados, cliente_nome=cliente_nome)
+        resultado = auditar(empresa_id, resposta, dados, cliente_nome, plano)
 
         memoria_id = None
         if resultado.acao == "enviar":
-            memoria_id = atualizar_memoria(cliente_id, classificacao, dados, resposta)
+            memoria_id = atualizar_memoria(
+                empresa_id, cliente_id, classificacao, dados, resposta
+            )
     except Exception as e:
         traceback.print_exc()
         return jsonify(erro=f"{type(e).__name__}: {e}"), 500
@@ -869,9 +973,12 @@ def pipeline():
 @app.route("/api/pendentes")
 @login_required
 def pendentes():
-    itens = motor_mensagens.listar_pendentes()
+    empresa_id = empresa_atual()
+    itens = motor_mensagens.listar_pendentes(empresa_id)
     for item in itens:
-        item["documentos"] = motor_documentos.listar_por_mensagem(item["mensagem_id"])
+        item["documentos"] = motor_documentos.listar_por_mensagem(
+            empresa_id, item["mensagem_id"]
+        )
     return jsonify(itens)
 
 
@@ -881,7 +988,8 @@ def aprovar(mensagem_id):
     corpo = request.get_json(silent=True) or {}
     texto_final = corpo.get("texto")
     resultado = aprovar_mensagem_pendente(
-        mensagem_id, texto_final=texto_final, responsavel_id=session.get("usuario_id")
+        empresa_atual(), mensagem_id, texto_final=texto_final,
+        responsavel_id=session.get("usuario_id"),
     )
     if "erro" in resultado:
         return jsonify(resultado), 400
@@ -891,7 +999,9 @@ def aprovar(mensagem_id):
 @app.route("/api/pendentes/<mensagem_id>/rejeitar", methods=["POST"])
 @login_required
 def rejeitar(mensagem_id):
-    resultado = rejeitar_mensagem_pendente(mensagem_id, responsavel_id=session.get("usuario_id"))
+    resultado = rejeitar_mensagem_pendente(
+        empresa_atual(), mensagem_id, responsavel_id=session.get("usuario_id")
+    )
     if "erro" in resultado:
         return jsonify(resultado), 400
     return jsonify(resultado)

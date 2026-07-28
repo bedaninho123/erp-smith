@@ -9,6 +9,18 @@ imports, a suíte inteira passa a rodar contra core/db/erp_smith.db.
 O banco de teste é recriado do zero a cada teste a partir do schema real
 (core/db/schema.sql + views.sql) -- nunca de uma cópia desatualizada do
 schema escrita à mão aqui, que sairia de sincronia sem ninguém perceber.
+
+MULTI-TENANT: o banco nasce com DUAS empresas, e os clientes estão
+dispostos de propósito para cobrir os dois vazamentos possíveis, que são
+problemas diferentes:
+
+    EMP-000001  Ana (CLI-000001)  |  Bruno (CLI-000002)   <- mesma empresa
+    EMP-000002  Carla (CLI-000003)                        <- outra empresa
+
+Ana x Bruno testa isolamento ENTRE CLIENTES (o Portal já tinha isso).
+Ana x Carla testa isolamento ENTRE EMPRESAS. Um código pode acertar um e
+errar o outro -- filtrar por cliente_id e esquecer empresa_id passa nos
+testes antigos e ainda assim vaza dado entre despachantes.
 """
 import os
 import shutil
@@ -32,49 +44,95 @@ from core.conexao import CORE_DB  # noqa: E402
 
 AGORA = "2026-07-28T12:00:00Z"
 
+EMPRESA_A = "EMP-000001"
+EMPRESA_B = "EMP-000002"
+
+# Cada empresa tem o catálogo dela -- service_key repetida de propósito,
+# pra que a UNIQUE composta (empresa_id, service_key) seja exercitada.
+SERVICO_DA_EMPRESA = {EMPRESA_A: "SER-000001", EMPRESA_B: "SER-000002"}
+
 
 def _criar_schema(con: sqlite3.Connection) -> None:
     con.executescript((BASE_DIR / "core" / "db" / "schema.sql").read_text(encoding="utf-8"))
     con.executescript((BASE_DIR / "core" / "db" / "views.sql").read_text(encoding="utf-8"))
 
 
-def _inserir_cliente(con: sqlite3.Connection, cliente_id: str, nome: str, cpf: str, email: str) -> None:
+def _inserir_empresa(con: sqlite3.Connection, empresa_id: str, nome: str) -> None:
     con.execute(
-        "INSERT INTO cliente (cliente_id, nome, cpf, email, telefone, cidade, status, "
-        "atendimento_ia, data_cadastro) VALUES (?,?,?,?,?,?,?,?,?)",
-        (cliente_id, nome, cpf, email, "14999990000", "Marília", "Ativo", "Sim", AGORA),
+        "INSERT INTO empresa (empresa_id, nome, dominio, ativo, criado_em) "
+        "VALUES (?,?,?,?,?)",
+        (empresa_id, nome, "clube_tiro", "Sim", AGORA),
     )
 
 
-def _inserir_caso(con: sqlite3.Connection, caso_id: str, cliente_id: str, titulo: str) -> None:
+def _inserir_cliente(
+    con: sqlite3.Connection, empresa_id: str, cliente_id: str, nome: str, cpf: str, email: str
+) -> None:
     con.execute(
-        "INSERT INTO caso (caso_id, cliente_id, titulo, descricao, categoria, tipo_caso, "
-        "origem, canal_origem, status, prioridade, criado_em, atualizado_em, criado_por, "
-        "alterado_por, versao, ativo) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (caso_id, cliente_id, titulo, "Caso de teste", "Transferência", "Solicitação",
-         "Atendimento", "Email", "Aberto", "Normal", AGORA, AGORA, "testes", "testes", 1, "Sim"),
+        "INSERT INTO cliente (cliente_id, empresa_id, nome, cpf, email, telefone, cidade, "
+        "status, atendimento_ia, data_cadastro) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (cliente_id, empresa_id, nome, cpf, email, "14999990000", "Marília", "Ativo",
+         "Sim", AGORA),
     )
 
 
-def _inserir_processo(con: sqlite3.Connection, processo_id: str, caso_id: str, cliente_id: str) -> None:
+def _inserir_caso(
+    con: sqlite3.Connection, empresa_id: str, caso_id: str, cliente_id: str, titulo: str
+) -> None:
     con.execute(
-        "INSERT INTO processo (processo_id, caso_id, cliente_id, servico_id, protocolo, "
-        "status, data_abertura, ultima_atualizacao) VALUES (?,?,?,?,?,?,?,?)",
-        (processo_id, caso_id, cliente_id, "SER-000001", f"PROTO-{processo_id}",
-         "Em andamento", AGORA, AGORA),
+        "INSERT INTO caso (caso_id, empresa_id, cliente_id, titulo, descricao, categoria, "
+        "tipo_caso, origem, canal_origem, status, prioridade, criado_em, atualizado_em, "
+        "criado_por, alterado_por, versao, ativo) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (caso_id, empresa_id, cliente_id, titulo, "Caso de teste", "Transferência",
+         "Solicitação", "Atendimento", "Email", "Aberto", "Normal", AGORA, AGORA,
+         "testes", "testes", 1, "Sim"),
+    )
+
+
+def _inserir_processo(
+    con: sqlite3.Connection, empresa_id: str, processo_id: str, caso_id: str, cliente_id: str
+) -> None:
+    con.execute(
+        "INSERT INTO processo (processo_id, empresa_id, caso_id, cliente_id, servico_id, "
+        "protocolo, status, data_abertura, ultima_atualizacao) VALUES (?,?,?,?,?,?,?,?,?)",
+        (processo_id, empresa_id, caso_id, cliente_id, SERVICO_DA_EMPRESA[empresa_id],
+         f"PROTO-{processo_id}", "Em andamento", AGORA, AGORA),
     )
 
 
 def _inserir_documento(
-    con: sqlite3.Connection, documento_id: str, cliente_id: str, caso_id: str, caminho: Path
+    con: sqlite3.Connection, empresa_id: str, documento_id: str, cliente_id: str,
+    caso_id: str, caminho: Path,
 ) -> None:
     con.execute(
-        "INSERT INTO documento (documento_id, cliente_id, caso_id, tipo_documento, "
-        "nome_arquivo, link_arquivo, status, data_envio) VALUES (?,?,?,?,?,?,?,?)",
-        (documento_id, cliente_id, caso_id, "RG", f"{documento_id}.pdf",
+        "INSERT INTO documento (documento_id, empresa_id, cliente_id, caso_id, "
+        "tipo_documento, nome_arquivo, link_arquivo, status, data_envio) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (documento_id, empresa_id, cliente_id, caso_id, "RG", f"{documento_id}.pdf",
          str(caminho), "Recebido", AGORA),
     )
+
+
+@pytest.fixture(autouse=True)
+def _gmail_desligado_nos_testes(monkeypatch):
+    """Nenhum teste manda e-mail de verdade, nunca.
+
+    Não é hipotético: esta máquina tem token.json de verdade, e os
+    testes do painel mudam status de caso -- o que dispara a notificação
+    ao cliente. Hoje isso não sai porque o banco de teste nasce sem a
+    linha de configuração que liga a notificação; ou seja, a única coisa
+    separando a suíte de mandar e-mail para 'ana@example.com' é um
+    detalhe do fixture. Isso é fino demais para depender dele.
+
+    Mexer em TOKEN_PATH (e não em gmail_configurado) cobre todo mundo de
+    uma vez: os módulos importam a função por referência, mas ela lê o
+    caminho do próprio módulo na hora da chamada, e todo ponto de envio
+    do projeto passa por gmail_configurado() antes.
+    """
+    from integracoes import gmail
+
+    monkeypatch.setattr(gmail, "TOKEN_PATH", Path("nao-existe-nos-testes.json"))
 
 
 @pytest.fixture(autouse=True)
@@ -93,11 +151,17 @@ def _pasta_de_documentos_isolada(tmp_path, monkeypatch):
 
 @pytest.fixture
 def banco(tmp_path):
-    """Banco limpo com dois clientes que não têm nada em comum -- é essa
-    separação que os testes de isolamento tentam furar.
+    """Banco limpo com duas empresas e três clientes -- é essa separação
+    que os testes de isolamento tentam furar.
 
-    Cliente A: CLI-000001 / CAS-000001 / PRO-000001 / DOC-000001
-    Cliente B: CLI-000002 / CAS-000002 / PRO-000002 / DOC-000002
+    EMP-000001  Ana   CLI-000001 / CAS-000001 / PRO-000001 / DOC-000001
+                Bruno CLI-000002 / CAS-000002 / PRO-000002 / DOC-000002
+    EMP-000002  Carla CLI-000003 / CAS-000003 / PRO-000003 / DOC-000003
+
+    Ana e Carla têm o MESMO CPF de propósito (11111111111): é a situação
+    real que a UNIQUE composta passou a permitir -- a mesma pessoa sendo
+    cliente de dois despachantes -- e é o que faz uma busca por CPF sem
+    filtro de empresa devolver a pessoa errada.
     """
     caminho = Path(CORE_DB)
     caminho.unlink(missing_ok=True)
@@ -107,44 +171,62 @@ def banco(tmp_path):
     con.execute("PRAGMA foreign_keys = ON")
     _criar_schema(con)
 
+    _inserir_empresa(con, EMPRESA_A, "Despachante A")
+    _inserir_empresa(con, EMPRESA_B, "Despachante B")
+
+    for empresa_id, service_id in SERVICO_DA_EMPRESA.items():
+        con.execute(
+            "INSERT INTO servico (service_id, empresa_id, service_key, nome_servico, "
+            "categoria, documentos_obrigatorios, ativo) VALUES (?,?,?,?,?,?,?)",
+            (service_id, empresa_id, "transferencia_arma", "Transferência de Arma",
+             "Transferência", "RG, CPF, CR", "Sim"),
+        )
     con.execute(
-        "INSERT INTO servico (service_id, service_key, nome_servico, categoria, "
-        "documentos_obrigatorios, ativo) VALUES (?,?,?,?,?,?)",
-        ("SER-000001", "transferencia_arma", "Transferência de Arma", "Transferência",
-         "RG, CPF, CR", "Sim"),
+        "INSERT INTO usuario (usuario_id, empresa_id, nome, email, papel, ativo, criado_em) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("USR-000001", EMPRESA_A, "Atendente Teste", "atendente@example.com",
+         "Atendimento", "Sim", AGORA),
     )
     con.execute(
-        "INSERT INTO usuario (usuario_id, nome, email, papel, ativo, criado_em) "
-        "VALUES (?,?,?,?,?,?)",
-        ("USR-000001", "Atendente Teste", "atendente@example.com", "Atendimento", "Sim", AGORA),
+        "INSERT INTO usuario (usuario_id, empresa_id, nome, email, papel, ativo, criado_em) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("USR-000002", EMPRESA_B, "Atendente da Outra", "atendente@example.com",
+         "Atendimento", "Sim", AGORA),
     )
 
     arquivo_a = tmp_path / "documento_do_cliente_a.pdf"
     arquivo_a.write_bytes(b"%PDF-1.4 conteudo secreto do cliente A")
     arquivo_b = tmp_path / "documento_do_cliente_b.pdf"
     arquivo_b.write_bytes(b"%PDF-1.4 conteudo secreto do cliente B")
+    arquivo_c = tmp_path / "documento_da_outra_empresa.pdf"
+    arquivo_c.write_bytes(b"%PDF-1.4 conteudo secreto da empresa B")
 
-    _inserir_cliente(con, "CLI-000001", "Ana Teste", "11111111111", "ana@example.com")
-    _inserir_caso(con, "CAS-000001", "CLI-000001", "Caso da Ana")
-    _inserir_processo(con, "PRO-000001", "CAS-000001", "CLI-000001")
-    _inserir_documento(con, "DOC-000001", "CLI-000001", "CAS-000001", arquivo_a)
+    _inserir_cliente(con, EMPRESA_A, "CLI-000001", "Ana Teste", "11111111111", "ana@example.com")
+    _inserir_caso(con, EMPRESA_A, "CAS-000001", "CLI-000001", "Caso da Ana")
+    _inserir_processo(con, EMPRESA_A, "PRO-000001", "CAS-000001", "CLI-000001")
+    _inserir_documento(con, EMPRESA_A, "DOC-000001", "CLI-000001", "CAS-000001", arquivo_a)
 
-    _inserir_cliente(con, "CLI-000002", "Bruno Teste", "22222222222", "bruno@example.com")
-    _inserir_caso(con, "CAS-000002", "CLI-000002", "Caso do Bruno")
-    _inserir_processo(con, "PRO-000002", "CAS-000002", "CLI-000002")
-    _inserir_documento(con, "DOC-000002", "CLI-000002", "CAS-000002", arquivo_b)
+    _inserir_cliente(con, EMPRESA_A, "CLI-000002", "Bruno Teste", "22222222222", "bruno@example.com")
+    _inserir_caso(con, EMPRESA_A, "CAS-000002", "CLI-000002", "Caso do Bruno")
+    _inserir_processo(con, EMPRESA_A, "PRO-000002", "CAS-000002", "CLI-000002")
+    _inserir_documento(con, EMPRESA_A, "DOC-000002", "CLI-000002", "CAS-000002", arquivo_b)
+
+    _inserir_cliente(con, EMPRESA_B, "CLI-000003", "Carla Outra", "11111111111", "carla@example.com")
+    _inserir_caso(con, EMPRESA_B, "CAS-000003", "CLI-000003", "Caso da Carla")
+    _inserir_processo(con, EMPRESA_B, "PRO-000003", "CAS-000003", "CLI-000003")
+    _inserir_documento(con, EMPRESA_B, "DOC-000003", "CLI-000003", "CAS-000003", arquivo_c)
 
     con.commit()
     con.close()
 
-    yield {"arquivo_a": arquivo_a, "arquivo_b": arquivo_b}
+    yield {"arquivo_a": arquivo_a, "arquivo_b": arquivo_b, "arquivo_c": arquivo_c}
 
     Path(CORE_DB).unlink(missing_ok=True)
 
 
 @pytest.fixture
 def portal(banco):
-    """Cliente HTTP do Portal já logado como Ana (CLI-000001).
+    """Cliente HTTP do Portal já logado como Ana (CLI-000001, EMP-000001).
 
     Logar direto na sessão (em vez de passar pelo link mágico) é
     proposital: o alvo destes testes é o isolamento das rotas, não o
@@ -157,6 +239,26 @@ def portal(banco):
     with cliente_http.session_transaction() as sessao:
         sessao["cliente_id"] = "CLI-000001"
         sessao["cliente_nome"] = "Ana Teste"
+        sessao["empresa_id"] = EMPRESA_A
+    return cliente_http
+
+
+@pytest.fixture
+def painel(banco):
+    """Cliente HTTP do painel administrativo logado na EMPRESA_A.
+
+    Vale a mesma observação do fixture do Portal: a sessão é montada na
+    mão porque o alvo aqui é o filtro por empresa nas rotas, não o
+    formulário de login.
+    """
+    from webapp.app import app
+
+    app.config.update(TESTING=True)
+    cliente_http = app.test_client()
+    with cliente_http.session_transaction() as sessao:
+        sessao["usuario_id"] = "USR-000001"
+        sessao["usuario_nome"] = "Atendente Teste"
+        sessao["empresa_id"] = EMPRESA_A
     return cliente_http
 
 

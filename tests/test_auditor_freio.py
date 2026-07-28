@@ -16,6 +16,8 @@ from motor_ia.auditor import auditar
 from motor_ia.planejador import Plano, planejar
 from motor_ia.classificador import ResultadoClassificacao
 
+from tests.conftest import EMPRESA_A
+
 
 def _plano_humano(motivo="Cliente irritado pediu atendente."):
     return Plano(rota="consulta_processo", fontes=[], encaminhar_humano=True, motivo_humano=motivo)
@@ -30,6 +32,7 @@ def test_encaminha_humano_sem_chamar_a_openai(monkeypatch):
     monkeypatch.setattr("motor_ia.auditor.OpenAI", _explode)
 
     resultado = auditar(
+        EMPRESA_A,
         resposta="Seu processo está aprovado!",
         dados={},
         cliente_nome="Ana",
@@ -44,6 +47,7 @@ def test_motivo_do_planejador_chega_no_resultado(monkeypatch):
     monkeypatch.setattr("motor_ia.auditor.OpenAI", lambda *a, **k: pytest.fail("não deveria chamar IA"))
 
     resultado = auditar(
+        EMPRESA_A,
         resposta="qualquer coisa",
         dados={},
         cliente_nome="Ana",
@@ -59,6 +63,7 @@ def test_resposta_bonita_nao_burla_o_freio(monkeypatch):
     monkeypatch.setattr("motor_ia.auditor.OpenAI", lambda *a, **k: pytest.fail("não deveria chamar IA"))
 
     resultado = auditar(
+        EMPRESA_A,
         resposta=(
             "Olá Ana, tudo certo com seu processo, nenhuma pendência! "
             "Te ajudo em algo mais?"

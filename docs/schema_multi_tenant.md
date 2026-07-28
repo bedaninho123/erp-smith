@@ -202,7 +202,7 @@ O passo 6 não é opcional. Foi exatamente esse tipo de teste que provou, por mu
 
 ### Estado da implementação — 2026-07-28
 
-> ⚠️ **O sistema não roda enquanto esta tabela tiver linha pendente.** O schema já mudou, mas `webapp/` e `portal/` ainda não passam `empresa_id` — subir o painel agora dá erro. Isso é esperado no meio do refactor; cada commit é um bloco coerente.
+> ✅ **Migração completa.** O sistema voltou a rodar: painel, Portal, canais de entrada e Motor IA, todos passando `empresa_id`. A suíte fechou verde com 48 testes (eram 26 antes; os 22 novos são de isolamento entre empresas).
 
 | Etapa | Estado | Commit |
 |---|---|---|
@@ -215,10 +215,10 @@ O passo 6 não é opcional. Foi exatamente esse tipo de teste que provou, por mu
 | `core/motor_empresas.py` (tabela `empresa`) | ✅ | `ebdae07` |
 | Scripts de dados do Core e do Domínio | ✅ | `ebdae07` |
 | Recriar o banco sob `EMP-000001` | ✅ | `ebdae07` |
-| `atendimento/` (processar, poller, webhook) | ✅ | |
-| **`webapp/app.py` (906 linhas) e `portal/app.py` (656)** | ⬜ **próximo** | |
-| Testes de isolamento entre empresas | ⬜ | |
-| Suíte inteira verde | ⬜ (hoje: 3 passam, 3 falham, 20 erram — `tests/conftest.py` monta o banco sem `empresa_id`) | |
+| `atendimento/` (processar, poller, webhook) | ✅ | `9dd81df` |
+| `webapp/app.py` e `portal/app.py` | ✅ | |
+| Testes de isolamento entre empresas | ✅ | |
+| Suíte inteira verde | ✅ 48 testes | |
 
 **Backups pré-migração** (fora do git, `*.db` é ignorado):
 `core/db/backup_pre_multitenant_20260728.db` e `domain/clube_tiro/db/backup_pre_multitenant_20260728.db`, mais os `backup_20260728_0104*.db` que o próprio `criar_banco --recriar` guardou na hora de recriar.
@@ -258,6 +258,45 @@ Antes de recriar o banco de verdade, a sequência inteira rodou contra um banco 
 | Conexão sem empresa não vaza | ✅ `no such function: empresa_atual` |
 
 ---
+
+## 8.1 Os dois apps: onde o filtro precisou ser escrito à mão
+
+A proposta da §5 (views que se filtram sozinhas) entregou o que prometia — o Motor IA não precisou de uma linha de mudança por causa de multi-tenancy. Mas ela também tinha um limite declarado desde o começo, e é nos dois apps que ele aparece: `webapp/app.py` e `portal/app.py` consultam **tabela crua**, não view. Ali cada `WHERE` recebeu o filtro na mão.
+
+**Painel** (`webapp/app.py`): a empresa vem de `usuario.empresa_id` no login e vira `session["empresa_id"]`. `login_required` passou a exigir os dois (usuário e empresa), então sessão antiga cai no login em vez de entrar pela metade. Três pontos mereceram atenção especial:
+
+- `/api/documentos/<id>/arquivo` — sem o filtro, adivinhar um `DOC-000123` baixaria documento de arma de fogo de cliente de outro despachante.
+- `/api/clientes/buscar-cpf/<cpf>` — a `UNIQUE` de CPF virou composta de propósito, então essa busca **precisa** do filtro para não devolver a pessoa errada. É a rota que alimenta o formulário de resultado de campeonato: o erro entraria gravado, sem exceção nenhuma aparecer.
+- `/api/clientes/lista` — a busca por texto é um `OR` de três colunas. Sem parênteses em volta dele, o `OR` passaria por cima do filtro de empresa. Tem teste próprio justamente porque é invisível a olho nu.
+
+Também deixou de existir "Smith Clube de Tiro" escrito no código: o nome e a assinatura dos e-mails saem de `configuracoes` da empresa.
+
+**Portal** (`portal/app.py`): ganhou uma segunda camada por cima da que já existia. O isolamento **por cliente** continua sendo o principal; o de empresa é reforço. A empresa da sessão sai de `cliente.empresa_id` — não da configuração — para que mudar `PORTAL_EMPRESA_ID` não faça uma sessão viva enxergar dado de outra empresa. `PORTAL_EMPRESA_ID` só é usado na tela de login, que é o único momento em que ainda não existe identidade nenhuma.
+
+## 8.2 O que os testes provam, e o que eles não provam
+
+A suíte foi de 26 para 48 testes. O banco de teste agora nasce com duas empresas e três clientes, arranjados para separar dois problemas que são fáceis de confundir:
+
+```
+EMP-000001  Ana (CLI-000001)  |  Bruno (CLI-000002)   <- mesma empresa
+EMP-000002  Carla (CLI-000003)                        <- outra empresa
+```
+
+Ana e Carla têm **o mesmo CPF** de propósito: é exatamente o cenário que a `UNIQUE` composta passou a permitir.
+
+Confirmado por mutação (quebrar o filtro de propósito e ver o teste ficar vermelho):
+
+| Filtro removido | Resultado |
+|---|---|
+| `empresa_id` no download de documento do painel | ✅ teste falhou — devolveu 200 e serviu o arquivo da outra empresa |
+| `empresa_id` na busca por CPF do login do Portal | ✅ teste falhou — devolveu `CLI-000001` no lugar de `CLI-000003` |
+| `empresa_id` no detalhe de caso do Portal | ⚠️ **teste continuou passando** |
+
+A terceira linha é honesta e vale registrar: naquele ponto o filtro por `cliente_id` já basta, porque `cliente_id` é chave primária global — um cliente não pode existir em duas empresas. O filtro de empresa ali é defesa em profundidade, não a trava que segura o dado. Onde o filtro de empresa é a **única** coisa que separa uma empresa da outra é onde o dado é buscado por algo que se repete entre elas: CPF, `service_key`, `chave` de configuração.
+
+## 8.3 Um detalhe de segurança encontrado na suíte
+
+Esta máquina tem `token.json` do Gmail de verdade, e os testes do painel mudam status de caso — o que dispara a notificação por e-mail ao cliente. O que separava a suíte de mandar e-mail para `ana@example.com` era só o banco de teste nascer sem a linha de configuração que liga a notificação. Fino demais para depender disso: `tests/conftest.py` agora desliga o Gmail em todo teste, via fixture `autouse`.
 
 ## 9. O que este documento deliberadamente NÃO cobre
 
