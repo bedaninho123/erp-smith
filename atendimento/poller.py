@@ -10,6 +10,15 @@ Toda mensagem verificada é marcada como lida, para nunca ser processada
 duas vezes -- mesmo quando o resultado foi "encaminhar a humano" ou
 "revisar" (nesses casos a mensagem já foi registrada no caso/sessão;
 alguém ainda precisa olhar, mas não faz sentido o robô ficar reprocessando).
+
+MULTI-TENANT, e este é o ponto mais frágil da migração inteira
+(docs/schema_multi_tenant.md §6, item de peso "Alto"): hoje existe UMA
+caixa de Gmail e UM token.json, então tudo que chega aqui é da empresa
+de atendimento/config.py::EMPRESA_ID. Quando cada empresa tiver a
+credencial dela, este módulo passa a percorrer as empresas -- uma
+listagem de caixa de entrada por empresa, cada uma com o seu
+empresa_id -- em vez de assumir uma só. Enquanto isso não existe, é
+melhor a suposição estar escrita aqui do que embutida sem aviso.
 """
 import os
 import sys
@@ -19,6 +28,7 @@ from pathlib import Path
 
 from integracoes.gmail import gmail_configurado, listar_mensagens_nao_lidas, marcar_como_lida
 from atendimento.alertas import alertar_excecao, alertar_falha
+from atendimento.config import EMPRESA_ID
 from atendimento.processar import processar_mensagem
 from core.motor_casos import localizar_caso_aberto
 from core.motor_documentos import salvar_documento
@@ -52,7 +62,7 @@ def _liberar_trava() -> None:
     LOCK_PATH.unlink(missing_ok=True)
 
 
-def _salvar_anexos(msg: dict, resultado: dict, anexos: list) -> None:
+def _salvar_anexos(empresa_id: str, msg: dict, resultado: dict, anexos: list) -> None:
     """Vincula os anexos (já filtrados por foto/PDF em integracoes/gmail.py)
     ao caso do cliente. Nunca deixa um anexo desaparecer em silêncio: se
     não dá pra achar cliente/caso pra vincular (restrição do banco --
@@ -69,7 +79,7 @@ def _salvar_anexos(msg: dict, resultado: dict, anexos: list) -> None:
         )
         return
 
-    caso_id = resultado.get("caso_id") or localizar_caso_aberto(cliente_id)
+    caso_id = resultado.get("caso_id") or localizar_caso_aberto(empresa_id, cliente_id)
     if not caso_id:
         alertar_falha(
             f"Anexo recebido sem caso aberto para associar (cliente {cliente_id})",
@@ -80,6 +90,7 @@ def _salvar_anexos(msg: dict, resultado: dict, anexos: list) -> None:
     for anexo in anexos:
         try:
             documento_id = salvar_documento(
+                empresa_id,
                 cliente_id=cliente_id,
                 conteudo=anexo["conteudo"],
                 nome_arquivo_original=anexo["nome_arquivo"],
@@ -121,6 +132,7 @@ def _verificar_uma_vez_com_trava() -> int:
         print(f"Processando e-mail de {msg['remetente_email']}: {msg['assunto']!r}")
         try:
             resultado = processar_mensagem(
+                EMPRESA_ID,
                 texto=msg["corpo"],
                 canal="Email",
                 assunto=msg["assunto"],
@@ -152,7 +164,7 @@ def _verificar_uma_vez_com_trava() -> int:
                 )
 
         if msg.get("anexos"):
-            _salvar_anexos(msg, resultado, msg["anexos"])
+            _salvar_anexos(EMPRESA_ID, msg, resultado, msg["anexos"])
 
         marcar_como_lida(msg["id"])
 

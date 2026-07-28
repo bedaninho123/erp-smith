@@ -2,6 +2,15 @@
 o webhook (POST /webhook/mensagem) e o poller (verificação automática da
 caixa de entrada) -- os dois canais de entrada de e-mail chamam esta
 mesma função, sem duplicar lógica.
+
+MULTI-TENANT: empresa_id é o primeiro parâmetro de tudo aqui, igual ao
+resto do Core, e quem chama decide de onde ele vem -- os canais de
+entrada usam atendimento/config.py (é configuração do servidor, nunca
+entrada do remetente); o painel usa a empresa do usuário logado. Uma
+mensagem que chega sem saber de que empresa é não tem como ser
+processada com segurança: identificar o remetente é justamente onde o
+vazamento aconteceria (ver o achado sobre identificador_cliente.py em
+docs/schema_multi_tenant.md).
 """
 import traceback
 from typing import Optional
@@ -13,6 +22,7 @@ from motor_ia.orquestrador import atender_mensagem
 
 
 def processar_mensagem(
+    empresa_id: str,
     texto: str,
     canal: str = "Email",
     assunto: str = "",
@@ -34,6 +44,7 @@ def processar_mensagem(
 
     try:
         resultado = atender_mensagem(
+            empresa_id,
             mensagem_completa,
             canal=canal,
             identificador_canal=identificador_canal,
@@ -49,7 +60,7 @@ def processar_mensagem(
         return {"identificado": False, "erro": resultado["erro"]}
 
     acao = resultado["auditoria"].acao
-    config = obter_configuracoes()
+    config = obter_configuracoes(empresa_id)
     revisao_ativa = config.get("revisao_humana_ativa", "Não") == "Sim"
 
     # "revisar" sempre fica pendente de revisão humana -- o Auditor achou
@@ -85,6 +96,7 @@ def processar_mensagem(
         pode_enviar = False
 
     mensagem_id = motor_mensagens.registrar_mensagem(
+        empresa_id,
         cliente_id=resultado["cliente_id"],
         texto_recebido=mensagem_completa,
         resposta_ia=resposta_texto,
@@ -124,20 +136,27 @@ def processar_mensagem(
             traceback.print_exc()
             saida["erro_envio"] = f"{type(e).__name__}: {e}"
             if mensagem_id:
-                motor_mensagens.marcar_status(mensagem_id, motor_mensagens.STATUS_ERRO)
+                motor_mensagens.marcar_status(
+                    empresa_id, mensagem_id, motor_mensagens.STATUS_ERRO
+                )
 
     return saida
 
 
 def aprovar_mensagem_pendente(
-    mensagem_id: str, texto_final: Optional[str] = None,
+    empresa_id: str, mensagem_id: str, texto_final: Optional[str] = None,
     responsavel_id: Optional[str] = None,
 ) -> dict:
     """Manda de verdade um rascunho que estava esperando revisão humana
     (status "Aguardando Revisão"). `texto_final` permite editar o texto
     antes de enviar; se não vier, usa o que a IA escreveu sem alteração.
+
+    O empresa_id vem do usuário logado no painel, e é ele que faz
+    obter_mensagem() devolver None quando o mensagem_id é de outra
+    empresa -- ou seja, aprovar o rascunho alheio dá "não encontrada",
+    não um envio indevido.
     """
-    msg = motor_mensagens.obter_mensagem(mensagem_id)
+    msg = motor_mensagens.obter_mensagem(empresa_id, mensagem_id)
     if not msg:
         return {"erro": f"Mensagem não encontrada: {mensagem_id}"}
     if msg["status_processamento"] != motor_mensagens.STATUS_AGUARDANDO_REVISAO:
@@ -162,23 +181,26 @@ def aprovar_mensagem_pendente(
         return {"erro": f"{type(e).__name__}: {e}"}
 
     motor_mensagens.marcar_status(
-        mensagem_id, motor_mensagens.STATUS_ENVIADO,
+        empresa_id, mensagem_id, motor_mensagens.STATUS_ENVIADO,
         resposta_final=texto_para_enviar, responsavel_id=responsavel_id,
     )
     return {"mensagem_id": mensagem_id, "email_enviado": True}
 
 
-def rejeitar_mensagem_pendente(mensagem_id: str, responsavel_id: Optional[str] = None) -> dict:
+def rejeitar_mensagem_pendente(
+    empresa_id: str, mensagem_id: str, responsavel_id: Optional[str] = None
+) -> dict:
     """Marca um rascunho pendente como rejeitado -- não envia nada. Quem
     precisar responder o cliente por fora do sistema faz isso manualmente.
     """
-    msg = motor_mensagens.obter_mensagem(mensagem_id)
+    msg = motor_mensagens.obter_mensagem(empresa_id, mensagem_id)
     if not msg:
         return {"erro": f"Mensagem não encontrada: {mensagem_id}"}
     if msg["status_processamento"] != motor_mensagens.STATUS_AGUARDANDO_REVISAO:
         return {"erro": f"Mensagem {mensagem_id} não está aguardando revisão (status atual: {msg['status_processamento']})."}
 
     motor_mensagens.marcar_status(
-        mensagem_id, motor_mensagens.STATUS_REJEITADO, responsavel_id=responsavel_id,
+        empresa_id, mensagem_id, motor_mensagens.STATUS_REJEITADO,
+        responsavel_id=responsavel_id,
     )
     return {"mensagem_id": mensagem_id, "rejeitado": True}

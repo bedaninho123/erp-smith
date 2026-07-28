@@ -11,12 +11,17 @@ só devolve o campo "resposta" pronto.
 Segurança: se WEBHOOK_SECRET estiver configurado no .env, exige o
 cabeçalho X-Webhook-Secret com o mesmo valor. Sem isso configurado
 (dev local), aceita qualquer chamada.
+
+Multi-tenant: a empresa dona da mensagem vem de atendimento/config.py
+(ERP_EMPRESA_ID), NUNCA do corpo da requisição. O único autenticador
+aqui é um segredo compartilhado -- se o chamador escolhesse a empresa,
+quem tivesse o segredo escreveria dado em qualquer uma delas.
 """
 import hmac
 
 from flask import Flask, jsonify, request
 
-from atendimento.config import WEBHOOK_SECRET
+from atendimento.config import EMPRESA_ID, WEBHOOK_SECRET
 from atendimento.processar import processar_mensagem
 
 app = Flask(__name__)
@@ -44,6 +49,7 @@ def receber_mensagem():
     corpo = request.get_json(force=True, silent=True) or {}
 
     resultado = processar_mensagem(
+        EMPRESA_ID,
         texto=corpo.get("corpo", ""),
         canal=corpo.get("canal", "Email"),
         assunto=corpo.get("assunto", ""),

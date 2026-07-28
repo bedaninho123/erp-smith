@@ -212,11 +212,11 @@ O passo 6 não é opcional. Foi exatamente esse tipo de teste que provou, por mu
 | `core/*.py` — 13 módulos | ✅ | `0563d8b` |
 | `motor_ia/*.py` — 8 módulos | ✅ | `0563d8b` |
 | `domain/clube_tiro/motor_*.py` | ✅ | `f6d0548` |
-| `core/motor_empresas.py` (tabela `empresa`) | ✅ | |
-| Scripts de dados do Core e do Domínio | ✅ | |
-| Recriar o banco sob `EMP-000001` | ✅ | |
-| **`atendimento/` (processar, poller, webhook)** | ⬜ **próximo** | |
-| `webapp/app.py` (906 linhas) e `portal/app.py` (656) | ⬜ | |
+| `core/motor_empresas.py` (tabela `empresa`) | ✅ | `ebdae07` |
+| Scripts de dados do Core e do Domínio | ✅ | `ebdae07` |
+| Recriar o banco sob `EMP-000001` | ✅ | `ebdae07` |
+| `atendimento/` (processar, poller, webhook) | ✅ | |
+| **`webapp/app.py` (906 linhas) e `portal/app.py` (656)** | ⬜ **próximo** | |
 | Testes de isolamento entre empresas | ⬜ | |
 | Suíte inteira verde | ⬜ (hoje: 3 passam, 3 falham, 20 erram — `tests/conftest.py` monta o banco sem `empresa_id`) | |
 
@@ -233,6 +233,15 @@ O passo 6 não é opcional. Foi exatamente esse tipo de teste que provou, por mu
 `CLI-000001` é o próprio usuário, e as 7 linhas de `mensagem` + 117 de `log_ia` vieram de testes por e-mail de verdade. Não é dado de cliente de terceiro, mas é histórico real de uso — vale exportar antes de recriar o banco, se você quiser preservar.
 
 **O que o banco recriado perdeu (2026-07-28):** ele nasceu só do que os scripts de dados sabem produzir, então o que tinha se acumulado pelo uso ficou para trás — 117 linhas de `log_ia`, 39 de `memoria_ia`, 17 de `historico`, 7 `portal_token`, 5 de `mensagem` (das 7, sobraram as 2 que a migração da planilha recria) e 9 casos criados pelo painel. Está tudo em `core/db/backup_20260728_010417.db`, de onde dá para reimportar se algum dia fizer falta. O `senha_hash` dos usuários também sumiu junto: quando o painel voltar a subir, rodar `webapp/definir_senha.py` de novo.
+
+### De onde a camada de atendimento tira a empresa
+
+`processar_mensagem()` recebe `empresa_id` como primeiro parâmetro, igual ao resto do Core. Quem chama resolve de onde ele vem, e a diferença entre os dois chamadores importa:
+
+- **Webhook e poller** usam `atendimento/config.py::EMPRESA_ID` (variável `ERP_EMPRESA_ID` do `.env`, padrão `EMP-000001`). **Nunca** do corpo da requisição: o único autenticador do webhook é um segredo compartilhado, então deixar o chamador escolher a empresa daria a quem tem o segredo o direito de escrever em qualquer uma delas. Empresa é configuração do servidor, não entrada do cliente — está testado que um `empresa_id` no corpo do POST é ignorado.
+- **Painel** (`aprovar_mensagem_pendente` / `rejeitar_mensagem_pendente`) vai usar a empresa do usuário logado. Isso já sustenta o isolamento sozinho: aprovar o rascunho de outra empresa devolve "mensagem não encontrada", porque `obter_mensagem()` filtra por empresa antes de qualquer envio.
+
+O `EMPRESA_ID` de configuração é honesto sobre o que ainda não existe: hoje há **uma** caixa de Gmail e **um** `token.json`, então esta instalação atende uma empresa. Quando cada empresa tiver a credencial dela (o item de peso "Alto" da §6), o poller passa a percorrer as empresas em vez de assumir uma — e aí `ERP_EMPRESA_ID` vira o padrão de quem não informou, não a resposta única.
 
 ### Terceiro achado do refactor
 
