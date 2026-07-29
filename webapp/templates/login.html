@@ -35,7 +35,7 @@
 <body class="hold-transition login-page">
 <div class="login-box">
   <div class="login-logo">
-    <img src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
+    <img src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP" width="107" height="52">
   </div>
   <div class="card">
     <div class="card-body login-card-body">
@@ -46,16 +46,22 @@
       {% endif %}
 
       <form method="post">
+        <!-- autocomplete: sem estes valores o gerenciador de senhas não
+             reconhece o formulário e não oferece preenchimento. Os
+             ícones são decoração -- o campo já se explica pelo
+             placeholder, então saem da leitura do leitor de tela. -->
         <div class="input-group mb-3">
-          <input id="email" name="email" type="email" class="form-control" placeholder="E-mail" required autofocus>
+          <input id="email" name="email" type="email" class="form-control" placeholder="E-mail"
+            autocomplete="username" spellcheck="false" required autofocus>
           <div class="input-group-append">
-            <div class="input-group-text"><span class="fas fa-envelope"></span></div>
+            <div class="input-group-text"><span class="fas fa-envelope" aria-hidden="true"></span></div>
           </div>
         </div>
         <div class="input-group mb-3">
-          <input id="senha" name="senha" type="password" class="form-control" placeholder="Senha" required>
+          <input id="senha" name="senha" type="password" class="form-control" placeholder="Senha"
+            autocomplete="current-password" required>
           <div class="input-group-append">
-            <div class="input-group-text"><span class="fas fa-lock"></span></div>
+            <div class="input-group-text"><span class="fas fa-lock" aria-hidden="true"></span></div>
           </div>
         </div>
         <div class="row">

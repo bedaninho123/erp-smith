@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
@@ -9,6 +9,10 @@
      usava IBM Plex: dois apps do mesmo sistema com cara de empresas diferentes. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- O CSS e o JS do tema vêm destes dois; abrir a conexão junto com o
+     HTML economiza o ida-e-volta de DNS/TLS antes do primeiro pedido. -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
@@ -134,7 +138,11 @@
   }
   .cfg-busca i { color: var(--aco); }
   .cfg-busca input { border: 0; box-shadow: none; padding: 0; flex: 1; }
+  /* O campo não tem borda própria, então o foco não pode simplesmente
+     sumir: quem navega por teclado perderia a referência de onde está.
+     O anel vai na caixa inteira, via :focus-within. */
   .cfg-busca input:focus { outline: none; box-shadow: none; }
+  .cfg-busca:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
   .cfg-busca span { font-size: 12px; white-space: nowrap; }
 
   .cfg-grupo { margin-bottom: var(--e5); }
@@ -200,7 +208,19 @@
     .cfg-linha { grid-template-columns: 1fr; gap: var(--e2); }
   }
 
+  /* Linha de tabela que abre um registro ao clique. O clique na linha
+     inteira é conveniente com mouse, mas sozinho deixa a navegação por
+     teclado sem saída -- `<tr>` não recebe foco. Daí tabindex + tratador
+     de Enter/Espaço no JS + foco visível aqui. */
   .cursor-pointer { cursor: pointer; }
+  tr.cursor-pointer:focus-visible {
+    outline: 2px solid var(--blue-deep); outline-offset: -2px;
+  }
+
+  /* Sem isto o navegador espera ~300ms a cada toque, pra ver se vem um
+     segundo toque (zoom). Some o atraso em celular. */
+  button, a, .btn, input, select, textarea, tr.cursor-pointer { touch-action: manipulation; }
+
   .view { display: none; }
   .view.active { display: block; }
   .resposta-box { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 0.75rem 1rem; white-space: pre-wrap; font-size: 0.88rem; }
@@ -214,7 +234,13 @@
      só a cor "primária" de marca (botões, navbar, sidebar, link ativo)
      -- os badges de status (verde/amarelo/vermelho/cinza) continuam com
      as cores semânticas padrão do Bootstrap, não são sobre marca. */
-  :root { --ink-deep: #131417; --blue: #396BB3; --blue-deep: #24487D; }
+  /* --blue-soft entrou junto porque o anel de foco precisa dela. Vale o
+     aviso: variável CSS que não existe não dá erro nenhum -- o navegador
+     descarta a declaração em silêncio. Foi assim que o anel de foco da
+     busca das Configurações ficou invisível enquanto a borda funcionava:
+     as duas estavam na mesma regra, e só a que usava variável existente
+     sobreviveu. */
+  :root { --ink-deep: #131417; --blue: #396BB3; --blue-deep: #24487D; --blue-soft: #E4ECF8; }
   .content-wrapper, .main-footer { background-color: #EEF1F5; }
   .main-header.navbar, .main-sidebar { background-color: var(--ink-deep) !important; }
   .brand-link { border-bottom-color: rgba(255,255,255,.15); }
@@ -262,7 +288,7 @@
   <nav class="main-header navbar navbar-expand navbar-dark">
     <ul class="navbar-nav">
       <li class="nav-item">
-        <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
+        <a class="nav-link" data-widget="pushmenu" href="#" role="button" aria-label="Recolher ou expandir o menu"><i class="fas fa-bars" aria-hidden="true"></i></a>
       </li>
     </ul>
     <ul class="navbar-nav ml-auto">
@@ -270,14 +296,17 @@
         <span class="nav-link">{{ usuario_nome }}</span>
       </li>
       <li class="nav-item">
-        <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt mr-1"></i>Sair</a>
+        <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt mr-1" aria-hidden="true"></i>Sair</a>
       </li>
     </ul>
   </nav>
 
   <aside class="main-sidebar sidebar-dark-primary elevation-4">
     <a href="#" class="brand-link">
-      <img src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP" class="brand-logo ml-3">
+      <!-- width/height batem com a proporção real do arquivo (900x439):
+           o navegador reserva o espaço antes de a imagem chegar, então
+           o cabeçalho não "pula" no carregamento. -->
+      <img src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP" class="brand-logo ml-3" width="66" height="32">
     </a>
 
     <div class="sidebar">
@@ -286,19 +315,19 @@
           <li class="nav-header">ATENDIMENTO</li>
           <li class="nav-item">
             <a href="#" class="nav-link active" data-view="casos">
-              <i class="nav-icon fas fa-folder-open"></i>
+              <i class="nav-icon fas fa-folder-open" aria-hidden="true"></i>
               <p>Casos</p>
             </a>
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="clientes">
-              <i class="nav-icon fas fa-users"></i>
+              <i class="nav-icon fas fa-users" aria-hidden="true"></i>
               <p>Clientes</p>
             </a>
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="pendentes">
-              <i class="nav-icon fas fa-inbox"></i>
+              <i class="nav-icon fas fa-inbox" aria-hidden="true"></i>
               <p>
                 Aprovações Pendentes
                 <span class="right badge badge-danger" id="badge-pendentes" style="display:none"></span>
@@ -307,7 +336,7 @@
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="documentos">
-              <i class="nav-icon fas fa-file-signature"></i>
+              <i class="nav-icon fas fa-file-signature" aria-hidden="true"></i>
               <p>
                 Documentos a Aprovar
                 <span class="right badge badge-warning" id="badge-documentos" style="display:none"></span>
@@ -317,32 +346,32 @@
           <li class="nav-header">CLUBE</li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="campeonatos">
-              <i class="nav-icon fas fa-trophy"></i>
+              <i class="nav-icon fas fa-trophy" aria-hidden="true"></i>
               <p>Campeonatos</p>
             </a>
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="resultados">
-              <i class="nav-icon fas fa-list-ol"></i>
+              <i class="nav-icon fas fa-list-ol" aria-hidden="true"></i>
               <p>Resultados</p>
             </a>
           </li>
           <li class="nav-header">SISTEMA</li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="config">
-              <i class="nav-icon fas fa-cog"></i>
+              <i class="nav-icon fas fa-cog" aria-hidden="true"></i>
               <p>Configurações</p>
             </a>
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="status">
-              <i class="nav-icon fas fa-server"></i>
+              <i class="nav-icon fas fa-server" aria-hidden="true"></i>
               <p>Status do Projeto</p>
             </a>
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="testar">
-              <i class="nav-icon fas fa-flask"></i>
+              <i class="nav-icon fas fa-flask" aria-hidden="true"></i>
               <p>Testar Pipeline</p>
             </a>
           </li>
@@ -394,7 +423,7 @@
     <div id="view-caso-detalhe" class="view">
       <div class="content-header">
         <div class="container-fluid">
-          <button class="btn btn-outline-secondary btn-sm" id="voltar-casos"><i class="fas fa-arrow-left mr-1"></i>Voltar para Casos</button>
+          <button class="btn btn-outline-secondary btn-sm" id="voltar-casos"><i class="fas fa-arrow-left mr-1" aria-hidden="true"></i>Voltar para Casos</button>
         </div>
       </div>
       <div class="content">
@@ -516,7 +545,10 @@
                 <textarea id="documento-observacoes" class="form-control"></textarea>
               </div>
               <button class="btn btn-primary" id="salvar-documento">Enviar documento</button>
-              <span class="text-muted ml-2" id="salvar-documento-status"></span>
+              <!-- aria-live: o texto aparece depois da resposta do
+                   servidor. Sem isto, quem usa leitor de tela não é
+                   avisado de que salvou (ou de que falhou). -->
+              <span class="text-muted ml-2" id="salvar-documento-status" aria-live="polite"></span>
             </div>
           </div>
 
@@ -568,7 +600,7 @@
     <div id="view-cliente-detalhe" class="view">
       <div class="content-header">
         <div class="container-fluid">
-          <button class="btn btn-outline-secondary btn-sm" id="voltar-clientes"><i class="fas fa-arrow-left mr-1"></i>Voltar para Clientes</button>
+          <button class="btn btn-outline-secondary btn-sm" id="voltar-clientes"><i class="fas fa-arrow-left mr-1" aria-hidden="true"></i>Voltar para Clientes</button>
         </div>
       </div>
       <div class="content">
@@ -686,7 +718,7 @@
             <div class="card-header">
               <h3 class="card-title" id="resultados-titulo">Resultados</h3>
               <div class="card-tools">
-                <button class="btn btn-tool" id="fechar-resultados"><i class="fas fa-times"></i></button>
+                <button class="btn btn-tool" id="fechar-resultados" aria-label="Fechar os resultados deste campeonato"><i class="fas fa-times" aria-hidden="true"></i></button>
               </div>
             </div>
             <div class="card-body table-responsive p-0">
@@ -884,10 +916,10 @@
   <div class="visualizador-barra">
     <span class="visualizador-nome" id="visualizador-nome"></span>
     <a class="btn btn-light btn-sm" id="visualizador-baixar" href="#" download>
-      <i class="fas fa-download mr-1"></i>Baixar
+      <i class="fas fa-download mr-1" aria-hidden="true"></i>Baixar
     </a>
     <button type="button" class="btn btn-light btn-sm" id="visualizador-fechar" title="Fechar (Esc)">
-      <i class="fas fa-times mr-1"></i>Fechar
+      <i class="fas fa-times mr-1" aria-hidden="true"></i>Fechar
     </button>
   </div>
   <div class="visualizador-corpo" id="visualizador-corpo"></div>
@@ -1002,9 +1034,11 @@ async function carregarCasos() {
     </tr>
   `).join("") : `<tr><td colspan="7" class="text-muted">Nenhum caso encontrado com esses filtros.</td></tr>`;
 
-  $("#casos-body").querySelectorAll(".linha-caso").forEach(tr => {
-    tr.addEventListener("click", () => abrirCaso(tr.dataset.casoId));
-  });
+  ligarLinhasClicaveis(
+    $("#casos-body"), ".linha-caso",
+    tr => abrirCaso(tr.dataset.casoId),
+    tr => `Abrir caso ${tr.dataset.casoId}`,
+  );
 }
 
 $("#filtro-status").addEventListener("change", carregarCasos);
@@ -1091,8 +1125,9 @@ async function abrirCaso(casoId) {
       <td>${doc.link_arquivo
         ? `<button type="button" class="btn btn-link p-0 btn-ver-documento"
              data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(doc.nome_arquivo || '')}">${escapeHtml(doc.nome_arquivo || 'arquivo')}</button>
-           <a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo" class="btn btn-outline-secondary btn-sm ml-2" title="Baixar o arquivo">
-             <i class="fas fa-download"></i>
+           <a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo" class="btn btn-outline-secondary btn-sm ml-2"
+              title="Baixar o arquivo" aria-label="Baixar ${escapeHtml(doc.nome_arquivo || 'o arquivo')}">
+             <i class="fas fa-download" aria-hidden="true"></i>
            </a>`
         : escapeHtml(doc.nome_arquivo || '—')}</td>
       <td>${escapeHtml(doc.status)}</td>
@@ -1373,8 +1408,8 @@ async function carregarCampeonatos() {
       <td>${c.data_fim !== c.data_inicio ? dataBr(c.data_fim) : '—'}</td>
       <td>${escapeHtml(c.local || '—')}</td>
       <td class="text-right">
-        <button class="btn btn-outline-secondary btn-sm btn-editar-campeonato"><i class="fas fa-pen"></i></button>
-        <button class="btn btn-outline-danger btn-sm btn-remover-campeonato"><i class="fas fa-trash"></i></button>
+        <button class="btn btn-outline-secondary btn-sm btn-editar-campeonato" aria-label="Editar ${escapeHtml(c.nome)}"><i class="fas fa-pen" aria-hidden="true"></i></button>
+        <button class="btn btn-outline-danger btn-sm btn-remover-campeonato" aria-label="Remover ${escapeHtml(c.nome)}"><i class="fas fa-trash" aria-hidden="true"></i></button>
       </td>
     </tr>
   `).join("") : `<tr><td colspan="5" class="text-muted">Nenhum campeonato cadastrado para ${ano}.</td></tr>`;
@@ -1456,8 +1491,8 @@ async function carregarResultados() {
       <td>${escapeHtml(res.pontuacao || "—")}</td>
       <td>${escapeHtml(res.observacoes || "—")}</td>
       <td class="text-right">
-        <button class="btn btn-outline-secondary btn-sm btn-editar-resultado"><i class="fas fa-pen"></i></button>
-        <button class="btn btn-outline-danger btn-sm btn-remover-resultado"><i class="fas fa-trash"></i></button>
+        <button class="btn btn-outline-secondary btn-sm btn-editar-resultado" aria-label="Editar o resultado de ${escapeHtml(res.nome_atirador)}"><i class="fas fa-pen" aria-hidden="true"></i></button>
+        <button class="btn btn-outline-danger btn-sm btn-remover-resultado" aria-label="Remover o resultado de ${escapeHtml(res.nome_atirador)}"><i class="fas fa-trash" aria-hidden="true"></i></button>
       </td>
     </tr>
   `).join("") : `<tr><td colspan="6" class="text-muted">Nenhum resultado cadastrado ainda pra este campeonato.</td></tr>`;
@@ -1631,7 +1666,7 @@ function renderChecklist(processo) {
             <div class="mt-1 form-inline" style="gap:.4rem">
               <button type="button" class="btn btn-outline-secondary btn-sm btn-ver-documento"
                 data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(doc.nome_arquivo || '')}">
-                <i class="fas fa-file mr-1"></i>${escapeHtml(doc.nome_arquivo || doc.documento_id)}
+                <i class="fas fa-file mr-1" aria-hidden="true"></i>${escapeHtml(doc.nome_arquivo || doc.documento_id)}
               </button>
               <button type="button" class="btn btn-success btn-sm btn-aprovar-checklist" data-dck="${doc.documento_checklist_id}">Aprovar</button>
               <input type="text" class="form-control form-control-sm motivo-checklist" data-dck="${doc.documento_checklist_id}"
@@ -1646,7 +1681,7 @@ function renderChecklist(processo) {
           ${item.motivo_recusa ? `<div class="small text-danger mt-1">Recusado antes: ${escapeHtml(item.motivo_recusa)}</div>` : ""}
           <div class="mt-1 form-inline">
             <select class="form-control form-control-sm mr-2 select-doc-checklist" data-dex="${item.documento_exigido_id}" style="min-width:220px">
-              <option value="">selecione um documento recebido...</option>
+              <option value="">selecione um documento recebido…</option>
               ${opcoesDocumentos}
             </select>
             <button type="button" class="btn btn-outline-primary btn-sm btn-marcar-checklist" data-dex="${item.documento_exigido_id}">Marcar</button>
@@ -1769,9 +1804,11 @@ async function carregarClientesLista() {
     </tr>
   `).join("") : `<tr><td colspan="6" class="text-muted">Nenhum cliente encontrado.</td></tr>`;
 
-  $("#clientes-lista-body").querySelectorAll(".linha-cliente").forEach(tr => {
-    tr.addEventListener("click", () => abrirCliente(tr.dataset.clienteId));
-  });
+  ligarLinhasClicaveis(
+    $("#clientes-lista-body"), ".linha-cliente",
+    tr => abrirCliente(tr.dataset.clienteId),
+    tr => `Abrir cliente ${tr.dataset.clienteId}`,
+  );
 }
 
 let buscaClienteTimeout;
@@ -1820,9 +1857,11 @@ async function abrirCliente(clienteId) {
     </tr>
   `).join("") : `<tr><td colspan="6" class="text-muted">Nenhum caso para este cliente.</td></tr>`;
 
-  $("#cliente-casos-body").querySelectorAll(".linha-caso").forEach(tr => {
-    tr.addEventListener("click", () => abrirCaso(tr.dataset.casoId));
-  });
+  ligarLinhasClicaveis(
+    $("#cliente-casos-body"), ".linha-caso",
+    tr => abrirCaso(tr.dataset.casoId),
+    tr => `Abrir caso ${tr.dataset.casoId}`,
+  );
 
   renderDocumentosDoCliente(d.documentos || []);
 }
@@ -1857,14 +1896,14 @@ function renderDocumentosDoCliente(documentos) {
         ? `<button type="button" class="btn miniatura btn-ver-documento"
              data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(nome)}"
              title="Ver em tamanho real">
-             <img src="${url}?inline=1" alt="${escapeHtml(nome)}"
+             <img src="${url}?inline=1" alt="${escapeHtml(nome)}" width="200" height="150" loading="lazy"
                style="width:200px; height:150px; object-fit:cover; border-radius:4px 4px 0 0; display:block">
            </button>`
         : `<button type="button" class="btn miniatura d-flex align-items-center justify-content-center btn-ver-documento"
              data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(nome)}"
              style="width:200px; height:150px; background:#f4f6f9; border-radius:4px 4px 0 0"
-             title="Ver o documento">
-             <i class="fas fa-file-pdf fa-3x text-secondary"></i>
+             title="Ver o documento" aria-label="Ver ${escapeHtml(nome)}">
+             <i class="fas fa-file-pdf fa-3x text-secondary" aria-hidden="true"></i>
            </button>`;
 
     const selo = doc.status_conferencia === "Aguardando aprovação"
@@ -1887,7 +1926,7 @@ function renderDocumentosDoCliente(documentos) {
           <p class="mb-2">${selo}</p>
           ${doc.tem_arquivo ? `
             <a href="${url}" class="btn btn-outline-primary btn-sm btn-block">
-              <i class="fas fa-download mr-1"></i>Baixar
+              <i class="fas fa-download mr-1" aria-hidden="true"></i>Baixar
             </a>` : ""}
           ${doc.caso_id ? `
             <button class="btn btn-link btn-sm btn-block p-0 mt-1 btn-ir-caso" data-caso="${escapeHtml(doc.caso_id)}">
@@ -2001,7 +2040,7 @@ async function carregarConfiguracoes() {
 
   $("#config-lista").innerHTML = `
     <div class="cfg-busca">
-      <i class="fas fa-search"></i>
+      <i class="fas fa-search" aria-hidden="true"></i>
       <input type="search" id="cfg-filtro" class="form-control form-control-sm"
         placeholder="Buscar configuração" aria-label="Buscar configuração">
       <span class="text-muted" id="cfg-contagem">${configs.length} configurações</span>
@@ -2023,7 +2062,7 @@ async function carregarConfiguracoes() {
               ${campoDaConfig(c)}
               <div class="cfg-acoes">
                 <button class="btn btn-sm btn-primary cfg-salvar" data-cfg="${c.config_id}" hidden>Salvar</button>
-                <span class="cfg-status" id="cfg-status-${c.config_id}"></span>
+                <span class="cfg-status" id="cfg-status-${c.config_id}" aria-live="polite"></span>
               </div>
             </div>
             <label class="cfg-emuso" title="Desmarcado, este valor existe no cadastro mas a IA ignora">
@@ -2121,6 +2160,27 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
+// Linha de tabela que abre um registro. Clicar na linha inteira é bom
+// com mouse, mas <tr> não recebe foco -- de teclado, a lista de casos
+// era um beco sem saída. Aqui a linha vira alvo focável e responde a
+// Enter e Espaço, como um botão.
+//
+// Espaço precisa de preventDefault: sem isso a página rola junto.
+function ligarLinhasClicaveis(container, seletor, aoAtivar, descricao) {
+  container.querySelectorAll(seletor).forEach(tr => {
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    if (descricao) tr.setAttribute("aria-label", descricao(tr));
+    tr.addEventListener("click", () => aoAtivar(tr));
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        aoAtivar(tr);
+      }
+    });
+  });
+}
+
 // "CAS-000005" -> "CAS-05" (mantém o prefixo, tira os zeros à esquerda
 // até sobrar no mínimo 2 dígitos). Só para exibição -- o ID completo
 // continua sendo o real em toda chamada de API.
@@ -2179,14 +2239,14 @@ function documentosHtml(documentos) {
     const dados = `data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(nome)}"`;
     const visual = ehImagem
       ? `<button type="button" class="btn miniatura btn-ver-documento" ${dados} title="${escapeHtml(nome)}">
-          <img src="${url}" alt="${escapeHtml(nome)}" style="max-width:160px; max-height:160px; object-fit:cover; border:1px solid #dee2e6; border-radius:4px;">
+          <img src="${url}" alt="${escapeHtml(nome)}" loading="lazy" style="max-width:160px; max-height:160px; object-fit:cover; border:1px solid #dee2e6; border-radius:4px;">
         </button>`
-      : `<button type="button" class="btn btn-outline-secondary btn-sm btn-ver-documento" ${dados}>
-          <i class="fas fa-file mr-1"></i>${escapeHtml(nome)}
+      : `<button type="button" class="btn btn-outline-secondary btn-sm btn-ver-documento" ${dados} aria-label="Ver ${escapeHtml(nome)}">
+          <i class="fas fa-file mr-1" aria-hidden="true"></i>${escapeHtml(nome)}
         </button>`;
     return `<div class="text-center">
         ${visual}
-        <div><a href="${urlDownload}" class="btn btn-link btn-sm p-0 mt-1"><i class="fas fa-download mr-1"></i>Baixar</a></div>
+        <div><a href="${urlDownload}" class="btn btn-link btn-sm p-0 mt-1"><i class="fas fa-download mr-1" aria-hidden="true"></i>Baixar</a></div>
       </div>`;
   }).join("");
   return `
@@ -2306,7 +2366,7 @@ async function carregarPendentes() {
         <div class="mt-3 d-flex align-items-center" style="gap:0.6rem">
           <button class="btn btn-success" onclick="aprovarPendente('${p.mensagem_id}')">Aprovar e enviar</button>
           <button class="btn btn-outline-secondary" onclick="rejeitarPendente('${p.mensagem_id}', this)">Rejeitar</button>
-          <span class="text-muted" id="status-${p.mensagem_id}"></span>
+          <span class="text-muted" id="status-${p.mensagem_id}" aria-live="polite"></span>
         </div>
       </div>
     </div>
@@ -2405,7 +2465,7 @@ function smallBox(cor, numero, label) {
     <div class="col-lg-4 col-6">
       <div class="small-box bg-${cor}">
         <div class="inner"><h3>${numero}</h3><p>${label}</p></div>
-        <div class="icon"><i class="fas fa-chart-bar"></i></div>
+        <div class="icon"><i class="fas fa-chart-bar" aria-hidden="true"></i></div>
       </div>
     </div>
   `;
@@ -2422,11 +2482,11 @@ async function carregarStatus() {
     smallBox("warning", `${modulosProntos}/${d.modulos.length}`, "Módulos Motor IA");
 
   $("#modulos").innerHTML = d.modulos.map(m => `
-    <p class="mb-2"><i class="fas ${m.existe ? 'fa-check-circle text-success' : 'fa-circle text-muted'} mr-2"></i>${m.nome}</p>
+    <p class="mb-2"><i class="fas ${m.existe ? 'fa-check-circle text-success' : 'fa-circle text-muted'} mr-2" aria-hidden="true"></i>${m.nome}</p>
   `).join("");
 
   $("#integracoes").innerHTML = d.integracoes.map(i => `
-    <p class="mb-2"><i class="fas ${i.configurado ? 'fa-check-circle text-success' : 'fa-circle text-muted'} mr-2"></i>${i.nome}${i.configurado ? '' : ' <span class="badge badge-light">modo simulado</span>'}</p>
+    <p class="mb-2"><i class="fas ${i.configurado ? 'fa-check-circle text-success' : 'fa-circle text-muted'} mr-2" aria-hidden="true"></i>${i.nome}${i.configurado ? '' : ' <span class="badge badge-light">modo simulado</span>'}</p>
   `).join("");
 
   const logIa = d.log_ia;
