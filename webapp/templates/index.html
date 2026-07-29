@@ -208,6 +208,13 @@
     .cfg-linha { grid-template-columns: 1fr; gap: var(--e2); }
   }
 
+  /* Formulário "Novo usuário": mesma linha, campo cresce e o resto
+     fica do tamanho do conteúdo -- não é uma tabela, então não precisa
+     da grade de 3 colunas do .cfg-linha. */
+  .usr-novo { display: flex; gap: var(--e2); align-items: center; flex-wrap: wrap; }
+  .usr-novo input { flex: 1; min-width: 160px; }
+  .usr-novo select { width: auto; }
+
   /* Linha de tabela que abre um registro ao clique. O clique na linha
      inteira é conveniente com mouse, mas sozinho deixa a navegação por
      teclado sem saída -- `<tr>` não recebe foco. Daí tabindex + tratador
@@ -357,12 +364,14 @@
             </a>
           </li>
           <li class="nav-header">SISTEMA</li>
+          {% if usuario_papel == 'Gestor' %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="config">
               <i class="nav-icon fas fa-cog" aria-hidden="true"></i>
               <p>Configurações</p>
             </a>
           </li>
+          {% endif %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="status">
               <i class="nav-icon fas fa-server" aria-hidden="true"></i>
@@ -902,6 +911,25 @@
       </div>
       <div class="content">
         <div class="container-fluid" id="config-lista"><p class="text-muted">Carregando…</p></div>
+        <div class="container-fluid">
+          <section class="cfg-grupo">
+            <h2 class="cfg-grupo-titulo">Usuários</h2>
+            <p class="cfg-ajuda mb-3">Quem acessa o painel e o que cada um pode fazer. Depois de criado, rode <code>definir_senha</code> no terminal para liberar o login dessa pessoa.</p>
+            <div class="cartao-cfg p-3 mb-4">
+              <form id="usr-form-novo" class="usr-novo">
+                <input type="text" id="usr-novo-nome" class="form-control form-control-sm" placeholder="Nome" aria-label="Nome do novo usuário" autocomplete="off" required>
+                <input type="email" id="usr-novo-email" class="form-control form-control-sm" placeholder="E-mail" aria-label="E-mail do novo usuário" autocomplete="off" spellcheck="false" required>
+                <select id="usr-novo-papel" class="form-control form-control-sm" aria-label="Papel do novo usuário">
+                  <option value="Atendente">Atendente</option>
+                  <option value="Gestor">Gestor</option>
+                </select>
+                <button type="submit" class="btn btn-sm btn-primary">Criar usuário</button>
+                <span class="cfg-status" id="usr-novo-status" aria-live="polite"></span>
+              </form>
+            </div>
+            <div class="cartao-cfg" id="usuarios-lista"><p class="text-muted p-3 mb-0">Carregando…</p></div>
+          </section>
+        </div>
       </div>
     </div>
 
@@ -932,6 +960,12 @@
 <script>
 const $ = (sel) => document.querySelector(sel);
 let casoDocumentosAtuais = [];
+
+// Papel e ID de quem está logado -- usados para esconder botão de
+// remoção (Atendente não vê, mesmo que o backend já barre) e para
+// impedir que o Gestor mude o próprio acesso na tela de Usuários.
+const USUARIO_PAPEL = {{ usuario_papel | tojson }};
+const USUARIO_ATUAL_ID = {{ usuario_id | tojson }};
 
 // --------------------------------------------------------------------
 // Visualizador de documento (abre por cima do painel, sempre com saída)
@@ -994,7 +1028,7 @@ document.querySelectorAll("[data-view]").forEach(btn => {
     if (btn.dataset.view === "pendentes") carregarPendentes();
     if (btn.dataset.view === "documentos") carregarDocumentosPendentes();
     if (btn.dataset.view === "clientes") carregarClientesLista();
-    if (btn.dataset.view === "config") carregarConfiguracoes();
+    if (btn.dataset.view === "config") { carregarConfiguracoes(); carregarUsuarios(); }
     if (btn.dataset.view === "campeonatos") carregarCampeonatos();
     if (btn.dataset.view === "resultados") carregarResultadosCampeonatosLista();
   });
@@ -1409,7 +1443,7 @@ async function carregarCampeonatos() {
       <td>${escapeHtml(c.local || '—')}</td>
       <td class="text-right">
         <button class="btn btn-outline-secondary btn-sm btn-editar-campeonato" aria-label="Editar ${escapeHtml(c.nome)}"><i class="fas fa-pen" aria-hidden="true"></i></button>
-        <button class="btn btn-outline-danger btn-sm btn-remover-campeonato" aria-label="Remover ${escapeHtml(c.nome)}"><i class="fas fa-trash" aria-hidden="true"></i></button>
+        ${USUARIO_PAPEL === 'Gestor' ? `<button class="btn btn-outline-danger btn-sm btn-remover-campeonato" aria-label="Remover ${escapeHtml(c.nome)}"><i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
       </td>
     </tr>
   `).join("") : `<tr><td colspan="5" class="text-muted">Nenhum campeonato cadastrado para ${ano}.</td></tr>`;
@@ -1492,7 +1526,7 @@ async function carregarResultados() {
       <td>${escapeHtml(res.observacoes || "—")}</td>
       <td class="text-right">
         <button class="btn btn-outline-secondary btn-sm btn-editar-resultado" aria-label="Editar o resultado de ${escapeHtml(res.nome_atirador)}"><i class="fas fa-pen" aria-hidden="true"></i></button>
-        <button class="btn btn-outline-danger btn-sm btn-remover-resultado" aria-label="Remover o resultado de ${escapeHtml(res.nome_atirador)}"><i class="fas fa-trash" aria-hidden="true"></i></button>
+        ${USUARIO_PAPEL === 'Gestor' ? `<button class="btn btn-outline-danger btn-sm btn-remover-resultado" aria-label="Remover o resultado de ${escapeHtml(res.nome_atirador)}"><i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
       </td>
     </tr>
   `).join("") : `<tr><td colspan="6" class="text-muted">Nenhum resultado cadastrado ainda pra este campeonato.</td></tr>`;
@@ -1653,7 +1687,7 @@ function renderChecklist(processo) {
             ${item.documentos.filter(doc => doc.status === "Aprovado").map(doc => `
               <span class="badge badge-light mr-1">
                 ${escapeHtml(doc.nome_arquivo || doc.documento_id)}
-                <button type="button" class="btn-remover-checklist border-0 bg-transparent text-danger" data-dck="${doc.documento_checklist_id}" title="Remover marcação">&times;</button>
+                ${USUARIO_PAPEL === 'Gestor' ? `<button type="button" class="btn-remover-checklist border-0 bg-transparent text-danger" data-dck="${doc.documento_checklist_id}" title="Remover marcação">&times;</button>` : ''}
               </span>
             `).join("")}
           </div>
@@ -2153,6 +2187,98 @@ async function salvarConfig(configId) {
   if (botao) botao.hidden = true;
   setTimeout(() => { statusEl.textContent = ""; }, 2500);
 }
+
+async function carregarUsuarios() {
+  const r = await fetch("/api/usuarios");
+  const usuarios = await r.json();
+
+  $("#usuarios-lista").innerHTML = usuarios.length ? usuarios.map(u => {
+    const proprio = u.usuario_id === USUARIO_ATUAL_ID;
+    return `
+      <div class="cfg-linha" data-usr="${u.usuario_id}">
+        <div class="cfg-info">
+          <span class="cfg-nome">${escapeHtml(u.nome)}</span>
+          <span class="cfg-chave-tag">${escapeHtml(u.email)}</span>
+          ${!u.login_configurado ? '<p class="cfg-ajuda">Login ainda não configurado -- rode definir_senha no terminal.</p>' : ''}
+          ${proprio ? '<p class="cfg-ajuda">Você não pode alterar seu próprio acesso.</p>' : ''}
+        </div>
+        <div class="cfg-controle">
+          <select class="form-control form-control-sm usr-campo" data-campo="papel" aria-label="Papel de ${escapeHtml(u.nome)}" ${proprio ? 'disabled' : ''}>
+            <option value="Gestor" ${u.papel === 'Gestor' ? 'selected' : ''}>Gestor</option>
+            <option value="Atendente" ${u.papel === 'Atendente' ? 'selected' : ''}>Atendente</option>
+          </select>
+          <div class="cfg-acoes">
+            <button class="btn btn-sm btn-primary usr-salvar" hidden>Salvar</button>
+            <span class="cfg-status" data-status aria-live="polite"></span>
+          </div>
+        </div>
+        <label class="cfg-emuso" title="Desmarcado, a pessoa não consegue mais entrar no painel">
+          <input type="checkbox" class="usr-campo" data-campo="ativo" ${u.ativo === 'Sim' ? 'checked' : ''} ${proprio ? 'disabled' : ''}>
+          Ativo
+        </label>
+      </div>
+    `;
+  }).join("") : '<p class="text-muted p-3 mb-0">Nenhum usuário cadastrado.</p>';
+
+  ligarTelaUsuarios();
+}
+
+function ligarTelaUsuarios() {
+  $("#usuarios-lista").querySelectorAll(".cfg-linha").forEach(linha => {
+    const salvar = linha.querySelector(".usr-salvar");
+    linha.querySelectorAll(".usr-campo").forEach(campo => {
+      campo.addEventListener("change", () => { salvar.hidden = false; });
+    });
+    salvar.addEventListener("click", () => salvarUsuario(linha));
+  });
+}
+
+async function salvarUsuario(linha) {
+  const usuarioId = linha.dataset.usr;
+  const papel = linha.querySelector('[data-campo="papel"]').value;
+  const ativo = linha.querySelector('[data-campo="ativo"]').checked ? "Sim" : "Não";
+  const statusEl = linha.querySelector("[data-status]");
+  const botao = linha.querySelector(".usr-salvar");
+  statusEl.textContent = "Salvando…";
+
+  const r = await fetch(`/api/usuarios/${usuarioId}`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ papel, ativo }),
+  });
+  const d = await r.json();
+  if (!r.ok) {
+    statusEl.textContent = "";
+    alert("Erro ao salvar: " + d.erro);
+    return;
+  }
+  statusEl.textContent = "Salvo";
+  botao.hidden = true;
+  setTimeout(() => { statusEl.textContent = ""; }, 2500);
+}
+
+$("#usr-form-novo").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const statusEl = $("#usr-novo-status");
+  statusEl.textContent = "Criando…";
+
+  const r = await fetch("/api/usuarios", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      nome: $("#usr-novo-nome").value.trim(),
+      email: $("#usr-novo-email").value.trim(),
+      papel: $("#usr-novo-papel").value,
+    }),
+  });
+  const d = await r.json();
+  if (!r.ok) {
+    statusEl.textContent = "";
+    alert("Erro ao criar usuário: " + d.erro);
+    return;
+  }
+  statusEl.textContent = "";
+  $("#usr-form-novo").reset();
+  carregarUsuarios();
+});
 
 function escapeHtml(s) {
   const d = document.createElement("div");

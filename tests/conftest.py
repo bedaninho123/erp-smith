@@ -184,14 +184,20 @@ def banco(tmp_path):
     con.execute(
         "INSERT INTO usuario (usuario_id, empresa_id, nome, email, papel, ativo, criado_em) "
         "VALUES (?,?,?,?,?,?,?)",
-        ("USR-000001", EMPRESA_A, "Atendente Teste", "atendente@example.com",
-         "Atendimento", "Sim", AGORA),
+        ("USR-000001", EMPRESA_A, "Gestor Teste", "gestor@example.com",
+         "Gestor", "Sim", AGORA),
     )
     con.execute(
         "INSERT INTO usuario (usuario_id, empresa_id, nome, email, papel, ativo, criado_em) "
         "VALUES (?,?,?,?,?,?,?)",
         ("USR-000002", EMPRESA_B, "Atendente da Outra", "atendente@example.com",
-         "Atendimento", "Sim", AGORA),
+         "Atendente", "Sim", AGORA),
+    )
+    con.execute(
+        "INSERT INTO usuario (usuario_id, empresa_id, nome, email, papel, ativo, criado_em) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("USR-000003", EMPRESA_A, "Atendente Teste", "atendente@example.com",
+         "Atendente", "Sim", AGORA),
     )
 
     arquivo_a = tmp_path / "documento_do_cliente_a.pdf"
@@ -245,11 +251,11 @@ def portal(banco):
 
 @pytest.fixture
 def painel(banco):
-    """Cliente HTTP do painel administrativo logado na EMPRESA_A.
-
-    Vale a mesma observação do fixture do Portal: a sessão é montada na
-    mão porque o alvo aqui é o filtro por empresa nas rotas, não o
-    formulário de login.
+    """Cliente HTTP do painel administrativo logado na EMPRESA_A, como
+    Gestor (USR-000001) -- acesso total, é o papel usado por padrão em
+    todo teste que não é sobre a restrição em si. Vale a mesma observação
+    do fixture do Portal: a sessão é montada na mão porque o alvo aqui é
+    o filtro por empresa nas rotas, não o formulário de login.
     """
     from webapp.app import app
 
@@ -257,8 +263,26 @@ def painel(banco):
     cliente_http = app.test_client()
     with cliente_http.session_transaction() as sessao:
         sessao["usuario_id"] = "USR-000001"
+        sessao["usuario_nome"] = "Gestor Teste"
+        sessao["empresa_id"] = EMPRESA_A
+        sessao["papel"] = "Gestor"
+    return cliente_http
+
+
+@pytest.fixture
+def painel_atendente(banco):
+    """Cliente HTTP do painel logado na EMPRESA_A como Atendente
+    (USR-000003) -- usado só pelos testes de restrição por papel
+    (tests/test_papeis.py)."""
+    from webapp.app import app
+
+    app.config.update(TESTING=True)
+    cliente_http = app.test_client()
+    with cliente_http.session_transaction() as sessao:
+        sessao["usuario_id"] = "USR-000003"
         sessao["usuario_nome"] = "Atendente Teste"
         sessao["empresa_id"] = EMPRESA_A
+        sessao["papel"] = "Atendente"
     return cliente_http
 
 

@@ -34,6 +34,7 @@ from core.limitador_tentativas import excedeu_limite
 from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
 from core.motor_notificacoes import destinatario_para_notificar
 from core.motor_processos import atualizar_processo, criar_processo
+from core.motor_usuarios import atualizar_ativo, atualizar_papel, criar_usuario, listar_usuarios
 from domain.clube_tiro.motor_campeonatos import (
     atualizar_campeonato, criar_campeonato, listar_campeonatos, remover_campeonato,
 )
@@ -119,6 +120,22 @@ def empresa_atual() -> str:
     return session["empresa_id"]
 
 
+def gestor_required(f):
+    """Some depois de @login_required -- ele já garante que existe sessão.
+    Papéis e permissões de verdade (core/motor_usuarios.py): Gestor tem
+    acesso total, Atendente opera casos/clientes/documentos sem acesso
+    administrativo. Sessão antiga (de antes desta mudança) não tem
+    'papel' -- session.get() trata isso como não-Gestor, não como erro."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if session.get("papel") != "Gestor":
+            if request.path.startswith("/api/"):
+                return jsonify(erro="Acesso restrito a Gestor."), 403
+            return redirect(url_for("index"))
+        return f(*args, **kwargs)
+    return wrapper
+
+
 def _notificar_cliente_mudanca_status(empresa_id: str, caso_id: str) -> None:
     """E-mail genérico (nunca revela o novo status no corpo -- domínio
     regulado de arma de fogo) avisando o cliente que algo mudou no
@@ -167,7 +184,7 @@ def login():
         con = sqlite3.connect(CORE_DB)
         con.row_factory = sqlite3.Row
         linha = con.execute(
-            "SELECT u.usuario_id, u.nome, u.senha_hash, u.empresa_id FROM usuario u "
+            "SELECT u.usuario_id, u.nome, u.senha_hash, u.empresa_id, u.papel FROM usuario u "
             "JOIN empresa e ON e.empresa_id = u.empresa_id "
             "WHERE lower(u.email) = ? AND u.ativo = 'Sim' AND e.ativo = 'Sim'",
             (email,),
@@ -177,6 +194,7 @@ def login():
             session["usuario_id"] = linha["usuario_id"]
             session["usuario_nome"] = linha["nome"]
             session["empresa_id"] = linha["empresa_id"]
+            session["papel"] = linha["papel"]
             return redirect(request.args.get("proximo") or url_for("index"))
         erro = "E-mail ou senha incorretos."
     return render_template("login.html", erro=erro)
@@ -191,7 +209,12 @@ def logout():
 @app.route("/")
 @login_required
 def index():
-    return render_template("index.html", usuario_nome=session.get("usuario_nome"))
+    return render_template(
+        "index.html",
+        usuario_nome=session.get("usuario_nome"),
+        usuario_id=session.get("usuario_id"),
+        usuario_papel=session.get("papel"),
+    )
 
 
 @app.route("/api/status")
@@ -614,6 +637,7 @@ def checklist_recusar(documento_checklist_id):
 
 @app.route("/api/checklist/<documento_checklist_id>/remover", methods=["POST"])
 @login_required
+@gestor_required
 def checklist_desmarcar(documento_checklist_id):
     try:
         motor_checklist.desmarcar(empresa_atual(), documento_checklist_id)
@@ -815,6 +839,7 @@ def cliente_detalhe(cliente_id):
 
 @app.route("/api/configuracoes")
 @login_required
+@gestor_required
 def configuracoes_lista():
     empresa_id = empresa_atual()
     con = conectar(empresa_id)
@@ -828,6 +853,7 @@ def configuracoes_lista():
 
 @app.route("/api/configuracoes/<config_id>", methods=["POST"])
 @login_required
+@gestor_required
 def configuracoes_atualizar(config_id):
     corpo = request.get_json(force=True)
     valor = corpo.get("valor")
@@ -856,6 +882,49 @@ def configuracoes_atualizar(config_id):
     )
     con.commit()
     con.close()
+    return jsonify(ok=True)
+
+
+@app.route("/api/usuarios")
+@login_required
+@gestor_required
+def usuarios_lista():
+    return jsonify(listar_usuarios(empresa_atual()))
+
+
+@app.route("/api/usuarios", methods=["POST"])
+@login_required
+@gestor_required
+def usuarios_criar():
+    corpo = request.get_json(force=True)
+    try:
+        usuario = criar_usuario(
+            empresa_atual(), corpo.get("nome"), corpo.get("email"), corpo.get("papel"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(usuario), 201
+
+
+@app.route("/api/usuarios/<usuario_id>", methods=["POST"])
+@login_required
+@gestor_required
+def usuarios_atualizar(usuario_id):
+    # Gestor não pode mexer no próprio acesso -- senão a empresa fica sem
+    # ninguém que consiga reverter um engano (rebaixar ou desativar a si
+    # mesmo por acidente e trancar a própria saída da tela de Usuários).
+    if usuario_id == session.get("usuario_id"):
+        return jsonify(erro="Você não pode alterar seu próprio acesso."), 400
+
+    corpo = request.get_json(force=True)
+    empresa_id = empresa_atual()
+    try:
+        if "papel" in corpo:
+            atualizar_papel(empresa_id, usuario_id, corpo["papel"])
+        if "ativo" in corpo:
+            atualizar_ativo(empresa_id, usuario_id, corpo["ativo"])
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
     return jsonify(ok=True)
 
 
@@ -909,6 +978,7 @@ def campeonatos_atualizar(campeonato_id):
 
 @app.route("/api/campeonatos/<campeonato_id>/remover", methods=["POST"])
 @login_required
+@gestor_required
 def campeonatos_remover(campeonato_id):
     try:
         remover_campeonato(empresa_atual(), campeonato_id)
@@ -1001,6 +1071,7 @@ def resultados_atualizar(resultado_id):
 
 @app.route("/api/resultados/<resultado_id>/remover", methods=["POST"])
 @login_required
+@gestor_required
 def resultados_remover(resultado_id):
     try:
         remover_resultado(empresa_atual(), resultado_id)

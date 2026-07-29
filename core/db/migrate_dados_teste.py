@@ -98,9 +98,9 @@ def main():
         "INSERT INTO usuario (usuario_id, empresa_id, nome, email, papel, equipe, "
         "ativo, criado_em) VALUES (?,?,?,?,?,?,?,?)",
         [
-            ("USR-000001", EMPRESA, "Felipe", "bedaninho123@gmail.com", "Despachante",
+            ("USR-000001", EMPRESA, "Felipe", "bedaninho123@gmail.com", "Gestor",
              "Despachante", "Sim", "2026-07-22T00:00:00Z"),
-            ("USR-000002", EMPRESA, "Ana", "ana.despachante@smithclube.local", "Despachante",
+            ("USR-000002", EMPRESA, "Ana", "ana.despachante@smithclube.local", "Atendente",
              "Despachante", "Sim", "2026-07-22T00:00:00Z"),
         ],
     )

@@ -293,15 +293,16 @@ CREATE UNIQUE INDEX idx_memoria_ia_cliente_ativo ON memoria_ia(cliente_id) WHERE
 -- Fonte: docs/schema_historico_log_usuario.md.
 -- Diferente das tabelas anteriores, não existe aba própria na planilha
 -- para usuario/historico/log_ia — desenhadas a partir de 91_Padrao_IDs,
--- 92_Matriz_Dependencias e 95_Regras_Casos. Minima de propósito: papéis
--- e permissões de verdade ficam para a Fase 6 (PROJETO_1.md) -- ver
--- docs/schema_multi_tenant.md §9, que separa esse problema deste.
+-- 92_Matriz_Dependencias e 95_Regras_Casos.
 CREATE TABLE usuario (
     usuario_id    TEXT PRIMARY KEY,                  -- USR-000001
     empresa_id    TEXT NOT NULL REFERENCES empresa(empresa_id),
     nome          TEXT NOT NULL,
     email         TEXT NOT NULL,
-    papel         TEXT NOT NULL,                       -- texto livre (ex.: Despachante, Atendimento, Gestor)
+    -- Sem CHECK de propósito: os valores válidos ('Gestor', 'Atendente')
+    -- são validados em core/motor_usuarios.PAPEIS_VALIDOS, mesmo padrão
+    -- do status do Caso (validado em core/motor_casos.py, não no schema).
+    papel         TEXT NOT NULL,
     equipe        TEXT,
     ativo         TEXT NOT NULL DEFAULT 'Sim',
     criado_em     TEXT NOT NULL,                        -- ISO 8601

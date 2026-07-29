@@ -52,6 +52,7 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.gerar_clientes_ficticios   # aceita um empresa_id como argumento
 .venv\Scripts\python.exe -m core.db.popular_documentos_exigidos
 .venv\Scripts\python.exe -m core.db.migrar_aprovacao_documentos  # idempotente, roda sobre banco em uso
+.venv\Scripts\python.exe -m core.db.migrar_papeis_usuario         # idempotente, normaliza usuario.papel para Gestor/Atendente
 
 # Conferir se a tabela documento bate com os arquivos em disco (só relata, nunca apaga)
 .venv\Scripts\python.exe -m core.db.auditar_documentos
@@ -128,6 +129,37 @@ O Auditor (`motor_ia/auditor.py`) tem duas camadas: uma checagem determinística
 ### webapp/ é o painel administrativo real, não uma ferramenta descartável
 
 Flask + Jinja + JS puro (sem build step, sem framework front-end) servido via CDN para o tema AdminLTE 3. Autenticação por sessão simples (`werkzeug.security`, `usuario.senha_hash`) — sem biblioteca de auth adicional. Todas as rotas `/api/*` exigem login (`@login_required`); a senha de um usuário nunca é definida por código, só via `webapp/definir_senha.py` rodado interativamente pelo próprio usuário. A UI inteira é uma SPA de uma página só (`webapp/templates/index.html`) alternando divs `.view` via JS — não há rotas de URL por tela.
+
+### Dois papéis, Gestor e Atendente, validados em código, não no schema
+
+`usuario.papel` (2026-07-29) tem dois valores de verdade —
+`core/motor_usuarios.PAPEIS_VALIDOS` — Gestor (acesso total) e Atendente
+(opera casos, clientes e documentos, sem acesso administrativo). Mesmo
+padrão do `status` do Caso: a validação vive num motor do Core
+(`core/motor_usuarios.py`), não em `CHECK` no `schema.sql`.
+
+O papel vem para a sessão no login (`session["papel"]`) e o decorator
+`gestor_required` (`webapp/app.py`, sempre depois de `@login_required`)
+protege o que é administrativo: a tela de Configurações inteira (incluindo
+a própria gestão de usuários) e as três ações de remoção (checklist,
+campeonato, resultado). O resto do painel — casos, clientes, documentos,
+aprovar/recusar checklist, criar/editar campeonato e resultado — continua
+igual para os dois papéis. No template, os botões de remoção e o item de
+menu Configurações só renderizam para Gestor (`usuario_papel` no Jinja,
+`USUARIO_PAPEL` no JS) — reforço de interface, a trava de verdade é o
+decorator.
+
+Criar usuário é feito pela própria tela (Configurações → Usuários, Gestor
+only), mas isso não inclui senha: nasce com `senha_hash=NULL` ("login
+ainda não configurado") e continua exigindo `webapp/definir_senha.py`
+rodado pelo próprio dono — regra inegociável, não muda com esta mudança.
+Um Gestor não consegue mudar o próprio papel nem se desativar (bloqueio
+na rota, comparando `usuario_id` do alvo com `session["usuario_id"]`) —
+sem isso a empresa poderia ficar sem ninguém com acesso administrativo.
+
+Banco já em uso, com `usuario.papel` fora desses dois valores: rodar
+`core.db.migrar_papeis_usuario` (idempotente) — normaliza tudo para
+`'Gestor'`, e o próprio Gestor rebaixa quem quiser depois pela tela.
 
 ### O painel tem régua: tamanho e tipografia são regra no CSS, não escolha por tela
 

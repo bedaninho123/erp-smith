@@ -315,7 +315,9 @@ Esta máquina tem `token.json` do Gmail de verdade, e os testes do painel mudam 
 
 Fica para depois, e de propósito — são problemas diferentes que costumam ser confundidos com multi-tenancy:
 
-- **Papéis e permissões** (`usuario.papel` hoje é texto livre e ninguém consulta). É a Fase 6 também, mas é outra decisão: separa *o que cada pessoa pode fazer* de *que dado a empresa dela enxerga*.
 - **Billing / assinatura** — depende de `log_ia.empresa_id` existir primeiro
 - **Deploy e hospedagem** — hoje `127.0.0.1` (ver `project_portal_hospedagem_decisao`)
 - **Onboarding de nova empresa** (tela de cadastro, configuração inicial, serviços padrão)
+
+Papéis e permissões (`usuario.papel`) saíram desta lista em 2026-07-29 —
+ver `core/motor_usuarios.py` e o CLAUDE.md.
