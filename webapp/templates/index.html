@@ -115,15 +115,90 @@
     font-weight: 400; color: #232428;
   }
 
-  /* Exceção ao rótulo maiúsculo: a chave de configuração é
-     identificador, não etiqueta de campo -- é o que a pessoa procura
-     com o olho na tela, então vai em mono e caixa original. */
-  label.config-chave {
-    font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500;
-    text-transform: none; letter-spacing: 0; color: #232428; display: block;
-    margin-bottom: var(--e1);
+  /* ---------------- Tela de Configurações ----------------
+     Todas as 29 configurações têm valor de UMA linha (a maior tem 256
+     caracteres). A tela antiga dava a cada uma um <textarea> de altura
+     padrão dentro de um bloco próprio -- caixa enorme para guardar
+     "Fechado", e a tela inteira virava uma pilha alta demais para
+     enxergar duas configurações ao mesmo tempo.
+
+     Agora é uma linha por configuração: identidade à esquerda, controle
+     à direita, régua fina entre elas. O campo tem o tamanho do que ele
+     guarda, e o tipo sai do formato do valor (Sim/Não vira interruptor,
+     número vira campo curto). */
+
+  .cfg-busca {
+    display: flex; align-items: center; gap: var(--e2);
+    background: #fff; border: 1px solid var(--linha); border-radius: 6px;
+    padding: var(--e2) var(--e3); margin-bottom: var(--e5);
   }
-  .config-descricao { font-size: 13px; color: var(--aco); max-width: 78ch; margin: 0 0 var(--e2); }
+  .cfg-busca i { color: var(--aco); }
+  .cfg-busca input { border: 0; box-shadow: none; padding: 0; flex: 1; }
+  .cfg-busca input:focus { outline: none; box-shadow: none; }
+  .cfg-busca span { font-size: 12px; white-space: nowrap; }
+
+  .cfg-grupo { margin-bottom: var(--e5); }
+  .cfg-grupo-titulo {
+    font-family: 'Big Shoulders', sans-serif; font-weight: 700; font-size: 20px;
+    text-transform: uppercase; letter-spacing: .03em; margin: 0 0 var(--e2);
+  }
+  .cartao-cfg { background: #fff; border: 1px solid var(--linha); border-radius: 6px; }
+
+  /* Três colunas: identidade | valor | em uso. O "em uso" ganhou coluna
+     própria em vez de uma linha embaixo do campo -- empilhado, ele
+     acrescentava uma linha em cada uma das 29 configurações e era a
+     maior fonte de altura da tela. */
+  .cfg-linha {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 320px) 84px;
+    gap: var(--e4); align-items: start;
+    padding: var(--e3) var(--e4); border-bottom: 1px solid var(--linha);
+  }
+  .cfg-linha:last-child { border-bottom: 0; }
+  .cfg-linha:hover { background: #FAFBFD; }
+
+  .cfg-nome {
+    display: inline; font-size: 14px; font-weight: 600; color: #232428;
+    text-transform: none; letter-spacing: 0; margin: 0 var(--e2) 0 0;
+  }
+  .cfg-chave-tag {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--aco);
+    background: #F1F3F6; border-radius: 3px; padding: 1px 5px; white-space: nowrap;
+  }
+  .cfg-ajuda { font-size: 12px; color: var(--aco); margin: var(--e1) 0 0; max-width: 72ch; }
+
+  .cfg-controle { display: flex; flex-direction: column; gap: var(--e2); align-items: flex-start; }
+  .cfg-controle > .form-control, .cfg-controle > textarea { width: 100%; }
+  /* Vazio quando não há nada a salvar -- por isso não reserva altura. */
+  .cfg-acoes:empty { display: none; }
+  .cfg-acoes { display: flex; align-items: center; gap: var(--e3); }
+  .cfg-emuso {
+    display: inline-flex; align-items: center; gap: var(--e1);
+    font-size: 12px; font-weight: 400; color: var(--aco);
+    text-transform: none; letter-spacing: 0; margin: 0; cursor: pointer;
+    justify-self: end; padding-top: 6px;
+  }
+  .cfg-status { font-size: 12px; color: #1B6B31; }
+
+  /* Interruptor: Sim/Não é decisão binária, e digitar a palavra abria
+     espaço pra "sim", "S" ou "yes" -- o código compara com "Sim". */
+  .interruptor { display: inline-flex; align-items: center; gap: var(--e2); margin: 0; cursor: pointer;
+    text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 400; color: #232428; }
+  .interruptor input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .interruptor-trilho {
+    width: 38px; height: 22px; border-radius: 11px; background: #C7CDD6;
+    position: relative; transition: background .15s ease; flex: none;
+  }
+  .interruptor-trilho::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: transform .15s ease;
+  }
+  .interruptor input:checked + .interruptor-trilho { background: var(--blue); }
+  .interruptor input:checked + .interruptor-trilho::after { transform: translateX(16px); }
+  .interruptor input:focus-visible + .interruptor-trilho { outline: 2px solid var(--blue-deep); outline-offset: 2px; }
+
+  @media (max-width: 767px) {
+    .cfg-linha { grid-template-columns: 1fr; gap: var(--e2); }
+  }
 
   .cursor-pointer { cursor: pointer; }
   .view { display: none; }
@@ -790,7 +865,7 @@
       <div class="content-header">
         <div class="container-fluid">
           <h1 class="m-0">Configurações</h1>
-          <p class="text-muted mb-0">Textos, horários e comportamentos usados pela IA -- editar aqui tem efeito imediato na próxima resposta, sem precisar mexer no banco. "Ativo" controla se o valor é realmente usado; desligado, a IA ignora esse dado.</p>
+          <p class="text-muted mb-0">Textos, horários e comportamentos usados pela IA. Editar aqui vale já na próxima resposta. Desmarcar <b>Em uso</b> mantém o valor cadastrado, mas faz a IA ignorá-lo.</p>
         </div>
       </div>
       <div class="content">
@@ -1841,6 +1916,76 @@ $("#voltar-clientes").addEventListener("click", () => {
   carregarClientesLista();
 });
 
+// Nome legível da categoria. A tabela guarda a chave em minúsculo
+// ("ia", "portal") porque é identificador; quem lê a tela merece o nome
+// por extenso.
+const NOMES_CATEGORIA = {
+  atendimento: "Atendimento",
+  contato: "Contato",
+  empresa: "Empresa",
+  ia: "Inteligência artificial",
+  mensagens: "Mensagens automáticas",
+  portal: "Portal do Cliente",
+  sistema: "Sistema",
+};
+
+// Para a maioria das configurações a `descricao` já é um nome pronto
+// ("Horário de domingo"). Duas fogem disso: a descrição delas é um
+// parágrafo explicando o efeito de ligar/desligar. Para essas, o nome
+// vem daqui e o parágrafo vira texto de ajuda embaixo.
+const NOMES_CONFIG = {
+  revisao_humana_ativa: "Revisar respostas da IA antes de enviar",
+  notificar_cliente_mudanca_status: "Avisar o cliente quando o status mudar",
+};
+
+const LIMITE_NOME = 60;
+
+function nomeDaConfig(c) {
+  if (NOMES_CONFIG[c.chave]) return NOMES_CONFIG[c.chave];
+  if (c.descricao && c.descricao.length <= LIMITE_NOME) return c.descricao;
+  // Chave nova sem descrição curta: "prazo_resposta_humano" vira
+  // "Prazo resposta humano" -- imperfeito, mas melhor que sublinhado na
+  // cara do usuário, e some assim que alguém escrever a descrição.
+  return c.chave.replace(/_/g, " ").replace(/^./, l => l.toUpperCase());
+}
+
+function ajudaDaConfig(c) {
+  // Só vira ajuda o que não coube como nome -- senão o texto apareceria
+  // duas vezes na mesma linha.
+  return c.descricao && c.descricao !== nomeDaConfig(c) ? c.descricao : "";
+}
+
+// O tipo de campo sai do formato do valor, não de uma coluna no banco:
+// as 29 configurações de hoje são todas de uma linha só, e quatro delas
+// são Sim/Não -- caixa de texto livre para responder "Sim" é convite a
+// digitar "sim", "S" ou "yes" e quebrar a comparação no código.
+function tipoDaConfig(valor) {
+  const v = String(valor ?? "").trim();
+  if (v === "Sim" || v === "Não") return "booleano";
+  if (/^-?\d+([.,]\d+)?$/.test(v)) return "numero";
+  if (v.length > 90) return "texto-longo";
+  return "texto";
+}
+
+function campoDaConfig(c) {
+  const id = `cfg-${c.config_id}`;
+  const valor = escapeHtml(c.valor);
+  switch (tipoDaConfig(c.valor)) {
+    case "booleano":
+      return `<label class="interruptor" title="${c.valor === 'Sim' ? 'Ligado' : 'Desligado'}">
+          <input type="checkbox" id="${id}" data-booleano="1" ${c.valor === 'Sim' ? 'checked' : ''}>
+          <span class="interruptor-trilho"></span>
+          <span class="interruptor-texto">${c.valor === 'Sim' ? 'Ligado' : 'Desligado'}</span>
+        </label>`;
+    case "numero":
+      return `<input type="text" inputmode="decimal" id="${id}" class="form-control form-control-sm cfg-campo" style="max-width:120px" value="${valor}">`;
+    case "texto-longo":
+      return `<textarea id="${id}" class="form-control cfg-campo" rows="3">${valor}</textarea>`;
+    default:
+      return `<input type="text" id="${id}" class="form-control form-control-sm cfg-campo" value="${valor}">`;
+  }
+}
+
 async function carregarConfiguracoes() {
   const r = await fetch("/api/configuracoes");
   const configs = await r.json();
@@ -1850,39 +1995,109 @@ async function carregarConfiguracoes() {
     (porCategoria[c.categoria] = porCategoria[c.categoria] || []).push(c);
   });
 
-  $("#config-lista").innerHTML = Object.keys(porCategoria).sort().map(categoria => `
-    <div class="card">
-      <div class="card-header"><h3 class="card-title">${escapeHtml(categoria)}</h3></div>
-      <div class="card-body">
-        ${porCategoria[categoria].map(c => `
-          <div class="mb-3 pb-3 border-bottom">
-            <!-- Chave e descrição são coisas diferentes, e por isso têm
-                 tratamento diferente: a chave é identificador (mono, é o
-                 que se procura na tela), a descrição é frase corrida.
-                 Enquanto as duas dividiam um <label>, a regra de rótulo
-                 do sistema jogava o parágrafo inteiro em maiúsculas. -->
-            <label for="cfg-${c.config_id}" class="config-chave">${escapeHtml(c.chave)}</label>
-            ${c.descricao ? `<p class="config-descricao">${escapeHtml(c.descricao)}</p>` : ''}
-            <textarea id="cfg-${c.config_id}" class="form-control">${escapeHtml(c.valor)}</textarea>
-            <div class="d-flex align-items-center mt-2" style="gap:0.8rem">
-              <div class="form-check">
-                <input type="checkbox" class="form-check-input" id="cfg-ativo-${c.config_id}" ${c.ativo === 'Sim' ? 'checked' : ''}>
-                <label class="form-check-label" for="cfg-ativo-${c.config_id}">Ativo (em uso pela IA)</label>
-              </div>
-              <button class="btn btn-outline-secondary btn-sm" onclick="salvarConfig('${c.config_id}')">Salvar</button>
-              <span class="text-muted" id="cfg-status-${c.config_id}"></span>
-            </div>
-          </div>
-        `).join("")}
-      </div>
+  const ordem = Object.keys(porCategoria).sort(
+    (a, b) => (NOMES_CATEGORIA[a] || a).localeCompare(NOMES_CATEGORIA[b] || b, "pt-BR")
+  );
+
+  $("#config-lista").innerHTML = `
+    <div class="cfg-busca">
+      <i class="fas fa-search"></i>
+      <input type="search" id="cfg-filtro" class="form-control form-control-sm"
+        placeholder="Buscar configuração" aria-label="Buscar configuração">
+      <span class="text-muted" id="cfg-contagem">${configs.length} configurações</span>
     </div>
+  ` + ordem.map(categoria => `
+    <section class="cfg-grupo">
+      <h2 class="cfg-grupo-titulo">${escapeHtml(NOMES_CATEGORIA[categoria] || categoria)}</h2>
+      <div class="cartao-cfg">
+        ${porCategoria[categoria].map(c => {
+          const ajuda = ajudaDaConfig(c);
+          return `
+          <div class="cfg-linha" data-busca="${escapeHtml((nomeDaConfig(c) + " " + c.chave + " " + (c.valor || "")).toLowerCase())}">
+            <div class="cfg-info">
+              <label class="cfg-nome" for="cfg-${c.config_id}">${escapeHtml(nomeDaConfig(c))}</label>
+              <span class="cfg-chave-tag" title="Nome técnico usado no código">${escapeHtml(c.chave)}</span>
+              ${ajuda ? `<p class="cfg-ajuda">${escapeHtml(ajuda)}</p>` : ''}
+            </div>
+            <div class="cfg-controle">
+              ${campoDaConfig(c)}
+              <div class="cfg-acoes">
+                <button class="btn btn-sm btn-primary cfg-salvar" data-cfg="${c.config_id}" hidden>Salvar</button>
+                <span class="cfg-status" id="cfg-status-${c.config_id}"></span>
+              </div>
+            </div>
+            <label class="cfg-emuso" title="Desmarcado, este valor existe no cadastro mas a IA ignora">
+              <input type="checkbox" id="cfg-ativo-${c.config_id}" ${c.ativo === 'Sim' ? 'checked' : ''}>
+              Em uso
+            </label>
+          </div>
+        `;
+        }).join("")}
+      </div>
+    </section>
   `).join("");
+
+  ligarTelaConfiguracoes();
+}
+
+function ligarTelaConfiguracoes() {
+  const lista = $("#config-lista");
+
+  // O botão Salvar só aparece na linha que mudou. Com 29 configurações,
+  // 29 botões permanentes viram ruído -- e ainda escondem qual delas a
+  // pessoa realmente mexeu.
+  const marcarSujo = (linha) => {
+    linha.querySelector(".cfg-salvar").hidden = false;
+    linha.querySelector(".cfg-status").textContent = "";
+  };
+
+  lista.querySelectorAll(".cfg-linha").forEach(linha => {
+    linha.querySelectorAll("input, textarea").forEach(campo => {
+      campo.addEventListener("input", () => marcarSujo(linha));
+      campo.addEventListener("change", () => {
+        marcarSujo(linha);
+        const alvo = campo.dataset.booleano ? campo.closest(".interruptor") : null;
+        if (alvo) {
+          const texto = alvo.querySelector(".interruptor-texto");
+          texto.textContent = campo.checked ? "Ligado" : "Desligado";
+        }
+      });
+    });
+  });
+
+  lista.querySelectorAll(".cfg-salvar").forEach(btn => {
+    btn.addEventListener("click", () => salvarConfig(btn.dataset.cfg));
+  });
+
+  const filtro = $("#cfg-filtro");
+  filtro.addEventListener("input", () => {
+    const termo = filtro.value.trim().toLowerCase();
+    let visiveis = 0;
+    lista.querySelectorAll(".cfg-linha").forEach(linha => {
+      const bate = !termo || linha.dataset.busca.includes(termo);
+      linha.hidden = !bate;
+      if (bate) visiveis++;
+    });
+    // Grupo que ficou sem nenhuma linha visível some junto -- senão a
+    // busca deixa títulos de categoria órfãos pela tela.
+    lista.querySelectorAll(".cfg-grupo").forEach(grupo => {
+      grupo.hidden = ![...grupo.querySelectorAll(".cfg-linha")].some(l => !l.hidden);
+    });
+    $("#cfg-contagem").textContent = termo
+      ? `${visiveis} de ${lista.querySelectorAll(".cfg-linha").length}`
+      : `${lista.querySelectorAll(".cfg-linha").length} configurações`;
+  });
 }
 
 async function salvarConfig(configId) {
-  const valor = $("#cfg-" + configId).value;
+  const campo = $("#cfg-" + configId);
+  // Interruptor guarda o estado em `checked`; o resto, em `value`. O
+  // servidor continua recebendo o mesmo "Sim"/"Não" de sempre -- a
+  // mudança é só de interface.
+  const valor = campo.dataset.booleano ? (campo.checked ? "Sim" : "Não") : campo.value;
   const ativo = $("#cfg-ativo-" + configId).checked ? "Sim" : "Não";
   const statusEl = $("#cfg-status-" + configId);
+  const botao = document.querySelector(`.cfg-salvar[data-cfg="${configId}"]`);
   statusEl.textContent = "Salvando…";
 
   const r = await fetch(`/api/configuracoes/${configId}`, {
@@ -1895,7 +2110,9 @@ async function salvarConfig(configId) {
     alert("Erro ao salvar: " + d.erro);
     return;
   }
-  statusEl.textContent = "Salvo.";
+  statusEl.textContent = "Salvo";
+  if (botao) botao.hidden = true;
+  setTimeout(() => { statusEl.textContent = ""; }, 2500);
 }
 
 function escapeHtml(s) {
