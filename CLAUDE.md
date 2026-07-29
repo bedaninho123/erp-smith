@@ -8,7 +8,7 @@ ERP Smith: um ERP inteligente de atendimento e gestão de processos, desenhado p
 
 ## Comandos
 
-A suíte automatizada (`pytest`) cobre só o que dói perder: isolamento de dado entre clientes do Portal, o token de login sem senha e o freio determinístico do Auditor. O resto continua sendo validado rodando os módulos diretamente — a maioria tem um bloco `if __name__ == "__main__":` com um teste de fumaça usando dado real do banco — e testando o fluxo completo pelo painel web ou por e-mail real.
+A suíte automatizada (`pytest`) cobre só o que dói perder: isolamento de dado entre clientes do Portal e entre empresas nos dois apps, o token de login sem senha, o freio determinístico do Auditor, e uma varredura estática (`tests/test_empresa_id_propagado.py`) que confere se toda função que exige `empresa_id` está sendo chamada com ele — ela lê o código em vez de executar, então alcança os caminhos que os testes de verdade nunca percorrem. O resto continua sendo validado rodando os módulos diretamente — a maioria tem um bloco `if __name__ == "__main__":` com um teste de fumaça usando dado real do banco — e testando o fluxo completo pelo painel web ou por e-mail real.
 
 ```bash
 # Ambiente (sempre usar o venv, nunca o Python global)
