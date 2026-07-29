@@ -34,7 +34,10 @@ from core.limitador_tentativas import excedeu_limite
 from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
 from core.motor_notificacoes import destinatario_para_notificar
 from core.motor_processos import atualizar_processo, criar_processo
-from core.motor_usuarios import atualizar_ativo, atualizar_papel, criar_usuario, listar_usuarios
+from core.motor_usuarios import (
+    FUNCOES_VALIDAS, atualizar_ativo, atualizar_papel, atualizar_permissoes,
+    criar_usuario, listar_permissoes, listar_usuarios, tem_permissao,
+)
 from domain.clube_tiro.motor_campeonatos import (
     atualizar_campeonato, criar_campeonato, listar_campeonatos, remover_campeonato,
 )
@@ -136,6 +139,25 @@ def gestor_required(f):
     return wrapper
 
 
+def funcao_required(funcao):
+    """Some depois de @login_required, nunca junto de @gestor_required
+    (são exclusivos: uma rota é administrativa OU operacional). Gestor
+    passa sempre, sem consultar a tabela. Atendente só passa se
+    tem_permissao() disser que sim -- que por padrão é True quando não
+    há linha (core/motor_usuarios.py)."""
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if session.get("papel") != "Gestor":
+                if not tem_permissao(empresa_atual(), session.get("usuario_id"), funcao):
+                    if request.path.startswith("/api/"):
+                        return jsonify(erro="Você não tem permissão para esta função."), 403
+                    return redirect(url_for("index"))
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 def _notificar_cliente_mudanca_status(empresa_id: str, caso_id: str) -> None:
     """E-mail genérico (nunca revela o novo status no corpo -- domínio
     regulado de arma de fogo) avisando o cliente que algo mudou no
@@ -209,16 +231,31 @@ def logout():
 @app.route("/")
 @login_required
 def index():
+    # Funções ativas do usuário logado, só pra decidir o que o menu
+    # mostra -- a trava de verdade é o decorator funcao_required, que
+    # consulta o banco de novo a cada rota (a sessão não é fonte de
+    # verdade de permissão, só de identidade).
+    if session.get("papel") == "Gestor":
+        funcoes_ativas = list(FUNCOES_VALIDAS)
+    elif session.get("usuario_id"):
+        funcoes_ativas = [
+            p["funcao"] for p in listar_permissoes(session["empresa_id"], session["usuario_id"])
+            if p["ativo"] == "Sim"
+        ]
+    else:
+        funcoes_ativas = []
     return render_template(
         "index.html",
         usuario_nome=session.get("usuario_nome"),
         usuario_id=session.get("usuario_id"),
         usuario_papel=session.get("papel"),
+        funcoes_ativas=funcoes_ativas,
     )
 
 
 @app.route("/api/status")
 @login_required
+@funcao_required("status_projeto")
 def status():
     empresa_id = empresa_atual()
 
@@ -309,6 +346,7 @@ def status():
 
 @app.route("/api/casos")
 @login_required
+@funcao_required("casos")
 def casos():
     empresa_id = empresa_atual()
     status = request.args.get("status") or None
@@ -358,6 +396,7 @@ def casos():
 
 @app.route("/api/casos/<caso_id>")
 @login_required
+@funcao_required("casos")
 def caso_detalhe(caso_id):
     empresa_id = empresa_atual()
     con = conectar(empresa_id)
@@ -434,6 +473,7 @@ def caso_detalhe(caso_id):
 
 @app.route("/api/casos/<caso_id>/status", methods=["POST"])
 @login_required
+@funcao_required("casos")
 def caso_atualizar_status(caso_id):
     corpo = request.get_json(force=True)
     novo_status = (corpo.get("status") or "").strip()
@@ -455,6 +495,7 @@ def caso_atualizar_status(caso_id):
 
 @app.route("/api/casos/<caso_id>/responsavel", methods=["POST"])
 @login_required
+@funcao_required("casos")
 def caso_atualizar_responsavel(caso_id):
     corpo = request.get_json(force=True)
     novo_responsavel_id = (corpo.get("responsavel_id") or "").strip() or None
@@ -470,6 +511,7 @@ def caso_atualizar_responsavel(caso_id):
 
 @app.route("/api/casos/<caso_id>/descricao", methods=["POST"])
 @login_required
+@funcao_required("casos")
 def caso_atualizar_descricao(caso_id):
     corpo = request.get_json(force=True)
     nova_descricao = (corpo.get("descricao") or "").strip()
@@ -485,6 +527,7 @@ def caso_atualizar_descricao(caso_id):
 
 @app.route("/api/casos/<caso_id>/processos", methods=["POST"])
 @login_required
+@funcao_required("casos")
 def processo_criar(caso_id):
     corpo = request.get_json(force=True)
     servico_id = (corpo.get("servico_id") or "").strip()
@@ -519,6 +562,7 @@ def processo_criar(caso_id):
 
 @app.route("/api/processos/<processo_id>", methods=["POST"])
 @login_required
+@funcao_required("casos")
 def processo_atualizar(processo_id):
     corpo = request.get_json(force=True)
     novo_status = (corpo.get("status") or "").strip()
@@ -546,6 +590,7 @@ def processo_atualizar(processo_id):
 
 @app.route("/api/processos/<processo_id>/checklist", methods=["POST"])
 @login_required
+@funcao_required("casos")
 def checklist_marcar(processo_id):
     corpo = request.get_json(force=True)
     documento_exigido_id = (corpo.get("documento_exigido_id") or "").strip()
@@ -589,6 +634,7 @@ def _notificar_documento_recusado(empresa_id: str, caso_id: str, item: str) -> N
 
 @app.route("/api/documentos-pendentes")
 @login_required
+@funcao_required("documentos_aprovar")
 def documentos_pendentes():
     """Fila de documentos que clientes enviaram pelo Portal e ninguém
     conferiu ainda."""
@@ -597,6 +643,7 @@ def documentos_pendentes():
 
 @app.route("/api/checklist/<documento_checklist_id>/aprovar", methods=["POST"])
 @login_required
+@funcao_required("documentos_aprovar")
 def checklist_aprovar(documento_checklist_id):
     try:
         motor_checklist.aprovar(
@@ -612,6 +659,7 @@ def checklist_aprovar(documento_checklist_id):
 
 @app.route("/api/checklist/<documento_checklist_id>/recusar", methods=["POST"])
 @login_required
+@funcao_required("documentos_aprovar")
 def checklist_recusar(documento_checklist_id):
     corpo = request.get_json(force=True)
     motivo = (corpo.get("motivo") or "").strip()
@@ -656,6 +704,7 @@ DOCUMENTO_TAMANHO_MAXIMO = 15 * 1024 * 1024  # 15 MB
 
 @app.route("/api/casos/<caso_id>/documentos", methods=["POST"])
 @login_required
+@funcao_required("casos")
 def documento_upload(caso_id):
     arquivo = request.files.get("arquivo")
     if not arquivo or not arquivo.filename:
@@ -734,6 +783,7 @@ def documento_arquivo(documento_id):
 
 @app.route("/api/clientes")
 @login_required
+@funcao_required("clientes")
 def clientes():
     empresa_id = empresa_atual()
     con = conectar(empresa_id)
@@ -747,6 +797,7 @@ def clientes():
 
 @app.route("/api/clientes/lista")
 @login_required
+@funcao_required("clientes")
 def clientes_lista():
     empresa_id = empresa_atual()
     busca = (request.args.get("busca") or "").strip()
@@ -776,6 +827,7 @@ def clientes_lista():
 
 @app.route("/api/clientes/<cliente_id>")
 @login_required
+@funcao_required("clientes")
 def cliente_detalhe(cliente_id):
     empresa_id = empresa_atual()
     con = conectar(empresa_id)
@@ -928,8 +980,28 @@ def usuarios_atualizar(usuario_id):
     return jsonify(ok=True)
 
 
+@app.route("/api/usuarios/<usuario_id>/permissoes")
+@login_required
+@gestor_required
+def usuarios_permissoes_lista(usuario_id):
+    return jsonify(listar_permissoes(empresa_atual(), usuario_id))
+
+
+@app.route("/api/usuarios/<usuario_id>/permissoes", methods=["POST"])
+@login_required
+@gestor_required
+def usuarios_permissoes_atualizar(usuario_id):
+    corpo = request.get_json(force=True)
+    try:
+        atualizar_permissoes(empresa_atual(), usuario_id, corpo)
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
+
+
 @app.route("/api/campeonatos")
 @login_required
+@funcao_required("campeonatos")
 def campeonatos_lista():
     ano = request.args.get("ano", type=int)
     return jsonify(listar_campeonatos(empresa_atual(), ano=ano))
@@ -937,6 +1009,7 @@ def campeonatos_lista():
 
 @app.route("/api/campeonatos", methods=["POST"])
 @login_required
+@funcao_required("campeonatos")
 def campeonatos_criar():
     corpo = request.get_json(force=True)
     nome = (corpo.get("nome") or "").strip()
@@ -956,6 +1029,7 @@ def campeonatos_criar():
 
 @app.route("/api/campeonatos/<campeonato_id>", methods=["POST"])
 @login_required
+@funcao_required("campeonatos")
 def campeonatos_atualizar(campeonato_id):
     corpo = request.get_json(force=True)
     nome = (corpo.get("nome") or "").strip()
@@ -989,6 +1063,7 @@ def campeonatos_remover(campeonato_id):
 
 @app.route("/api/clientes/buscar-cpf/<cpf>")
 @login_required
+@funcao_required("clientes")
 def clientes_buscar_cpf(cpf):
     """Autocompletar nome + cliente_id ao digitar um CPF na tela de
     Resultados -- o cliente_id resolvido aqui é o que o formulário manda
@@ -1015,12 +1090,14 @@ def clientes_buscar_cpf(cpf):
 
 @app.route("/api/campeonatos/<campeonato_id>/resultados")
 @login_required
+@funcao_required("resultados")
 def resultados_lista(campeonato_id):
     return jsonify(listar_resultados(empresa_atual(), campeonato_id))
 
 
 @app.route("/api/campeonatos/<campeonato_id>/resultados", methods=["POST"])
 @login_required
+@funcao_required("resultados")
 def resultados_criar(campeonato_id):
     corpo = request.get_json(force=True)
     nome_atirador = (corpo.get("nome_atirador") or "").strip()
@@ -1046,6 +1123,7 @@ def resultados_criar(campeonato_id):
 
 @app.route("/api/resultados/<resultado_id>", methods=["POST"])
 @login_required
+@funcao_required("resultados")
 def resultados_atualizar(resultado_id):
     corpo = request.get_json(force=True)
     nome_atirador = (corpo.get("nome_atirador") or "").strip()
@@ -1082,6 +1160,7 @@ def resultados_remover(resultado_id):
 
 @app.route("/api/identificar_cliente", methods=["POST"])
 @login_required
+@funcao_required("testar_pipeline")
 def identificar():
     corpo = request.get_json(force=True)
     nome = (corpo.get("nome") or "").strip() or None
@@ -1106,6 +1185,7 @@ def identificar():
 
 @app.route("/api/pipeline", methods=["POST"])
 @login_required
+@funcao_required("testar_pipeline")
 def pipeline():
     corpo = request.get_json(force=True)
     mensagem = (corpo.get("mensagem") or "").strip()
@@ -1152,6 +1232,7 @@ def pipeline():
 
 @app.route("/api/pendentes")
 @login_required
+@funcao_required("aprovacoes_pendentes")
 def pendentes():
     empresa_id = empresa_atual()
     itens = motor_mensagens.listar_pendentes(empresa_id)
@@ -1164,6 +1245,7 @@ def pendentes():
 
 @app.route("/api/pendentes/<mensagem_id>/aprovar", methods=["POST"])
 @login_required
+@funcao_required("aprovacoes_pendentes")
 def aprovar(mensagem_id):
     corpo = request.get_json(silent=True) or {}
     texto_final = corpo.get("texto")
@@ -1178,6 +1260,7 @@ def aprovar(mensagem_id):
 
 @app.route("/api/pendentes/<mensagem_id>/rejeitar", methods=["POST"])
 @login_required
+@funcao_required("aprovacoes_pendentes")
 def rejeitar(mensagem_id):
     resultado = rejeitar_mensagem_pendente(
         empresa_atual(), mensagem_id, responsavel_id=session.get("usuario_id")

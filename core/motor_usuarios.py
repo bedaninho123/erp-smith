@@ -8,6 +8,13 @@ Este módulo nunca define senha -- isso continua exclusivo de
 webapp/definir_senha.py, rodado interativamente pelo próprio usuário
 (CLAUDE.md). Usuário criado aqui nasce com senha_hash=NULL, "login ainda
 não configurado".
+
+Permissões granulares (2026-07-30): Gestor tem acesso total e intocável,
+sempre -- as funções abaixo só têm efeito para quem é Atendente. Sem
+seed automático: ausência de linha em usuario_permissao significa
+"permitido" (mesmo espírito de core/db/migrar_papeis_usuario.py -- ninguém
+perde acesso por falta de linha no banco). Só existe linha quando o
+Gestor mexeu explicitamente naquela função pela tela de Usuários.
 """
 from datetime import datetime, timezone
 from typing import Optional
@@ -15,6 +22,17 @@ from typing import Optional
 from core.conexao import conectar
 
 PAPEIS_VALIDOS = ("Gestor", "Atendente")
+
+FUNCOES_VALIDAS = {
+    "casos": "Casos",
+    "clientes": "Clientes",
+    "aprovacoes_pendentes": "Aprovações Pendentes",
+    "documentos_aprovar": "Documentos a Aprovar",
+    "campeonatos": "Campeonatos",
+    "resultados": "Resultados",
+    "testar_pipeline": "Testar Pipeline",
+    "status_projeto": "Status do Projeto",
+}
 
 
 def _agora_iso() -> str:
@@ -109,6 +127,70 @@ def atualizar_ativo(empresa_id: str, usuario_id: str, ativo: str) -> None:
             "UPDATE usuario SET ativo = ? WHERE usuario_id = ? AND empresa_id = ?",
             (ativo, usuario_id, empresa_id),
         )
+        con.commit()
+    finally:
+        con.close()
+
+
+def tem_permissao(empresa_id: str, usuario_id: str, funcao: str) -> bool:
+    """Usada pelo decorator funcao_required (webapp/app.py). Sem linha
+    pra essa função = permitido -- é o padrão seguro (ver docstring do
+    módulo)."""
+    con = conectar(empresa_id)
+    try:
+        linha = con.execute(
+            "SELECT ativo FROM usuario_permissao "
+            "WHERE usuario_id = ? AND empresa_id = ? AND funcao = ?",
+            (usuario_id, empresa_id, funcao),
+        ).fetchone()
+        return linha is None or linha["ativo"] == "Sim"
+    finally:
+        con.close()
+
+
+def listar_permissoes(empresa_id: str, usuario_id: str) -> list[dict]:
+    """As 8 funções do catálogo, com o estado de cada uma -- 'Sim' por
+    padrão quando não há linha, para a tela de Usuários sempre ter algo
+    concreto pra mostrar em cada toggle."""
+    con = conectar(empresa_id)
+    try:
+        linhas = {
+            l["funcao"]: l["ativo"]
+            for l in con.execute(
+                "SELECT funcao, ativo FROM usuario_permissao "
+                "WHERE usuario_id = ? AND empresa_id = ?",
+                (usuario_id, empresa_id),
+            ).fetchall()
+        }
+        return [
+            {"funcao": chave, "nome": nome, "ativo": linhas.get(chave, "Sim")}
+            for chave, nome in FUNCOES_VALIDAS.items()
+        ]
+    finally:
+        con.close()
+
+
+def atualizar_permissoes(empresa_id: str, usuario_id: str, mapa: dict[str, str]) -> None:
+    for funcao, ativo in mapa.items():
+        if funcao not in FUNCOES_VALIDAS:
+            raise ValueError(f"Função inválida: {funcao}.")
+        if ativo not in ("Sim", "Não"):
+            raise ValueError(f"Valor inválido para '{funcao}': {ativo}.")
+
+    con = conectar(empresa_id)
+    try:
+        _usuario_da_empresa(con, empresa_id, usuario_id)
+        for funcao, ativo in mapa.items():
+            con.execute(
+                "INSERT OR IGNORE INTO usuario_permissao (usuario_id, empresa_id, funcao, ativo) "
+                "VALUES (?,?,?,?)",
+                (usuario_id, empresa_id, funcao, ativo),
+            )
+            con.execute(
+                "UPDATE usuario_permissao SET ativo = ? "
+                "WHERE usuario_id = ? AND empresa_id = ? AND funcao = ?",
+                (ativo, usuario_id, empresa_id, funcao),
+            )
         con.commit()
     finally:
         con.close()

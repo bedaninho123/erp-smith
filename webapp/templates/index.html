@@ -215,6 +215,18 @@
   .usr-novo input { flex: 1; min-width: 160px; }
   .usr-novo select { width: auto; }
 
+  /* Painel de permissões por função, expandido sob a linha do Atendente
+     na tela de Usuários -- lista curta (8 itens), então checkbox com
+     rótulo já é claro o bastante, sem precisar do interruptor deslizante
+     usado nas configurações Sim/Não. */
+  .perm-painel { padding: 0 var(--e4) var(--e3); border-bottom: 1px solid var(--linha); }
+  .perm-linha {
+    display: flex; align-items: center; gap: var(--e2);
+    padding: var(--e2) 0; border-bottom: 1px solid var(--linha);
+    font-size: 13px; font-weight: 400; text-transform: none; cursor: pointer;
+  }
+  .perm-linha:last-of-type { border-bottom: 0; }
+
   /* Linha de tabela que abre um registro ao clique. O clique na linha
      inteira é conveniente com mouse, mas sozinho deixa a navegação por
      teclado sem saída -- `<tr>` não recebe foco. Daí tabindex + tratador
@@ -320,18 +332,23 @@
       <nav class="mt-2">
         <ul class="nav nav-pills nav-sidebar flex-column" role="menu">
           <li class="nav-header">ATENDIMENTO</li>
+          {% if usuario_papel == 'Gestor' or 'casos' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link active" data-view="casos">
               <i class="nav-icon fas fa-folder-open" aria-hidden="true"></i>
               <p>Casos</p>
             </a>
           </li>
+          {% endif %}
+          {% if usuario_papel == 'Gestor' or 'clientes' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="clientes">
               <i class="nav-icon fas fa-users" aria-hidden="true"></i>
               <p>Clientes</p>
             </a>
           </li>
+          {% endif %}
+          {% if usuario_papel == 'Gestor' or 'aprovacoes_pendentes' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="pendentes">
               <i class="nav-icon fas fa-inbox" aria-hidden="true"></i>
@@ -341,6 +358,8 @@
               </p>
             </a>
           </li>
+          {% endif %}
+          {% if usuario_papel == 'Gestor' or 'documentos_aprovar' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="documentos">
               <i class="nav-icon fas fa-file-signature" aria-hidden="true"></i>
@@ -350,19 +369,24 @@
               </p>
             </a>
           </li>
+          {% endif %}
           <li class="nav-header">CLUBE</li>
+          {% if usuario_papel == 'Gestor' or 'campeonatos' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="campeonatos">
               <i class="nav-icon fas fa-trophy" aria-hidden="true"></i>
               <p>Campeonatos</p>
             </a>
           </li>
+          {% endif %}
+          {% if usuario_papel == 'Gestor' or 'resultados' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="resultados">
               <i class="nav-icon fas fa-list-ol" aria-hidden="true"></i>
               <p>Resultados</p>
             </a>
           </li>
+          {% endif %}
           <li class="nav-header">SISTEMA</li>
           {% if usuario_papel == 'Gestor' %}
           <li class="nav-item">
@@ -372,18 +396,22 @@
             </a>
           </li>
           {% endif %}
+          {% if usuario_papel == 'Gestor' or 'status_projeto' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="status">
               <i class="nav-icon fas fa-server" aria-hidden="true"></i>
               <p>Status do Projeto</p>
             </a>
           </li>
+          {% endif %}
+          {% if usuario_papel == 'Gestor' or 'testar_pipeline' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="testar">
               <i class="nav-icon fas fa-flask" aria-hidden="true"></i>
               <p>Testar Pipeline</p>
             </a>
           </li>
+          {% endif %}
         </ul>
       </nav>
     </div>
@@ -966,6 +994,10 @@ let casoDocumentosAtuais = [];
 // impedir que o Gestor mude o próprio acesso na tela de Usuários.
 const USUARIO_PAPEL = {{ usuario_papel | tojson }};
 const USUARIO_ATUAL_ID = {{ usuario_id | tojson }};
+// Gestor não é filtrado por função (sempre acesso total) -- a lista só
+// importa pra decidir o que o Atendente vê. Usada nas pré-cargas
+// incondicionais do fim do script, pra não disparar 403 à toa.
+const FUNCOES_ATIVAS = {{ funcoes_ativas | tojson }};
 
 // --------------------------------------------------------------------
 // Visualizador de documento (abre por cima do painel, sempre com saída)
@@ -1018,21 +1050,38 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+function carregarView(viewName) {
+  if (viewName === "pendentes") carregarPendentes();
+  if (viewName === "documentos") carregarDocumentosPendentes();
+  if (viewName === "clientes") carregarClientesLista();
+  if (viewName === "config") { carregarConfiguracoes(); carregarUsuarios(); }
+  if (viewName === "campeonatos") carregarCampeonatos();
+  if (viewName === "resultados") carregarResultadosCampeonatosLista();
+}
+
+function ativarView(btn) {
+  document.querySelectorAll("[data-view]").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  btn.classList.add("active");
+  $("#view-" + btn.dataset.view).classList.add("active");
+  carregarView(btn.dataset.view);
+}
+
 document.querySelectorAll("[data-view]").forEach(btn => {
   btn.addEventListener("click", (e) => {
     e.preventDefault();
-    document.querySelectorAll("[data-view]").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-    btn.classList.add("active");
-    $("#view-" + btn.dataset.view).classList.add("active");
-    if (btn.dataset.view === "pendentes") carregarPendentes();
-    if (btn.dataset.view === "documentos") carregarDocumentosPendentes();
-    if (btn.dataset.view === "clientes") carregarClientesLista();
-    if (btn.dataset.view === "config") { carregarConfiguracoes(); carregarUsuarios(); }
-    if (btn.dataset.view === "campeonatos") carregarCampeonatos();
-    if (btn.dataset.view === "resultados") carregarResultadosCampeonatosLista();
+    ativarView(btn);
   });
 });
+
+// "Casos" é a aba marcada como ativa direto na marcação (é o padrão pra
+// quem tem a função) -- mas se ela não estiver entre as funções do
+// Atendente, o item já saiu do menu (guarda acima) e a tela abriria em
+// branco, sem nenhuma aba realmente ativa. Troca pra primeira que sobrou.
+if (USUARIO_PAPEL !== "Gestor" && !FUNCOES_ATIVAS.includes("casos")) {
+  const primeira = document.querySelector("[data-view]");
+  if (primeira) ativarView(primeira);
+}
 
 const badgesStatus = {
   "Aberto": "badge-info", "Em triagem": "badge-secondary", "Em andamento": "badge-info",
@@ -2209,6 +2258,7 @@ async function carregarUsuarios() {
           </select>
           <div class="cfg-acoes">
             <button class="btn btn-sm btn-primary usr-salvar" hidden>Salvar</button>
+            ${u.papel === 'Atendente' ? `<button type="button" class="btn btn-sm btn-outline-secondary usr-permissoes-toggle" data-usr="${u.usuario_id}">Permissões</button>` : ''}
             <span class="cfg-status" data-status aria-live="polite"></span>
           </div>
         </div>
@@ -2217,6 +2267,7 @@ async function carregarUsuarios() {
           Ativo
         </label>
       </div>
+      ${u.papel === 'Atendente' ? `<div class="perm-painel" id="perm-${u.usuario_id}" hidden></div>` : ''}
     `;
   }).join("") : '<p class="text-muted p-3 mb-0">Nenhum usuário cadastrado.</p>';
 
@@ -2230,6 +2281,11 @@ function ligarTelaUsuarios() {
       campo.addEventListener("change", () => { salvar.hidden = false; });
     });
     salvar.addEventListener("click", () => salvarUsuario(linha));
+
+    const botaoPerm = linha.querySelector(".usr-permissoes-toggle");
+    if (botaoPerm) {
+      botaoPerm.addEventListener("click", () => alternarPermissoes(botaoPerm.dataset.usr));
+    }
   });
 }
 
@@ -2238,12 +2294,70 @@ async function salvarUsuario(linha) {
   const papel = linha.querySelector('[data-campo="papel"]').value;
   const ativo = linha.querySelector('[data-campo="ativo"]').checked ? "Sim" : "Não";
   const statusEl = linha.querySelector("[data-status]");
-  const botao = linha.querySelector(".usr-salvar");
   statusEl.textContent = "Salvando…";
 
   const r = await fetch(`/api/usuarios/${usuarioId}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ papel, ativo }),
+  });
+  const d = await r.json();
+  if (!r.ok) {
+    statusEl.textContent = "";
+    alert("Erro ao salvar: " + d.erro);
+    return;
+  }
+  // Recarrega a lista inteira -- não só pra refletir o novo estado, mas
+  // pro botão Permissões aparecer/sumir na hora certa quando o papel
+  // muda de/para Atendente.
+  await carregarUsuarios();
+}
+
+async function alternarPermissoes(usuarioId) {
+  const painel = $("#perm-" + usuarioId);
+  if (!painel) return;
+  if (!painel.hidden) { painel.hidden = true; return; }
+  painel.hidden = false;
+  if (painel.dataset.carregado) return;
+  painel.dataset.carregado = "1";
+
+  painel.innerHTML = '<p class="text-muted p-3 mb-0">Carregando…</p>';
+  const r = await fetch(`/api/usuarios/${usuarioId}/permissoes`);
+  const permissoes = await r.json();
+
+  painel.innerHTML = `
+    <div class="cartao-cfg p-3">
+      ${permissoes.map(p => `
+        <label class="perm-linha">
+          <input type="checkbox" class="perm-campo" data-funcao="${p.funcao}" ${p.ativo === 'Sim' ? 'checked' : ''}>
+          ${escapeHtml(p.nome)}
+        </label>
+      `).join("")}
+      <div class="cfg-acoes mt-2">
+        <button type="button" class="btn btn-sm btn-primary perm-salvar" hidden>Salvar permissões</button>
+        <span class="cfg-status" data-perm-status aria-live="polite"></span>
+      </div>
+    </div>
+  `;
+
+  const botaoSalvar = painel.querySelector(".perm-salvar");
+  painel.querySelectorAll(".perm-campo").forEach(campo => {
+    campo.addEventListener("change", () => { botaoSalvar.hidden = false; });
+  });
+  botaoSalvar.addEventListener("click", () => salvarPermissoes(usuarioId, painel));
+}
+
+async function salvarPermissoes(usuarioId, painel) {
+  const mapa = {};
+  painel.querySelectorAll(".perm-campo").forEach(campo => {
+    mapa[campo.dataset.funcao] = campo.checked ? "Sim" : "Não";
+  });
+  const statusEl = painel.querySelector("[data-perm-status]");
+  const botao = painel.querySelector(".perm-salvar");
+  statusEl.textContent = "Salvando…";
+
+  const r = await fetch(`/api/usuarios/${usuarioId}/permissoes`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(mapa),
   });
   const d = await r.json();
   if (!r.ok) {
@@ -2383,9 +2497,12 @@ function documentosHtml(documentos) {
 
 async function carregarDocumentosPendentes() {
   const r = await fetch("/api/documentos-pendentes");
-  const pendentes = await r.json();
   const el = $("#lista-documentos-pendentes");
   const badge = $("#badge-documentos");
+  // 403 (Atendente sem a função, ou a função foi desligada depois do
+  // carregamento da página): trata como vazio, não deixa a Promise
+  // rejeitada quebrar o resto do carregamento inicial.
+  const pendentes = r.ok ? await r.json() : [];
 
   if (pendentes.length === 0) {
     badge.style.display = "none";
@@ -2464,9 +2581,9 @@ async function recusarDocumento(dck, motivo, aoTerminar) {
 
 async function carregarPendentes() {
   const r = await fetch("/api/pendentes");
-  const pendentes = await r.json();
   const el = $("#lista-pendentes");
   const badge = $("#badge-pendentes");
+  const pendentes = r.ok ? await r.json() : [];
 
   if (pendentes.length === 0) {
     badge.style.display = "none";
@@ -2730,11 +2847,16 @@ async function enviarPipeline() {
 
 $("#enviar").addEventListener("click", enviarPipeline);
 
-carregarStatus();
-carregarClientes();
-carregarPendentes();
-carregarDocumentosPendentes();
-carregarCasos();
+// Cada chamada guardada pela função correspondente -- sem isso, um
+// Atendente sem aquela função tomaria um 403 silencioso (e uma exceção
+// não tratada, já que r.json() de um erro não é a lista que a função
+// espera) só de abrir o painel, mesmo sem clicar em nada.
+const podeVer = (funcao) => USUARIO_PAPEL === "Gestor" || FUNCOES_ATIVAS.includes(funcao);
+if (podeVer("status_projeto")) carregarStatus();
+if (podeVer("clientes")) carregarClientes();
+if (podeVer("aprovacoes_pendentes")) carregarPendentes();
+if (podeVer("documentos_aprovar")) carregarDocumentosPendentes();
+if (podeVer("casos")) carregarCasos();
 </script>
 </body>
 </html>

@@ -312,6 +312,21 @@ CREATE TABLE usuario (
 
 CREATE INDEX idx_usuario_empresa_id ON usuario(empresa_id);
 
+-- Permissão granular por função, só para usuario.papel = 'Atendente'
+-- (Gestor tem acesso total e intocável, nunca consulta esta tabela).
+-- Sem linha para uma função = permitido -- ver core/motor_usuarios.py
+-- (FUNCOES_VALIDAS, tem_permissao). Só ganha linha quando o Gestor mexe
+-- explicitamente naquela função pela tela de Usuários.
+CREATE TABLE usuario_permissao (
+    usuario_id  TEXT NOT NULL REFERENCES usuario(usuario_id),
+    empresa_id  TEXT NOT NULL REFERENCES empresa(empresa_id),
+    funcao      TEXT NOT NULL,
+    ativo       TEXT NOT NULL DEFAULT 'Sim',
+    PRIMARY KEY (usuario_id, funcao)
+);
+
+CREATE INDEX idx_usuario_permissao_empresa_id ON usuario_permissao(empresa_id);
+
 -- Log de eventos de negócio do caso — append-only (só INSERT, nunca
 -- UPDATE/DELETE). RCA-007: toda troca de responsável gera registro aqui.
 -- 96_Relacionamentos_Casos: "todo evento do caso deve apontar para o

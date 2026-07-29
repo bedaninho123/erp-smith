@@ -53,6 +53,7 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.popular_documentos_exigidos
 .venv\Scripts\python.exe -m core.db.migrar_aprovacao_documentos  # idempotente, roda sobre banco em uso
 .venv\Scripts\python.exe -m core.db.migrar_papeis_usuario         # idempotente, normaliza usuario.papel para Gestor/Atendente
+.venv\Scripts\python.exe -m core.db.migrar_permissoes_usuario     # idempotente, cria a tabela usuario_permissao
 
 # Conferir se a tabela documento bate com os arquivos em disco (só relata, nunca apaga)
 .venv\Scripts\python.exe -m core.db.auditar_documentos
@@ -160,6 +161,39 @@ sem isso a empresa poderia ficar sem ninguém com acesso administrativo.
 Banco já em uso, com `usuario.papel` fora desses dois valores: rodar
 `core.db.migrar_papeis_usuario` (idempotente) — normaliza tudo para
 `'Gestor'`, e o próprio Gestor rebaixa quem quiser depois pela tela.
+
+### Dentro de Atendente, permissão granular por função
+
+(2026-07-30) Gestor continua com acesso total e intocável — o catálogo
+abaixo só tem efeito pra quem é Atendente. Catálogo em
+`core/motor_usuarios.FUNCOES_VALIDAS`, mapeado 1:1 com as seções do menu
+(`casos`, `clientes`, `aprovacoes_pendentes`, `documentos_aprovar`,
+`campeonatos`, `resultados`, `testar_pipeline`, `status_projeto`).
+Remoção (checklist/campeonato/resultado) e a área administrativa
+(Configurações, gestão de usuário e de permissão) não entram no catálogo
+— seguem travadas só pro Gestor, sem toggle, de propósito.
+
+Regra central da tabela `usuario_permissao`: **ausência de linha
+significa permitido**. Só ganha linha quando o Gestor desliga ou religa
+algo pela tela de Usuários (botão "Permissões" na linha do Atendente).
+Mesmo espírito do `migrar_papeis_usuario`: ninguém perde acesso por falta
+de linha no banco. `core/motor_usuarios.tem_permissao()` é quem decide
+isso; `funcao_required(<chave>)` (`webapp/app.py`, sempre depois de
+`@login_required`, nunca junto de `@gestor_required` — uma rota é
+administrativa OU operacional, não as duas) é o decorator que aplica.
+
+No template, `funcoes_ativas` (calculado em `index()` a partir de
+`listar_permissoes`, ou todas as 8 direto se Gestor) decide o que o menu
+mostra — reforço de interface, a trava de verdade é o decorator, que
+consulta o banco de novo em cada rota. `documento_arquivo`
+(`/api/documentos/<id>/arquivo`) fica de fora do catálogo, sem
+`funcao_required`, de propósito: é usado tanto pela ficha do Caso quanto
+pela do Cliente, e a barreira real (documento de outra empresa) já é o
+filtro de `empresa_id`, não isto.
+
+Banco já em uso sem a tabela: rodar `core.db.migrar_permissoes_usuario`
+(idempotente, só cria a tabela — sem seed, porque ausência de linha já
+significa permitido).
 
 ### O painel tem régua: tamanho e tipografia são regra no CSS, não escolha por tela
 
