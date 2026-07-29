@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ERP Smith — Login</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
 <!-- Identidade visual Smith (preto/azul/branco da marca) por cima do
@@ -14,6 +16,13 @@
      próprio, sem framework/build step comum). -->
 <style>
   :root { --ink-deep: #131417; --blue: #396BB3; --blue-deep: #24487D; }
+  /* Mesma família do painel e do Portal -- a tela de entrada é a
+     primeira impressão do sistema, não pode ser a única com outra
+     fonte. */
+  body, .login-card-body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; }
+  .btn { height: 38px; font-size: 14px; font-weight: 600; display: inline-flex;
+    align-items: center; justify-content: center; }
+  .form-control { height: 38px; font-size: 14px; }
   body.login-page { background: var(--ink-deep); }
   .login-logo { text-align: center; margin-bottom: 1.6rem; }
   .login-logo img { height: 52px; }

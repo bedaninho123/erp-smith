@@ -4,10 +4,127 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ERP Smith — Painel Administrativo</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+<!-- As mesmas famílias do Portal do Cliente (portal/templates/_portal_estilo.html).
+     Antes o painel usava a Source Sans Pro que vem com o tema AdminLTE e o Portal
+     usava IBM Plex: dois apps do mesmo sistema com cara de empresas diferentes. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
 <style>
+  /* ==================================================================
+     SISTEMA VISUAL DO PAINEL (aprovado em 2026-07-29)
+
+     O problema que isto resolve, medido antes de mexer: a tela Detalhe
+     do Caso tinha 16 botões com TRÊS alturas diferentes (26, 31 e 38px)
+     e DUAS fontes (14 e 16px), enquanto todo campo de formulário era
+     38px -- daí a sensação de "uns grandes demais, outros pequenos" e
+     de controle desalinhado ao lado do campo.
+
+     A causa não era falta de gosto, era falta de régua: cada tela
+     decidia o tamanho na hora, com style escrito direto na marcação.
+     Por isso o conserto mora AQUI, em regra, e não tela por tela --
+     assim a próxima tela nasce certa sem ninguém precisar lembrar.
+
+     Cores e ícones não mudaram: a paleta abaixo é a mesma de antes.
+     ================================================================== */
+
+  :root {
+    /* Espaçamento: só estes valores. Nunca um 7 ou 13 solto. */
+    --e1: 4px; --e2: 8px; --e3: 12px; --e4: 16px; --e5: 24px; --e6: 32px;
+    --aco: #626873;   /* texto de apoio e rótulo */
+    --linha: #DFE3EA;
+  }
+
+  body, .wrapper { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.5; }
+
+  /* --- Escala de texto: cinco papéis, nada além disso ------------- */
+  .content-header h1 {
+    font-family: 'Big Shoulders', sans-serif; font-weight: 700; font-size: 30px;
+    line-height: 1; text-transform: uppercase; letter-spacing: .02em;
+  }
+  .content-header .text-muted { font-size: 13px; max-width: 78ch; }
+  .card-title { font-size: 15px; font-weight: 600; }
+  h3, h4, h5 { font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; }
+  h5 { font-size: 14px; }
+  label, .rotulo {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--aco); margin-bottom: var(--e1);
+  }
+  .text-monospace, .mono, code { font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+  table th {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--aco);
+  }
+  table td { font-size: 14px; vertical-align: middle; }
+  .badge {
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .06em; padding: 3px var(--e2);
+  }
+
+  /* --- Controles: DUAS alturas, e só duas ------------------------
+     .miniatura fica de fora de propósito -- é o botão que embrulha a
+     foto do documento (200x150), forçar altura nele quebraria a
+     imagem. É a única exceção, e por isso tem nome. */
+  .btn:not(.miniatura) {
+    height: 38px; padding: 0 var(--e4); font-size: 14px; font-weight: 600;
+    line-height: 1; border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--e2);
+  }
+  .btn-sm:not(.miniatura) { height: 30px; padding: 0 var(--e3); font-size: 13px; }
+  .btn-block { display: flex !important; width: 100%; }
+  /* Botão que parece link (nome de arquivo numa tabela) continua com a
+     mesma altura dos vizinhos -- era ele o "26px" da medição. */
+  .btn-link:not(.miniatura) { padding: 0 var(--e2); font-weight: 400; }
+  .miniatura { padding: 0; border: 0; background: none; }
+
+  .form-control:not(textarea) { height: 38px; font-size: 14px; }
+  .form-control-sm:not(textarea) { height: 30px; font-size: 13px; }
+  textarea.form-control { font-size: 14px; padding: var(--e2) var(--e3); }
+  .form-inline > * + * { margin-left: 0; }
+  .form-inline { gap: var(--e2); }
+
+  /* --- Cartão: respiro igual em todos ----------------------------- */
+  .card { border: 1px solid var(--linha); border-radius: 6px; box-shadow: none; }
+  .card-header { padding: var(--e3) var(--e4); border-bottom: 1px solid var(--linha); }
+  .card-body { padding: var(--e4); }
+
+  /* --- Ficha de dados: rótulo e valor em grade --------------------
+     Substitui a pilha de <p><b>Rótulo:</b> valor</p>, em que o CPF e a
+     descrição tinham exatamente o mesmo peso visual e o olho precisava
+     ler tudo pra achar um campo. */
+  .ficha { display: grid; grid-template-columns: auto 1fr; gap: var(--e2) var(--e4); align-items: baseline; margin: 0; }
+  .ficha dt {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--aco); white-space: nowrap;
+  }
+  .ficha dd { margin: 0; font-size: 14px; }
+  .ficha-id { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--aco); margin: 0 0 2px; }
+  .ficha-titulo {
+    font-family: 'Big Shoulders', sans-serif; font-weight: 700; font-size: 30px; line-height: 1;
+    text-transform: uppercase; margin: 0 0 var(--e3);
+  }
+  @media (max-width: 575px) { .ficha { grid-template-columns: 1fr; gap: var(--e1) 0; } }
+
+  /* O rótulo de uma caixa de seleção não é nome de campo -- é a frase
+     que a pessoa lê pra saber o que está marcando. Fica em caixa
+     normal, como qualquer texto. */
+  .form-check-label {
+    text-transform: none; letter-spacing: 0; font-size: 13px;
+    font-weight: 400; color: #232428;
+  }
+
+  /* Exceção ao rótulo maiúsculo: a chave de configuração é
+     identificador, não etiqueta de campo -- é o que a pessoa procura
+     com o olho na tela, então vai em mono e caixa original. */
+  label.config-chave {
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500;
+    text-transform: none; letter-spacing: 0; color: #232428; display: block;
+    margin-bottom: var(--e1);
+  }
+  .config-descricao { font-size: 13px; color: var(--aco); max-width: 78ch; margin: 0 0 var(--e2); }
+
   .cursor-pointer { cursor: pointer; }
   .view { display: none; }
   .view.active { display: block; }
@@ -806,7 +923,7 @@ async function carregarCasos() {
       <td><span class="badge ${badgesStatus[c.status] || 'badge-secondary'}">${escapeHtml(c.status)}</span></td>
       <td>${escapeHtml(c.prioridade)}</td>
       <td>${escapeHtml(c.responsavel_nome || 'não atribuído')}</td>
-      <td>${c.atualizado_em}</td>
+      <td class="text-monospace">${dataHoraBr(c.atualizado_em)}</td>
     </tr>
   `).join("") : `<tr><td colspan="7" class="text-muted">Nenhum caso encontrado com esses filtros.</td></tr>`;
 
@@ -839,21 +956,23 @@ async function abrirCaso(casoId) {
 
   const c = d.caso;
   $("#caso-cabecalho").innerHTML = `
-    <h3>${idCurto(c.caso_id)} — ${escapeHtml(c.titulo)}</h3>
-    <p>
+    <p class="ficha-id">${escapeHtml(c.caso_id)}</p>
+    <h3 class="ficha-titulo">${escapeHtml(c.titulo)}</h3>
+    <p class="mb-3 d-flex flex-wrap" style="gap:var(--e2)">
       <span class="badge ${badgesStatus[c.status] || 'badge-secondary'}">${escapeHtml(c.status)}</span>
       <span class="badge badge-light">${escapeHtml(c.categoria)}</span>
       <span class="badge badge-light">Prioridade ${escapeHtml(c.prioridade)}</span>
     </p>
-    <p>
-      <b>Cliente:</b> ${escapeHtml(c.cliente_nome)} (${numeroCurto(c.cliente_id)})<br>
-      CPF: ${c.cliente_cpf || 'não informado'}<br>
-      E-mail: ${escapeHtml(c.cliente_email || 'sem e-mail')}
-    </p>
-    <p><b>Responsável:</b> ${escapeHtml(c.responsavel_nome || 'não atribuído')}</p>
-    ${c.descricao ? `<p><b>Descrição:</b> ${escapeHtml(c.descricao)}</p>` : ''}
-    <p><b>Criado em:</b> ${dataHoraBr(c.criado_em)}<br><b>Atualizado em:</b> ${dataHoraBr(c.atualizado_em)}</p>
-    ${c.observacoes ? `<p><b>Observações:</b> ${escapeHtml(c.observacoes)}</p>` : ''}
+    <dl class="ficha">
+      <dt>Cliente</dt><dd>${escapeHtml(c.cliente_nome)} <span class="mono text-muted">${escapeHtml(c.cliente_id)}</span></dd>
+      <dt>CPF</dt><dd class="mono">${c.cliente_cpf ? cpfFormatado(c.cliente_cpf) : 'não informado'}</dd>
+      <dt>E-mail</dt><dd>${escapeHtml(c.cliente_email || 'sem e-mail')}</dd>
+      <dt>Responsável</dt><dd>${escapeHtml(c.responsavel_nome || 'não atribuído')}</dd>
+      ${c.descricao ? `<dt>Descrição</dt><dd>${escapeHtml(c.descricao)}</dd>` : ''}
+      <dt>Criado</dt><dd class="mono">${dataHoraBr(c.criado_em)}</dd>
+      <dt>Atualizado</dt><dd class="mono">${dataHoraBr(c.atualizado_em)}</dd>
+      ${c.observacoes ? `<dt>Observações</dt><dd>${escapeHtml(c.observacoes)}</dd>` : ''}
+    </dl>
   `;
 
   casoDocumentosAtuais = d.documentos;
@@ -863,8 +982,8 @@ async function abrirCaso(casoId) {
     <tr class="linha-processo" data-processo='${JSON.stringify(p).replace(/'/g, "&#39;")}'>
       <td>${escapeHtml(p.nome_servico)}</td>
       <td class="text-monospace">${escapeHtml(p.protocolo) || '—'}</td>
-      <td>${escapeHtml(p.status)}</td>
-      <td>${p.prazo_estimado || '—'}</td>
+      <td><span class="badge ${badgesStatus[p.status] || 'badge-secondary'}">${escapeHtml(p.status)}</span></td>
+      <td class="text-monospace">${dataBr(p.prazo_estimado) || '—'}</td>
       <td>${escapeHtml(p.proxima_acao || '—')}</td>
       <td>${documentosBadge(p.checklist)}</td>
       <td>
@@ -902,7 +1021,7 @@ async function abrirCaso(casoId) {
            </a>`
         : escapeHtml(doc.nome_arquivo || '—')}</td>
       <td>${escapeHtml(doc.status)}</td>
-      <td>${doc.data_envio || '—'}</td>
+      <td class="text-monospace">${dataHoraBr(doc.data_envio) || '—'}</td>
     </tr>
   `).join("") : `<tr><td colspan="4" class="text-muted">Nenhum documento neste caso.</td></tr>`;
 
@@ -1599,14 +1718,20 @@ async function abrirCliente(clienteId) {
 
   const c = d.cliente;
   $("#cliente-cabecalho").innerHTML = `
-    <h3>${escapeHtml(c.nome)} <span class="badge badge-light">${c.cliente_id}</span></h3>
-    <p><span class="badge ${c.status === 'Ativo' ? 'badge-success' : 'badge-secondary'}">${escapeHtml(c.status)}</span></p>
-    <p><b>CPF:</b> ${c.cpf || 'não informado'}</p>
-    <p><b>E-mail:</b> ${escapeHtml(c.email || 'não informado')}</p>
-    <p><b>Telefone:</b> ${escapeHtml(c.telefone || 'não informado')}</p>
-    <p><b>Cidade:</b> ${escapeHtml(c.cidade || 'não informada')}</p>
-    <p><b>Cliente desde:</b> ${c.data_cadastro} ${c.ultima_interacao ? `&nbsp; <b>Última interação:</b> ${c.ultima_interacao}` : ''}</p>
-    ${c.observacoes ? `<p><b>Observações:</b> ${escapeHtml(c.observacoes)}</p>` : ''}
+    <p class="ficha-id">${escapeHtml(c.cliente_id)}</p>
+    <h3 class="ficha-titulo">${escapeHtml(c.nome)}</h3>
+    <p class="mb-3">
+      <span class="badge ${c.status === 'Ativo' ? 'badge-success' : 'badge-secondary'}">${escapeHtml(c.status)}</span>
+    </p>
+    <dl class="ficha">
+      <dt>CPF</dt><dd class="mono">${c.cpf ? cpfFormatado(c.cpf) : 'não informado'}</dd>
+      <dt>E-mail</dt><dd>${escapeHtml(c.email || 'não informado')}</dd>
+      <dt>Telefone</dt><dd>${escapeHtml(c.telefone || 'não informado')}</dd>
+      <dt>Cidade</dt><dd>${escapeHtml(c.cidade || 'não informada')}</dd>
+      <dt>Cliente desde</dt><dd class="mono">${dataBr(c.data_cadastro) || '—'}</dd>
+      ${c.ultima_interacao ? `<dt>Última interação</dt><dd class="mono">${dataHoraBr(c.ultima_interacao)}</dd>` : ''}
+      ${c.observacoes ? `<dt>Observações</dt><dd>${escapeHtml(c.observacoes)}</dd>` : ''}
+    </dl>
   `;
 
   $("#cliente-casos-body").innerHTML = d.casos.length ? d.casos.map(caso => `
@@ -1616,7 +1741,7 @@ async function abrirCliente(clienteId) {
       <td><span class="badge ${badgesStatus[caso.status] || 'badge-secondary'}">${escapeHtml(caso.status)}</span></td>
       <td>${escapeHtml(caso.prioridade)}</td>
       <td>${escapeHtml(caso.responsavel_nome || 'não atribuído')}</td>
-      <td>${caso.atualizado_em}</td>
+      <td class="text-monospace">${dataHoraBr(caso.atualizado_em)}</td>
     </tr>
   `).join("") : `<tr><td colspan="6" class="text-muted">Nenhum caso para este cliente.</td></tr>`;
 
@@ -1654,13 +1779,13 @@ function renderDocumentosDoCliente(documentos) {
            <span class="small">sem arquivo</span>
          </div>`
       : ehImagem
-        ? `<button type="button" class="btn p-0 border-0 btn-ver-documento"
+        ? `<button type="button" class="btn miniatura btn-ver-documento"
              data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(nome)}"
              title="Ver em tamanho real">
              <img src="${url}?inline=1" alt="${escapeHtml(nome)}"
                style="width:200px; height:150px; object-fit:cover; border-radius:4px 4px 0 0; display:block">
            </button>`
-        : `<button type="button" class="btn border-0 d-flex align-items-center justify-content-center btn-ver-documento"
+        : `<button type="button" class="btn miniatura d-flex align-items-center justify-content-center btn-ver-documento"
              data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(nome)}"
              style="width:200px; height:150px; background:#f4f6f9; border-radius:4px 4px 0 0"
              title="Ver o documento">
@@ -1683,7 +1808,7 @@ function renderDocumentosDoCliente(documentos) {
           <p class="mb-1 small text-muted text-truncate" title="${escapeHtml(doc.item_checklist || doc.tipo_documento || '')}">
             ${escapeHtml(doc.item_checklist || doc.tipo_documento || '—')}
           </p>
-          <p class="mb-1 small text-muted">${escapeHtml((doc.data_envio || '').replace('T', ' ').replace('Z', ''))}</p>
+          <p class="mb-1 small text-muted mono">${dataHoraBr(doc.data_envio)}</p>
           <p class="mb-2">${selo}</p>
           ${doc.tem_arquivo ? `
             <a href="${url}" class="btn btn-outline-primary btn-sm btn-block">
@@ -1731,7 +1856,13 @@ async function carregarConfiguracoes() {
       <div class="card-body">
         ${porCategoria[categoria].map(c => `
           <div class="mb-3 pb-3 border-bottom">
-            <label for="cfg-${c.config_id}"><b class="text-monospace">${escapeHtml(c.chave)}</b>${c.descricao ? ` — ${escapeHtml(c.descricao)}` : ''}</label>
+            <!-- Chave e descrição são coisas diferentes, e por isso têm
+                 tratamento diferente: a chave é identificador (mono, é o
+                 que se procura na tela), a descrição é frase corrida.
+                 Enquanto as duas dividiam um <label>, a regra de rótulo
+                 do sistema jogava o parágrafo inteiro em maiúsculas. -->
+            <label for="cfg-${c.config_id}" class="config-chave">${escapeHtml(c.chave)}</label>
+            ${c.descricao ? `<p class="config-descricao">${escapeHtml(c.descricao)}</p>` : ''}
             <textarea id="cfg-${c.config_id}" class="form-control">${escapeHtml(c.valor)}</textarea>
             <div class="d-flex align-items-center mt-2" style="gap:0.8rem">
               <div class="form-check">
@@ -1793,6 +1924,24 @@ function numeroCurto(id) {
 }
 
 // "2026-07-23T22:34:08Z" -> "23/07/2026 - 22:34 hrs"
+// O banco guarda CPF só com dígitos (decisão de schema, 2026-07-22).
+// A pontuação é coisa de leitura -- entra na hora de mostrar, nunca de
+// gravar.
+function cpfFormatado(cpf) {
+  const digitos = String(cpf || "").replace(/\D/g, "");
+  if (digitos.length !== 11) return cpf;
+  return `${digitos.slice(0,3)}.${digitos.slice(3,6)}.${digitos.slice(6,9)}-${digitos.slice(9)}`;
+}
+
+// Só a data, sem hora -- para campo em que a hora não significa nada
+// (prazo de processo é um dia, não um instante). O banco guarda ISO,
+// então sem isto a tabela mostrava "2026-08-09T00:00:00Z" cru.
+function dataBr(iso) {
+  if (!iso) return "";
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
 function dataHoraBr(iso) {
   if (!iso) return "";
   const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
@@ -1812,7 +1961,7 @@ function documentosHtml(documentos) {
     const urlDownload = `/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo`;
     const dados = `data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(nome)}"`;
     const visual = ehImagem
-      ? `<button type="button" class="btn p-0 border-0 btn-ver-documento" ${dados} title="${escapeHtml(nome)}">
+      ? `<button type="button" class="btn miniatura btn-ver-documento" ${dados} title="${escapeHtml(nome)}">
           <img src="${url}" alt="${escapeHtml(nome)}" style="max-width:160px; max-height:160px; object-fit:cover; border:1px solid #dee2e6; border-radius:4px;">
         </button>`
       : `<button type="button" class="btn btn-outline-secondary btn-sm btn-ver-documento" ${dados}>
@@ -1858,7 +2007,7 @@ async function carregarDocumentosPendentes() {
           ${escapeHtml(p.grupo || "")} — ${escapeHtml(p.nome_servico || p.processo_id)}
           · caso <a href="#" onclick="abrirCaso('${escapeHtml(p.caso_id)}'); return false;">${escapeHtml(p.caso_id)}</a>
         </p>
-        <p class="mb-1"><b>Enviado em:</b> ${escapeHtml(p.marcado_em)}</p>
+        <p class="mb-1"><b>Enviado em:</b> <span class="mono">${dataHoraBr(p.marcado_em)}</span></p>
         ${documentosHtml([{ documento_id: p.documento_id, nome_arquivo: p.nome_arquivo }])}
         <div class="mt-3 d-flex align-items-center flex-wrap" style="gap:0.6rem">
           <button class="btn btn-success btn-aprovar-doc" data-dck="${escapeHtml(p.documento_checklist_id)}">Aprovar</button>
@@ -1931,7 +2080,7 @@ async function carregarPendentes() {
         <h3 class="card-title">${escapeHtml(p.cliente_nome)} <span class="badge badge-light">${p.cliente_id}</span>${p.intent ? ` <span class="badge badge-light">${escapeHtml(p.intent)}</span>` : ''}</h3>
       </div>
       <div class="card-body">
-        <p class="mb-1"><b>Recebido:</b> ${p.data_hora}</p>
+        <p class="mb-1"><b>Recebido:</b> <span class="mono">${dataHoraBr(p.data_hora)}</span></p>
         <p class="mb-1"><b>Mensagem do cliente:</b></p>
         <div class="resposta-box">${escapeHtml(p.mensagem)}</div>
         ${documentosHtml(p.documentos)}
