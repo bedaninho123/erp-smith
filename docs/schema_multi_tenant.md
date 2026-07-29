@@ -247,6 +247,19 @@ O `EMPRESA_ID` de configuração é honesto sobre o que ainda não existe: hoje 
 
 Os scripts de dados usavam `INSERT INTO tabela VALUES (?,?,?…)` posicional, e isso já tinha quebrado em silêncio antes do multi-tenant: `usuario.senha_hash` e `documento.mensagem_id` entraram no schema depois e deixaram `migrate_dados_teste.py` desatualizado sem ninguém perceber (ele só quebraria no dia em que alguém recriasse o banco). Todos os INSERTs dos scripts agora listam as colunas pelo nome — acrescentar coluna ao schema deixa de ser um problema silencioso.
 
+### Quarto achado — dois módulos ficaram para trás (2026-07-29)
+
+O refactor deu por completo com a suíte verde, mas **dois módulos passaram sem receber a empresa** e só apareceram no primeiro uso real do painel depois dele:
+
+- `motor_ia/atualizador_memoria.py` — a função pública `atualizar_memoria()` recebeu `empresa_id`, mas a interna `_gerar_resumo()` não, e chamava `obter_configuracoes()` sem argumento. Os dois `registrar_log()` do mesmo arquivo também. Resultado: `HTTP 500` na aba Testar Pipeline.
+- `motor_ia/demo_pipeline.py` — nenhuma das cinco chamadas recebia a empresa. É ferramenta de diagnóstico manual, ninguém a rodou desde o refactor.
+
+**Por que a suíte não pegou:** a memória só é atualizada quando o Auditor aprova o envio, então o erro estava atrás do caminho feliz do pipeline — e os testes de isolamento cobrem consulta de dado, não a cadeia completa do Motor IA (que gastaria chamada real da OpenAI a cada execução). É exatamente a lacuna que a §8.2 já declarava: os testes provam que o dado não vaza, não que todo módulo roda.
+
+**Como foi varrido o resto:** um script de AST montou o catálogo das 72 funções do projeto que pedem `empresa_id` e conferiu toda chamada com esses nomes. Fora esses dois, nada. Os 10 `conectar()` do Domínio que o scan apontou são falso positivo — o Domínio tem função própria de conexão, sem `empresa_id`, com o filtro escrito à mão no `WHERE` (§7.1).
+
+Vale como lição de método: **rodar não é o mesmo que testar, mas depois de um refactor desse tamanho, "abrir o sistema e usar" acha o que a suíte não alcança.**
+
 ### A prova de que funciona
 
 Antes de recriar o banco de verdade, a sequência inteira rodou contra um banco descartável com **duas** empresas — a Smith e uma concorrente fictícia. As três propriedades que interessam se confirmaram nos scripts reais, não em SQL de laboratório:
