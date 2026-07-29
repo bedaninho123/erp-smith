@@ -129,6 +129,18 @@ O Auditor (`motor_ia/auditor.py`) tem duas camadas: uma checagem determinística
 
 Flask + Jinja + JS puro (sem build step, sem framework front-end) servido via CDN para o tema AdminLTE 3. Autenticação por sessão simples (`werkzeug.security`, `usuario.senha_hash`) — sem biblioteca de auth adicional. Todas as rotas `/api/*` exigem login (`@login_required`); a senha de um usuário nunca é definida por código, só via `webapp/definir_senha.py` rodado interativamente pelo próprio usuário. A UI inteira é uma SPA de uma página só (`webapp/templates/index.html`) alternando divs `.view` via JS — não há rotas de URL por tela.
 
+### O painel tem régua: tamanho e tipografia são regra no CSS, não escolha por tela
+
+Padronizado em 2026-07-29, depois de medir 16 botões com **três** alturas (26/31/38px) e duas fontes na mesma tela. A causa era `style="..."` escrito direto na marcação, tela a tela. As regras vivem no `<style>` de `webapp/templates/index.html`, no bloco "SISTEMA VISUAL DO PAINEL", e valem para toda tela nova:
+
+- **Duas alturas de controle, só**: 38px (ação principal, e todo `.form-control`) e 30px (`.btn-sm`, ação dentro de linha). Fonte 14px e 13px respectivamente.
+- **Tipografia**: Big Shoulders nos títulos de tela, IBM Plex Sans no texto, IBM Plex Mono em identificador (`CAS-000001`), CPF e data — as mesmas do Portal, de propósito: são dois apps do mesmo sistema.
+- **Espaçamento**: só os múltiplos `--e1`…`--e6` (4/8/12/16/24/32).
+- **Bloco de dados** usa `.ficha` (grade rótulo/valor), nunca pilha de `<p><b>Rótulo:</b> valor</p>`.
+- **Data nunca vai crua pra tela**: `dataBr()` para dia, `dataHoraBr()` para instante, `cpfFormatado()` para CPF (o banco guarda só dígitos).
+
+As exceções têm nome e comentário explicando o porquê — `.miniatura` (botão que embrulha foto, não pode ter altura forçada), `.form-check-label` e `.config-chave` (texto de leitura e identificador, não viram maiúscula). Ao criar uma exceção nova, seguir o mesmo padrão: classe com nome + motivo no comentário, nunca `style` solto na marcação.
+
 ### portal/ é um app Flask separado, nunca reaproveita a sessão do painel
 
 Ver `docs/portal_cliente_arquitetura.md` para o rascunho completo. Autoatendimento pro cliente real (não staff), rodando em porta própria (5002) com `secret_key` e nome de cookie (`SESSION_COOKIE_NAME = "portal_session"`) totalmente separados de `webapp/` — os dois podem rodar ao mesmo tempo no mesmo navegador sem misturar sessão. Login sem senha: link mágico de token único por e-mail (`core/motor_portal_auth.py`), nunca reaproveita `usuario.senha_hash`. MVP é só leitura (status do caso + checklist de documentos) + upload — sem chat com a IA pelo Portal ainda. Toda rota que recebe `caso_id`/`documento_id` do cliente **sempre** confere se o dono bate com `session["cliente_id"]` antes de ler ou escrever qualquer coisa — esse é o único ponto realmente crítico de segurança do Portal (primeira superfície pública do sistema, domínio regulado de arma de fogo): um bug aqui vaza documento de um cliente para outro.
