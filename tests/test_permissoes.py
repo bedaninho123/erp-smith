@@ -38,6 +38,27 @@ def test_religar_a_funcao_libera_de_novo(painel_atendente):
     assert painel_atendente.get("/api/clientes/lista").status_code == 200
 
 
+def test_listar_campeonatos_aceita_campeonatos_ou_resultados(painel_atendente):
+    # GET /api/campeonatos é pré-requisito de duas telas: a lista da
+    # própria tela Campeonatos e o seletor de campeonato dentro de
+    # Resultados. Achado testando como a Ana no navegador: travar só em
+    # "campeonatos" quebrava o seletor de quem tem só "resultados".
+    atualizar_permissoes("EMP-000001", "USR-000003", {"campeonatos": "Não"})
+
+    ainda_ve_a_lista = painel_atendente.get("/api/campeonatos")
+    assert ainda_ve_a_lista.status_code == 200
+
+    # Mas continua sem poder criar/editar campeonato -- isso é
+    # exclusivo da função "campeonatos", não vaza pela lista.
+    assert painel_atendente.post(
+        "/api/campeonatos", json={"nome": "X", "data_inicio": "2026-01-01"}
+    ).status_code == 403
+
+    # Desligando as duas, a lista também fecha.
+    atualizar_permissoes("EMP-000001", "USR-000003", {"resultados": "Não"})
+    assert painel_atendente.get("/api/campeonatos").status_code == 403
+
+
 def test_gestor_sempre_passa_mesmo_com_tudo_desligado(painel):
     # USR-000001 é Gestor -- o decorator nem chega a consultar a tabela,
     # mas o teste confere o resultado, não a implementação.

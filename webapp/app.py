@@ -139,17 +139,24 @@ def gestor_required(f):
     return wrapper
 
 
-def funcao_required(funcao):
+def funcao_required(*funcoes):
     """Some depois de @login_required, nunca junto de @gestor_required
     (são exclusivos: uma rota é administrativa OU operacional). Gestor
-    passa sempre, sem consultar a tabela. Atendente só passa se
-    tem_permissao() disser que sim -- que por padrão é True quando não
-    há linha (core/motor_usuarios.py)."""
+    passa sempre, sem consultar a tabela. Atendente passa se
+    tem_permissao() disser sim para PELO MENOS UMA das funções passadas
+    -- por padrão é True quando não há linha (core/motor_usuarios.py).
+
+    Aceita mais de uma função porque uma rota pode ser pré-requisito de
+    duas telas: GET /api/campeonatos é a lista de campeonatos da tela
+    Campeonatos, mas também o seletor de campeonato dentro da tela
+    Resultados -- travar só em "campeonatos" quebrava Resultados pra
+    quem tem só essa função ligada (achado testando como a Ana)."""
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
             if session.get("papel") != "Gestor":
-                if not tem_permissao(empresa_atual(), session.get("usuario_id"), funcao):
+                empresa_id, usuario_id = empresa_atual(), session.get("usuario_id")
+                if not any(tem_permissao(empresa_id, usuario_id, funcao) for funcao in funcoes):
                     if request.path.startswith("/api/"):
                         return jsonify(erro="Você não tem permissão para esta função."), 403
                     return redirect(url_for("index"))
@@ -1001,7 +1008,7 @@ def usuarios_permissoes_atualizar(usuario_id):
 
 @app.route("/api/campeonatos")
 @login_required
-@funcao_required("campeonatos")
+@funcao_required("campeonatos", "resultados")
 def campeonatos_lista():
     ano = request.args.get("ano", type=int)
     return jsonify(listar_campeonatos(empresa_atual(), ano=ano))
