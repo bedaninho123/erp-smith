@@ -32,13 +32,14 @@ class ResumoMemoria(BaseModel):
 
 
 def _gerar_resumo(
+    empresa_id: str,
     memoria_antiga: Optional[dict],
     classificacao: ResultadoClassificacao,
     resposta_enviada: str,
     caso_id: Optional[str] = None,
     sessao_id: Optional[str] = None,
 ) -> ResumoMemoria:
-    config = obter_configuracoes()
+    config = obter_configuracoes(empresa_id)
     modelo = config.get("modelo_openai", "gpt-5-mini")
 
     if memoria_antiga:
@@ -77,7 +78,7 @@ def _gerar_resumo(
             )
     except Exception as e:
         registrar_log(
-            prompt_key="ATUALIZADOR_MEMORIA", modelo=modelo, resultado="Erro",
+            empresa_id, prompt_key="ATUALIZADOR_MEMORIA", modelo=modelo, resultado="Erro",
             tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
             caso_id=caso_id, sessao_id=sessao_id, erro=f"{type(e).__name__}: {e}",
         )
@@ -85,7 +86,7 @@ def _gerar_resumo(
 
     uso = resposta.usage
     registrar_log(
-        prompt_key="ATUALIZADOR_MEMORIA", modelo=modelo, resultado="Sucesso",
+        empresa_id, prompt_key="ATUALIZADOR_MEMORIA", modelo=modelo, resultado="Sucesso",
         tokens_entrada=uso.prompt_tokens if uso else None,
         tokens_saida=uso.completion_tokens if uso else None,
         tempo_processamento_ms=int((time.monotonic() - inicio) * 1000),
@@ -118,7 +119,9 @@ def atualizar_memoria(
         ).fetchone()
         memoria_antiga = dict(linha) if linha else None
 
-        resumo = _gerar_resumo(memoria_antiga, classificacao, resposta_enviada, caso_id, sessao_id)
+        resumo = _gerar_resumo(
+            empresa_id, memoria_antiga, classificacao, resposta_enviada, caso_id, sessao_id
+        )
 
         servicos_recentes = "; ".join(
             f"{s['service_id']} - {s['nome_servico']}" for s in dados.get("servicos", [])

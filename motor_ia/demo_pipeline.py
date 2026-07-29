@@ -9,14 +9,16 @@ from motor_ia.planejador import planejar
 from motor_ia.redator import redigir
 
 
-def responder(mensagem: str, cliente_id: str) -> None:
-    classificacao = classificar(mensagem)
+def responder(empresa_id: str, mensagem: str, cliente_id: str) -> None:
+    classificacao = classificar(empresa_id, mensagem)
     plano = planejar(classificacao)
-    dados = consultar(plano, cliente_id=cliente_id, classificacao=classificacao)
+    dados = consultar(
+        plano, empresa_id=empresa_id, cliente_id=cliente_id, classificacao=classificacao
+    )
     cliente_nome = (dados.get("cliente") or {}).get("nome", "Cliente")
 
-    resposta = redigir(dados, cliente_nome=cliente_nome)
-    resultado = auditar(resposta, dados, cliente_nome, plano)
+    resposta = redigir(empresa_id, dados, cliente_nome=cliente_nome)
+    resultado = auditar(empresa_id, resposta, dados, cliente_nome, plano)
 
     print(f"Mensagem: {mensagem}")
     print(f"Intenção: {classificacao.intencao}  |  precisa_humano: {classificacao.precisa_humano}")
@@ -27,7 +29,7 @@ def responder(mensagem: str, cliente_id: str) -> None:
         print("[ENVIADO AO CLIENTE]")
         print(resposta)
     elif resultado.acao == "encaminhar_humano":
-        config = obter_configuracoes()
+        config = obter_configuracoes(empresa_id)
         print("[RESPOSTA DA IA DESCARTADA -- ENCAMINHADO A HUMANO]")
         print(config.get("mensagem_encaminhamento_humano"))
     else:
@@ -39,12 +41,15 @@ def responder(mensagem: str, cliente_id: str) -> None:
 
 
 if __name__ == "__main__":
-    responder("Quais documentos preciso para renovar meu CR?", "CLI-000001")
+    EMPRESA = "EMP-000001"
+    responder(EMPRESA, "Quais documentos preciso para renovar meu CR?", "CLI-000001")
     responder(
+        EMPRESA,
         "Meu CPF é 123.456.789-00, quero saber como está o processo PROTO-2026-001",
         "CLI-000001",
     )
     responder(
+        EMPRESA,
         "Isso é um absurdo, ninguém me responde há uma semana, quero falar com uma pessoa AGORA",
         "CLI-000001",
     )
