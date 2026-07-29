@@ -33,6 +33,35 @@
   a { color: var(--blue-deep); }
   a:hover { color: var(--blue); }
   .brand-logo { height: 32px; }
+
+  /* Visualizador de documento. Antes o clique na miniatura abria o
+     arquivo numa aba nova e o funcionário ficava sem caminho de volta
+     pro painel -- o navegador não oferece "fechar e voltar" quando a
+     aba mostra só uma imagem. Aqui a foto abre POR CIMA do painel, que
+     continua atrás: fechar devolve exatamente onde a pessoa estava.
+     JS puro, sem depender do modal do Bootstrap -- o `$` desta página
+     é o querySelector, não o jQuery. */
+  .visualizador {
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(10, 11, 13, .88);
+    display: flex; flex-direction: column;
+  }
+  .visualizador-barra {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .6rem 1rem; color: #fff;
+    background: rgba(0, 0, 0, .45);
+  }
+  .visualizador-nome {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .visualizador-corpo {
+    flex: 1; min-height: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 1rem;
+  }
+  .visualizador-corpo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .visualizador-corpo iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
@@ -659,6 +688,19 @@
   </footer>
 </div>
 
+<div id="visualizador" class="visualizador" style="display:none" role="dialog" aria-modal="true" aria-label="Documento">
+  <div class="visualizador-barra">
+    <span class="visualizador-nome" id="visualizador-nome"></span>
+    <a class="btn btn-light btn-sm" id="visualizador-baixar" href="#" download>
+      <i class="fas fa-download mr-1"></i>Baixar
+    </a>
+    <button type="button" class="btn btn-light btn-sm" id="visualizador-fechar" title="Fechar (Esc)">
+      <i class="fas fa-times mr-1"></i>Fechar
+    </button>
+  </div>
+  <div class="visualizador-corpo" id="visualizador-corpo"></div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
@@ -666,6 +708,57 @@
 <script>
 const $ = (sel) => document.querySelector(sel);
 let casoDocumentosAtuais = [];
+
+// --------------------------------------------------------------------
+// Visualizador de documento (abre por cima do painel, sempre com saída)
+// --------------------------------------------------------------------
+const EXTENSOES_IMAGEM = /\.(jpe?g|png|heic|heif|webp|gif)$/i;
+
+// Guarda quem tinha o foco antes de abrir, pra devolver na hora de
+// fechar -- quem navega por teclado volta pro mesmo lugar da tela.
+let focoAntesDoVisualizador = null;
+
+function abrirVisualizador(documentoId, nome) {
+  const url = `/api/documentos/${encodeURIComponent(documentoId)}/arquivo`;
+  const corpo = $("#visualizador-corpo");
+
+  // Imagem vai em <img>; qualquer outra coisa (PDF) em <iframe>, que o
+  // navegador renderiza com o próprio leitor. Nos dois casos fica DENTRO
+  // da sobreposição, então o botão Fechar continua alcançável.
+  corpo.innerHTML = EXTENSOES_IMAGEM.test(nome || "")
+    ? `<img src="${url}?inline=1" alt="${escapeHtml(nome || documentoId)}">`
+    : `<iframe src="${url}?inline=1" title="${escapeHtml(nome || documentoId)}"></iframe>`;
+
+  $("#visualizador-nome").textContent = nome || documentoId;
+  $("#visualizador-baixar").href = url;
+  focoAntesDoVisualizador = document.activeElement;
+  $("#visualizador").style.display = "flex";
+  $("#visualizador-fechar").focus();
+}
+
+function fecharVisualizador() {
+  $("#visualizador").style.display = "none";
+  // Esvaziar o corpo para o vídeo/PDF parar de consumir recurso e para
+  // a próxima abertura nunca mostrar por um instante o documento
+  // anterior -- que aqui seria mostrar documento de outra pessoa.
+  $("#visualizador-corpo").innerHTML = "";
+  if (focoAntesDoVisualizador) focoAntesDoVisualizador.focus();
+}
+
+$("#visualizador-fechar").addEventListener("click", fecharVisualizador);
+
+// Clique no fundo fecha; clique na imagem/PDF, não.
+$("#visualizador").addEventListener("click", (e) => {
+  if (e.target.id === "visualizador" || e.target.id === "visualizador-corpo") {
+    fecharVisualizador();
+  }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("#visualizador").style.display !== "none") {
+    fecharVisualizador();
+  }
+});
 
 document.querySelectorAll("[data-view]").forEach(btn => {
   btn.addEventListener("click", (e) => {
@@ -802,7 +895,8 @@ async function abrirCaso(casoId) {
     <tr>
       <td>${escapeHtml(doc.tipo_documento)}</td>
       <td>${doc.link_arquivo
-        ? `<a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo?inline=1" target="_blank" rel="noopener">${escapeHtml(doc.nome_arquivo || 'arquivo')}</a>
+        ? `<button type="button" class="btn btn-link p-0 btn-ver-documento"
+             data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(doc.nome_arquivo || '')}">${escapeHtml(doc.nome_arquivo || 'arquivo')}</button>
            <a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo" class="btn btn-outline-secondary btn-sm ml-2" title="Baixar o arquivo">
              <i class="fas fa-download"></i>
            </a>`
@@ -811,6 +905,8 @@ async function abrirCaso(casoId) {
       <td>${doc.data_envio || '—'}</td>
     </tr>
   `).join("") : `<tr><td colspan="4" class="text-muted">Nenhum documento neste caso.</td></tr>`;
+
+  ligarBotoesVerDocumento($("#caso-documentos-body"));
 
   $("#documento-processo").innerHTML = `<option value="">não vincular a um processo específico</option>` +
     d.processos.map(p => `<option value="${p.processo_id}">${escapeHtml(p.nome_servico)} (${p.processo_id})</option>`).join("");
@@ -1339,9 +1435,10 @@ function renderChecklist(processo) {
           <span class="badge badge-warning mr-2">Aguardando aprovação</span>${escapeHtml(item.item)}
           ${item.aguardando.map(doc => `
             <div class="mt-1 form-inline" style="gap:.4rem">
-              <a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo?inline=1" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">
+              <button type="button" class="btn btn-outline-secondary btn-sm btn-ver-documento"
+                data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(doc.nome_arquivo || '')}">
                 <i class="fas fa-file mr-1"></i>${escapeHtml(doc.nome_arquivo || doc.documento_id)}
-              </a>
+              </button>
               <button type="button" class="btn btn-success btn-sm btn-aprovar-checklist" data-dck="${doc.documento_checklist_id}">Aprovar</button>
               <input type="text" class="form-control form-control-sm motivo-checklist" data-dck="${doc.documento_checklist_id}"
                 placeholder="Motivo da recusa" style="min-width:240px">
@@ -1366,6 +1463,8 @@ function renderChecklist(processo) {
   }).join("");
 
   $("#checklist-corpo").innerHTML = linhas || `<p class="text-muted">Nenhum item de checklist cadastrado para este serviço.</p>`;
+
+  ligarBotoesVerDocumento($("#checklist-corpo"));
 
   $("#checklist-corpo").querySelectorAll(".btn-marcar-checklist").forEach(btn => {
     btn.addEventListener("click", async () => {
@@ -1528,11 +1627,6 @@ async function abrirCliente(clienteId) {
   renderDocumentosDoCliente(d.documentos || []);
 }
 
-// Extensões que o navegador mostra como imagem -- a mesma lista aceita no
-// upload (webapp/app.py e integracoes/gmail.py). PDF não entra: renderizar
-// PDF em <img> só produz um quadrado quebrado.
-const EXTENSOES_IMAGEM = /\.(jpe?g|png|heic|heif|webp|gif)$/i;
-
 function renderDocumentosDoCliente(documentos) {
   const contagem = $("#cliente-documentos-contagem");
   const el = $("#cliente-documentos");
@@ -1560,15 +1654,18 @@ function renderDocumentosDoCliente(documentos) {
            <span class="small">sem arquivo</span>
          </div>`
       : ehImagem
-        ? `<a href="${url}?inline=1" target="_blank" rel="noopener" title="Abrir em tamanho real">
+        ? `<button type="button" class="btn p-0 border-0 btn-ver-documento"
+             data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(nome)}"
+             title="Ver em tamanho real">
              <img src="${url}?inline=1" alt="${escapeHtml(nome)}"
                style="width:200px; height:150px; object-fit:cover; border-radius:4px 4px 0 0; display:block">
-           </a>`
-        : `<a href="${url}?inline=1" target="_blank" rel="noopener"
-             class="d-flex align-items-center justify-content-center"
-             style="width:200px; height:150px; background:#f4f6f9; border-radius:4px 4px 0 0; text-decoration:none">
+           </button>`
+        : `<button type="button" class="btn border-0 d-flex align-items-center justify-content-center btn-ver-documento"
+             data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(nome)}"
+             style="width:200px; height:150px; background:#f4f6f9; border-radius:4px 4px 0 0"
+             title="Ver o documento">
              <i class="fas fa-file-pdf fa-3x text-secondary"></i>
-           </a>`;
+           </button>`;
 
     const selo = doc.status_conferencia === "Aguardando aprovação"
       ? `<span class="badge badge-warning">aguardando aprovação</span>`
@@ -1602,6 +1699,15 @@ function renderDocumentosDoCliente(documentos) {
 
   el.querySelectorAll(".btn-ir-caso").forEach(btn => {
     btn.addEventListener("click", () => abrirCaso(btn.dataset.caso));
+  });
+  ligarBotoesVerDocumento(el);
+}
+
+// Usado pela ficha do atirador e pelas duas filas de aprovação -- todas
+// abrem o mesmo visualizador.
+function ligarBotoesVerDocumento(elemento) {
+  elemento.querySelectorAll(".btn-ver-documento").forEach(btn => {
+    btn.addEventListener("click", () => abrirVisualizador(btn.dataset.documento, btn.dataset.nome));
   });
 }
 
@@ -1700,17 +1806,18 @@ function documentosHtml(documentos) {
   const itens = documentos.map(doc => {
     const nome = doc.nome_arquivo || "documento";
     const url = `/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo?inline=1`;
-    const ehImagem = /\.(jpe?g|png|heic|heif|webp)$/i.test(nome);
+    const ehImagem = EXTENSOES_IMAGEM.test(nome);
     // Sem ?inline=1 o navegador baixa em vez de abrir -- é a mesma rota,
     // o parâmetro é que decide (webapp/app.py::documento_arquivo).
     const urlDownload = `/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo`;
+    const dados = `data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(nome)}"`;
     const visual = ehImagem
-      ? `<a href="${url}" target="_blank" rel="noopener" title="${escapeHtml(nome)}">
+      ? `<button type="button" class="btn p-0 border-0 btn-ver-documento" ${dados} title="${escapeHtml(nome)}">
           <img src="${url}" alt="${escapeHtml(nome)}" style="max-width:160px; max-height:160px; object-fit:cover; border:1px solid #dee2e6; border-radius:4px;">
-        </a>`
-      : `<a href="${url}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">
+        </button>`
+      : `<button type="button" class="btn btn-outline-secondary btn-sm btn-ver-documento" ${dados}>
           <i class="fas fa-file mr-1"></i>${escapeHtml(nome)}
-        </a>`;
+        </button>`;
     return `<div class="text-center">
         ${visual}
         <div><a href="${urlDownload}" class="btn btn-link btn-sm p-0 mt-1"><i class="fas fa-download mr-1"></i>Baixar</a></div>
@@ -1763,6 +1870,8 @@ async function carregarDocumentosPendentes() {
       </div>
     </div>
   `).join("");
+
+  ligarBotoesVerDocumento(el);
 
   el.querySelectorAll(".btn-aprovar-doc").forEach(btn => {
     btn.addEventListener("click", () => aprovarDocumento(btn.dataset.dck, carregarDocumentosPendentes));
@@ -1836,6 +1945,8 @@ async function carregarPendentes() {
       </div>
     </div>
   `).join("");
+
+  ligarBotoesVerDocumento(el);
 }
 
 async function aprovarPendente(mensagemId) {
