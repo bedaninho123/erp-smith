@@ -1,4 +1,4 @@
-{% extends "_portal_layout.html" %}
+﻿{% extends "_portal_layout.html" %}
 {% block titulo %}Habitualidade{% endblock %}
 {% block estilo_extra %}
 <style>
@@ -40,7 +40,7 @@
   {% if cr %}
   <div class="ficha cr-card">
     <div class="cr-icone">
-      <svg width="26" height="26" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.7"/><circle cx="10" cy="10" r=".6" fill="currentColor" stroke="none"/></svg>
+      <svg aria-hidden="true" width="26" height="26" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.7"/><circle cx="10" cy="10" r=".6" fill="currentColor" stroke="none"/></svg>
     </div>
     <div>
       <h3 class="cr-titulo">CR — {{ cr.categoria_cr }}</h3>

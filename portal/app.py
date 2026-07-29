@@ -629,7 +629,14 @@ def caso_detalhe(caso_id):
         cliente_nome=session.get("cliente_nome"),
         caso=caso,
         itens_faltando=itens_faltando,
-        documentos=[dict(d) for d in documentos],
+        # data_envio formatada aqui pelo mesmo motivo do prazo_estimado
+        # (ver _data_br): a tabela mostrava "2026-07-29" cru enquanto o
+        # resto do Portal usa dd/mm/aaaa. É a segunda vez que uma coluna
+        # de data escapa nesta tela -- toda data nova que entrar aqui
+        # passa por _data_br antes de ir pro template.
+        documentos=[
+            dict(d, data_envio_fmt=_data_br(d["data_envio"])) for d in documentos
+        ],
     )
 
 

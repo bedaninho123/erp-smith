@@ -51,10 +51,31 @@
 
   a { color: var(--blue-deep); }
   a:hover { color: var(--blue); }
-  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+  /* textarea entrou na lista: estava de fora, então era o único
+     controle do Portal sem foco visível. */
+  a:focus-visible, button:focus-visible, input:focus-visible,
+  select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     outline: 2px solid var(--blue);
     outline-offset: 2px;
   }
+
+  /* Link de pular a navegação. Fica fora da tela até receber foco --
+     invisível pra quem usa mouse, primeiro item pra quem usa teclado.
+     Não usa display:none nem visibility:hidden de propósito: os dois
+     tirariam o link do caminho do Tab, que é justamente o ponto. */
+  .pular-para-conteudo {
+    position: absolute; left: -9999px; top: 0; z-index: 100;
+    background: var(--ink-deep); color: #fff;
+    padding: .7rem 1.1rem; border-radius: 0 0 var(--radius) 0;
+    font-size: .9rem; font-weight: 600; text-decoration: none;
+  }
+  .pular-para-conteudo:focus {
+    left: 0;
+    color: #fff;
+  }
+  /* O <main> recebe foco por programa quando o link é usado; não deve
+     ganhar contorno por isso -- quem clicou já sabe onde está. */
+  main:focus { outline: none; }
 
   /* Marca -- a logo de verdade (PDF vetorial da identidade visual),
      em duas versões: escura (sobre fundo claro, telas de login/erro) e
@@ -262,6 +283,14 @@
      (checkbox escondido + seletor ~), sem nenhuma linha de JS. */
   .portal-shell { min-height: 100vh; }
   .portal-menu-toggle-input { position: absolute; opacity: 0; pointer-events: none; }
+  /* O controle real do menu é invisível, então o foco dele precisa
+     aparecer em outro lugar: acende o ☰ que a pessoa enxerga. Sem isto,
+     quem chega no menu por Tab não vê nada acontecer. */
+  .portal-menu-toggle-input:focus-visible ~ .portal-main .portal-topo-mobile span {
+    outline: 2px solid var(--blue-bright);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
 
   .portal-sidebar {
     width: 232px;

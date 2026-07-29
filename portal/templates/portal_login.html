@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
@@ -24,7 +24,7 @@
 <body>
 <div class="pagina-login">
   <div class="caixa-login">
-    <img class="marca-logo marca-logo--grande" src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
+    <img class="marca-logo marca-logo--grande" width="900" height="439" src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
     <div class="ficha">
       <h1 style="font-size:1.25rem; margin:0 0 .2rem;">Portal do Cliente</h1>
       <p class="subtitulo">Acompanhe seus processos e envie documentos</p>
@@ -34,7 +34,13 @@
       {% else %}
       <form method="post">
         <label for="identificador">CPF ou e-mail cadastrado</label>
-        <input id="identificador" name="identificador" type="text" required autofocus style="margin-bottom:1rem;">
+        <!-- autocomplete=username: é o identificador de acesso, então o
+             navegador e o gerenciador de senhas podem oferecer o que a
+             pessoa já usou aqui. spellcheck desligado porque corretor
+             ortográfico em CPF e e-mail só atrapalha. -->
+        <input id="identificador" name="identificador" type="text"
+          autocomplete="username" spellcheck="false" autocapitalize="none"
+          required autofocus style="margin-bottom:1rem;">
         <button type="submit" class="botao" style="width:100%;">Enviar link de acesso</button>
       </form>
       <p class="ajuda">Sem senha pra lembrar — mandamos um link de acesso único pro seu e-mail, válido por 15 minutos.</p>

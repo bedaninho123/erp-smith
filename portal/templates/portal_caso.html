@@ -105,7 +105,7 @@
       <label for="tipo_documento">O que é este documento?</label>
       {% if itens_faltando %}
       <select id="tipo_documento" name="tipo_documento" required
-        onchange="document.getElementById('tipo_documento_outro').style.display = (this.value === '__outro__') ? 'block' : 'none';">
+        onchange="document.getElementById('bloco-outro-documento').hidden = (this.value !== '__outro__');">
         <option value="" disabled selected>Selecione um documento da lista</option>
         {% if itens_faltando|length > 1 %}
           {% for grupo in itens_faltando %}
@@ -122,8 +122,16 @@
         {% endif %}
         <option value="__outro__">Outro documento (não está na lista)</option>
       </select>
-      <input id="tipo_documento_outro" name="tipo_documento_outro" type="text"
-        placeholder="Descreva o documento" style="display:none; margin-top:.6rem;">
+      <!-- Rótulo próprio em vez de só placeholder: o placeholder some
+           assim que a pessoa começa a digitar, e este é justamente o
+           campo que diz QUAL documento está sendo enviado. `hidden`
+           no lugar de style=display:none porque, escondido, o campo
+           precisa sair também do caminho do Tab e da leitura de tela. -->
+      <div id="bloco-outro-documento" style="margin-top:.6rem;" hidden>
+        <label for="tipo_documento_outro">Qual documento você está enviando?</label>
+        <input id="tipo_documento_outro" name="tipo_documento_outro" type="text"
+          placeholder="Ex.: certidão de antecedentes criminais">
+      </div>
       {% else %}
       <input id="tipo_documento" name="tipo_documento" type="text" placeholder="Ex.: RG, comprovante de residência">
       {% endif %}
@@ -150,7 +158,7 @@
           {% else %}—{% endif %}
         </td>
         <td>{{ doc.status }}</td>
-        <td class="mono">{{ doc.data_envio[:10] if doc.data_envio else '—' }}</td>
+        <td class="mono">{{ doc.data_envio_fmt or '—' }}</td>
       </tr>
       {% else %}
       <tr><td colspan="4" style="color:var(--steel); padding:1rem .3rem;">Nenhum documento enviado ainda pra este caso — assim que você mandar algo, aparece aqui.</td></tr>
