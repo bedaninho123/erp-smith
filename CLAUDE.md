@@ -52,6 +52,9 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.gerar_clientes_ficticios   # aceita um empresa_id como argumento
 .venv\Scripts\python.exe -m core.db.popular_documentos_exigidos
 .venv\Scripts\python.exe -m core.db.migrar_aprovacao_documentos  # idempotente, roda sobre banco em uso
+
+# Conferir se a tabela documento bate com os arquivos em disco (só relata, nunca apaga)
+.venv\Scripts\python.exe -m core.db.auditar_documentos
 .venv\Scripts\python.exe -m domain.clube_tiro.db.criar_banco --recriar
 .venv\Scripts\python.exe -m domain.clube_tiro.db.popular_conhecimento
 .venv\Scripts\python.exe -m domain.clube_tiro.db.popular_campeonatos_2026

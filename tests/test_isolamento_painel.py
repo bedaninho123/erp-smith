@@ -75,6 +75,30 @@ def test_busca_de_cliente_nao_vaza_pelo_filtro_de_texto(banco, painel):
     assert "Carla Outra" not in corpo
 
 
+def test_ficha_do_cliente_nao_lista_documento_de_outra_empresa(banco, painel):
+    """A ficha do atirador passou a trazer todos os arquivos dele.
+
+    O cliente de outra empresa já era barrado antes desta lista existir,
+    mas o teste fica: é a rota que junta cliente + casos + documentos num
+    lugar só, e a lista de documentos foi acrescentada nela depois --
+    exatamente o tipo de campo novo que entra sem o filtro.
+    """
+    resposta = painel.get("/api/clientes/CLI-000003")
+
+    assert resposta.status_code == 404
+    assert "DOC-000003" not in resposta.get_data(as_text=True)
+
+
+def test_ficha_do_cliente_traz_so_os_documentos_dele(banco, painel):
+    """Ana e Bruno são da MESMA empresa -- aqui o filtro de empresa não
+    separa nada, quem separa é o cliente_id."""
+    dados = painel.get("/api/clientes/CLI-000001").get_json()
+
+    ids = [d["documento_id"] for d in dados["documentos"]]
+    assert ids == ["DOC-000001"]
+    assert "DOC-000002" not in ids  # do Bruno
+
+
 def test_nao_altera_status_de_caso_de_outra_empresa(banco, painel):
     resposta = painel.post("/api/casos/CAS-000003/status", json={"status": "Encerrado"})
 

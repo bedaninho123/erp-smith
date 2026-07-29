@@ -773,8 +773,44 @@ def cliente_detalhe(cliente_id):
         (cliente_id, empresa_id),
     ).fetchall()
 
+    # Todos os arquivos deste cliente, de qualquer canal (e-mail, upload
+    # do painel, Portal) e de qualquer caso -- é o "arquivo morto" dele.
+    # O LEFT JOIN traz o estado de conferência quando o documento foi
+    # ligado a um item de checklist; documento solto (anexo de e-mail que
+    # ninguém classificou) aparece com esses campos em NULL, e é isso que
+    # deixa visível o que está largado sem uso.
+    documentos = con.execute(
+        "SELECT d.documento_id, d.tipo_documento, d.nome_arquivo, d.status, "
+        "       d.data_envio, d.caso_id, d.link_arquivo, "
+        "       dck.status AS status_conferencia, dex.item AS item_checklist "
+        "FROM documento d "
+        "LEFT JOIN documento_checklist dck ON dck.documento_id = d.documento_id "
+        "     AND dck.empresa_id = d.empresa_id "
+        "LEFT JOIN documento_exigido dex ON dex.documento_exigido_id = dck.documento_exigido_id "
+        "     AND dex.empresa_id = d.empresa_id "
+        "WHERE d.cliente_id = ? AND d.empresa_id = ? "
+        "ORDER BY d.data_envio DESC",
+        (cliente_id, empresa_id),
+    ).fetchall()
+
     con.close()
-    return jsonify(cliente=dict(cliente), casos=[dict(r) for r in casos])
+
+    # `tem_arquivo` evita oferecer "baixar" pra linha que só tem metadado:
+    # os documentos migrados da planilha antiga têm link_arquivo apontando
+    # pra um example.com que nunca existiu. Clicar num botão que sempre dá
+    # erro é pior do que não ter o botão.
+    lista_documentos = []
+    for linha in documentos:
+        doc = dict(linha)
+        caminho = doc.pop("link_arquivo", None)
+        doc["tem_arquivo"] = bool(caminho) and Path(caminho).is_file()
+        lista_documentos.append(doc)
+
+    return jsonify(
+        cliente=dict(cliente),
+        casos=[dict(r) for r in casos],
+        documentos=lista_documentos,
+    )
 
 
 @app.route("/api/configuracoes")

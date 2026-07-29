@@ -367,6 +367,13 @@
               </table>
             </div>
           </div>
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Documentos deste atirador</h3>
+              <span class="text-muted ml-2" id="cliente-documentos-contagem"></span>
+            </div>
+            <div class="card-body" id="cliente-documentos"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -795,7 +802,10 @@ async function abrirCaso(casoId) {
     <tr>
       <td>${escapeHtml(doc.tipo_documento)}</td>
       <td>${doc.link_arquivo
-        ? `<a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo" target="_blank" rel="noopener">${escapeHtml(doc.nome_arquivo || 'arquivo')}</a>`
+        ? `<a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo?inline=1" target="_blank" rel="noopener">${escapeHtml(doc.nome_arquivo || 'arquivo')}</a>
+           <a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo" class="btn btn-outline-secondary btn-sm ml-2" title="Baixar o arquivo">
+             <i class="fas fa-download"></i>
+           </a>`
         : escapeHtml(doc.nome_arquivo || '—')}</td>
       <td>${escapeHtml(doc.status)}</td>
       <td>${doc.data_envio || '—'}</td>
@@ -1514,6 +1524,85 @@ async function abrirCliente(clienteId) {
   $("#cliente-casos-body").querySelectorAll(".linha-caso").forEach(tr => {
     tr.addEventListener("click", () => abrirCaso(tr.dataset.casoId));
   });
+
+  renderDocumentosDoCliente(d.documentos || []);
+}
+
+// Extensões que o navegador mostra como imagem -- a mesma lista aceita no
+// upload (webapp/app.py e integracoes/gmail.py). PDF não entra: renderizar
+// PDF em <img> só produz um quadrado quebrado.
+const EXTENSOES_IMAGEM = /\.(jpe?g|png|heic|heif|webp|gif)$/i;
+
+function renderDocumentosDoCliente(documentos) {
+  const contagem = $("#cliente-documentos-contagem");
+  const el = $("#cliente-documentos");
+
+  if (!documentos.length) {
+    contagem.textContent = "";
+    el.innerHTML = `<p class="text-muted mb-0">Nenhum documento recebido deste atirador ainda.</p>`;
+    return;
+  }
+
+  const comArquivo = documentos.filter(doc => doc.tem_arquivo).length;
+  contagem.textContent = `${documentos.length} no total`
+    + (comArquivo !== documentos.length ? ` · ${documentos.length - comArquivo} sem arquivo no disco` : "");
+
+  el.innerHTML = `<div class="d-flex flex-wrap" style="gap:1rem">` + documentos.map(doc => {
+    const nome = doc.nome_arquivo || doc.documento_id;
+    const url = `/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo`;
+    const ehImagem = EXTENSOES_IMAGEM.test(nome);
+
+    // Só o que existe no disco vira link. O resto é metadado migrado da
+    // planilha antiga: mostrar, mas sem prometer um arquivo que não há.
+    const visual = !doc.tem_arquivo
+      ? `<div class="d-flex align-items-center justify-content-center text-muted"
+             style="width:200px; height:150px; background:#f4f6f9; border-radius:4px 4px 0 0">
+           <span class="small">sem arquivo</span>
+         </div>`
+      : ehImagem
+        ? `<a href="${url}?inline=1" target="_blank" rel="noopener" title="Abrir em tamanho real">
+             <img src="${url}?inline=1" alt="${escapeHtml(nome)}"
+               style="width:200px; height:150px; object-fit:cover; border-radius:4px 4px 0 0; display:block">
+           </a>`
+        : `<a href="${url}?inline=1" target="_blank" rel="noopener"
+             class="d-flex align-items-center justify-content-center"
+             style="width:200px; height:150px; background:#f4f6f9; border-radius:4px 4px 0 0; text-decoration:none">
+             <i class="fas fa-file-pdf fa-3x text-secondary"></i>
+           </a>`;
+
+    const selo = doc.status_conferencia === "Aguardando aprovação"
+      ? `<span class="badge badge-warning">aguardando aprovação</span>`
+      : doc.status_conferencia === "Aprovado"
+        ? `<span class="badge badge-success">aprovado</span>`
+        : doc.status_conferencia === "Recusado"
+          ? `<span class="badge badge-danger">recusado</span>`
+          : `<span class="badge badge-light">sem item vinculado</span>`;
+
+    return `
+      <div class="card mb-0" style="width:200px">
+        ${visual}
+        <div class="card-body p-2">
+          <p class="mb-1 small text-truncate" title="${escapeHtml(nome)}"><b>${escapeHtml(nome)}</b></p>
+          <p class="mb-1 small text-muted text-truncate" title="${escapeHtml(doc.item_checklist || doc.tipo_documento || '')}">
+            ${escapeHtml(doc.item_checklist || doc.tipo_documento || '—')}
+          </p>
+          <p class="mb-1 small text-muted">${escapeHtml((doc.data_envio || '').replace('T', ' ').replace('Z', ''))}</p>
+          <p class="mb-2">${selo}</p>
+          ${doc.tem_arquivo ? `
+            <a href="${url}" class="btn btn-outline-primary btn-sm btn-block">
+              <i class="fas fa-download mr-1"></i>Baixar
+            </a>` : ""}
+          ${doc.caso_id ? `
+            <button class="btn btn-link btn-sm btn-block p-0 mt-1 btn-ir-caso" data-caso="${escapeHtml(doc.caso_id)}">
+              ver ${escapeHtml(doc.caso_id)}
+            </button>` : ""}
+        </div>
+      </div>`;
+  }).join("") + `</div>`;
+
+  el.querySelectorAll(".btn-ir-caso").forEach(btn => {
+    btn.addEventListener("click", () => abrirCaso(btn.dataset.caso));
+  });
 }
 
 $("#voltar-clientes").addEventListener("click", () => {
@@ -1612,13 +1701,20 @@ function documentosHtml(documentos) {
     const nome = doc.nome_arquivo || "documento";
     const url = `/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo?inline=1`;
     const ehImagem = /\.(jpe?g|png|heic|heif|webp)$/i.test(nome);
-    return ehImagem
+    // Sem ?inline=1 o navegador baixa em vez de abrir -- é a mesma rota,
+    // o parâmetro é que decide (webapp/app.py::documento_arquivo).
+    const urlDownload = `/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo`;
+    const visual = ehImagem
       ? `<a href="${url}" target="_blank" rel="noopener" title="${escapeHtml(nome)}">
           <img src="${url}" alt="${escapeHtml(nome)}" style="max-width:160px; max-height:160px; object-fit:cover; border:1px solid #dee2e6; border-radius:4px;">
         </a>`
       : `<a href="${url}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">
           <i class="fas fa-file mr-1"></i>${escapeHtml(nome)}
         </a>`;
+    return `<div class="text-center">
+        ${visual}
+        <div><a href="${urlDownload}" class="btn btn-link btn-sm p-0 mt-1"><i class="fas fa-download mr-1"></i>Baixar</a></div>
+      </div>`;
   }).join("");
   return `
     <p class="mb-1 mt-3"><b>Documentos anexados:</b></p>
