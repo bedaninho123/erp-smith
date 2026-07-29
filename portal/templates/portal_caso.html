@@ -20,6 +20,14 @@
   .checklist-grupo { font-size: .74rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--steel); margin: .5rem 0 .2rem; }
   .checklist-grupo:first-child { margin-top: 0; }
   .checklist-item { font-size: .87rem; margin-bottom: .25rem; }
+  .checklist-recusa {
+    font-size: .8rem;
+    color: var(--signal);
+    background: var(--signal-soft);
+    border-radius: var(--radius);
+    padding: .35rem .55rem;
+    margin: .3rem 0 .5rem 0;
+  }
 
   .ficha-form, .ficha-tabela { padding: 1.3rem 1.4rem; }
   .campo { margin-bottom: 1rem; }
@@ -67,8 +75,19 @@
             <div class="checklist-grupo">{{ item.grupo }}</div>
           {% endif %}
           <div class="checklist-item">
-            <span class="badge-item {{ 'badge-item--sim' if item.recebido else 'badge-item--nao' }}">{{ 'recebido' if item.recebido else 'faltando' }}</span>
+            {% if item.estado == 'aprovado' %}
+              <span class="badge-item badge-item--sim">recebido</span>
+            {% elif item.estado == 'aguardando' %}
+              <span class="badge-item badge-item--aguardando">aguardando aprovação</span>
+            {% else %}
+              <span class="badge-item badge-item--nao">faltando</span>
+            {% endif %}
             {{ item.item }}
+            {% if item.motivo_recusa %}
+            <div class="checklist-recusa">
+              Enviado antes e não aceito: {{ item.motivo_recusa }} — envie um novo arquivo.
+            </div>
+            {% endif %}
           </div>
         {% endfor %}
       </div>
@@ -92,13 +111,13 @@
           {% for grupo in itens_faltando %}
           <optgroup label="{{ grupo.processo_label }}">
             {% for item in grupo.itens %}
-            <option value="{{ item }}">{{ item }}</option>
+            <option value="{{ item.valor }}">{{ item.texto }}</option>
             {% endfor %}
           </optgroup>
           {% endfor %}
         {% else %}
           {% for item in itens_faltando[0].itens %}
-          <option value="{{ item }}">{{ item }}</option>
+          <option value="{{ item.valor }}">{{ item.texto }}</option>
           {% endfor %}
         {% endif %}
         <option value="__outro__">Outro documento (não está na lista)</option>

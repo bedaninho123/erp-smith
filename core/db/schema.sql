@@ -200,7 +200,20 @@ CREATE TABLE documento_checklist (
     documento_exigido_id      TEXT NOT NULL REFERENCES documento_exigido(documento_exigido_id),
     documento_id                TEXT NOT NULL REFERENCES documento(documento_id),
     marcado_em                   TEXT NOT NULL,             -- ISO 8601
-    marcado_por                   TEXT NOT NULL
+    marcado_por                   TEXT NOT NULL,
+    -- O padrão é 'Aprovado' de propósito: quando um funcionário marca o
+    -- documento pelo painel, a marcação JÁ É a aprovação -- ele olhou o
+    -- arquivo pra decidir que atende o item. Só o que chega pelo Portal
+    -- (o cliente dizendo "mandei este documento pra este item") nasce
+    -- 'Aguardando aprovação', porque aí ninguém da equipe conferiu ainda.
+    status                        TEXT NOT NULL DEFAULT 'Aprovado'
+        CHECK (status IN ('Aguardando aprovação', 'Aprovado', 'Recusado')),
+    revisado_em                   TEXT,                      -- ISO 8601
+    revisado_por                  TEXT,
+    -- Só preenchido quando status='Recusado'. É mostrado ao cliente no
+    -- Portal: sem o motivo, ele reenvia o mesmo arquivo errado sem saber
+    -- o porquê.
+    motivo_recusa                 TEXT
 );
 
 CREATE INDEX idx_documento_checklist_empresa_id ON documento_checklist(empresa_id);

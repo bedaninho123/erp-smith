@@ -21,6 +21,12 @@
 </style>
 {% endblock %}
 {% block conteudo %}
+{# Esta tela é pra onde o Portal redireciona quando um caso/documento não
+   é encontrado. Sem este bloco, o aviso morre no caminho e o cliente vê
+   a lista aparecer de novo sem nenhuma explicação. #}
+{% for categoria, mensagem in get_flashed_messages(with_categories=true) %}
+<div class="msg-flash msg-flash--{{ categoria }}">{{ mensagem }}</div>
+{% endfor %}
 <h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:0 0 1rem;">Seus casos</h2>
 
 {% if not casos %}

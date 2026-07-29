@@ -20,6 +20,11 @@
     --blue-soft: #E4ECF8;
     --signal: #B23B2E;
     --signal-soft: #F7E5E2;
+    /* Terceiro estado do checklist: nem resolvido (azul) nem problema
+       (sinal). Âmbar de "em conferência" -- contraste 5.6:1 sobre o
+       fundo suave, acima do mínimo AA de 4.5:1 para texto pequeno. */
+    --amber: #7A5709;
+    --amber-soft: #F6EDDA;
     --radius: 8px;
   }
 
@@ -186,6 +191,7 @@
   }
   .badge-item--sim { background: var(--blue-soft); color: var(--blue-deep); }
   .badge-item--nao { background: transparent; color: var(--steel); border: 1px solid var(--line); }
+  .badge-item--aguardando { background: var(--amber-soft); color: var(--amber); }
 
   label {
     font-size: .82rem;

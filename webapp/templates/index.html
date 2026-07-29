@@ -84,6 +84,15 @@
               </p>
             </a>
           </li>
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="documentos">
+              <i class="nav-icon fas fa-file-signature"></i>
+              <p>
+                Documentos a Aprovar
+                <span class="right badge badge-warning" id="badge-documentos" style="display:none"></span>
+              </p>
+            </a>
+          </li>
           <li class="nav-header">CLUBE</li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="campeonatos">
@@ -612,6 +621,18 @@
       </div>
     </div>
 
+    <div id="view-documentos" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Documentos a Aprovar</h1>
+          <p class="text-muted mb-0">Arquivos que o cliente enviou pelo Portal dizendo a qual item do checklist eles correspondem — quem confere se é isso mesmo é você. Enquanto não for aprovado, o item continua contando como pendente pro cliente. Recusar devolve o item pra "faltando" e avisa o cliente por e-mail, com o motivo visível no Portal dele.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid" id="lista-documentos-pendentes"><p class="text-muted">Carregando…</p></div>
+      </div>
+    </div>
+
     <div id="view-config" class="view">
       <div class="content-header">
         <div class="container-fluid">
@@ -647,6 +668,7 @@ document.querySelectorAll("[data-view]").forEach(btn => {
     btn.classList.add("active");
     $("#view-" + btn.dataset.view).classList.add("active");
     if (btn.dataset.view === "pendentes") carregarPendentes();
+    if (btn.dataset.view === "documentos") carregarDocumentosPendentes();
     if (btn.dataset.view === "clientes") carregarClientesLista();
     if (btn.dataset.view === "config") carregarConfiguracoes();
     if (btn.dataset.view === "campeonatos") carregarCampeonatos();
@@ -1288,20 +1310,39 @@ function renderChecklist(processo) {
       .filter(doc => !item.documentos.some(m => m.documento_id === doc.documento_id))
       .map(doc => `<option value="${doc.documento_id}">${escapeHtml(doc.nome_arquivo || doc.documento_id)}</option>`)
       .join("");
-    const corpo = item.recebido
-      ? `<div class="mb-2">
+    let corpo;
+    if (item.estado === "aprovado") {
+      corpo = `<div class="mb-2">
           <span class="badge badge-success mr-2">Recebido</span>${escapeHtml(item.item)}
           <div class="mt-1">
-            ${item.documentos.map(doc => `
+            ${item.documentos.filter(doc => doc.status === "Aprovado").map(doc => `
               <span class="badge badge-light mr-1">
                 ${escapeHtml(doc.nome_arquivo || doc.documento_id)}
                 <button type="button" class="btn-remover-checklist border-0 bg-transparent text-danger" data-dck="${doc.documento_checklist_id}" title="Remover marcação">&times;</button>
               </span>
             `).join("")}
           </div>
-        </div>`
-      : `<div class="mb-2">
+        </div>`;
+    } else if (item.estado === "aguardando") {
+      // O cliente mandou e disse que é isto -- falta alguém conferir.
+      corpo = `<div class="mb-2">
+          <span class="badge badge-warning mr-2">Aguardando aprovação</span>${escapeHtml(item.item)}
+          ${item.aguardando.map(doc => `
+            <div class="mt-1 form-inline" style="gap:.4rem">
+              <a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo?inline=1" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-file mr-1"></i>${escapeHtml(doc.nome_arquivo || doc.documento_id)}
+              </a>
+              <button type="button" class="btn btn-success btn-sm btn-aprovar-checklist" data-dck="${doc.documento_checklist_id}">Aprovar</button>
+              <input type="text" class="form-control form-control-sm motivo-checklist" data-dck="${doc.documento_checklist_id}"
+                placeholder="Motivo da recusa" style="min-width:240px">
+              <button type="button" class="btn btn-outline-danger btn-sm btn-recusar-checklist" data-dck="${doc.documento_checklist_id}">Recusar</button>
+            </div>
+          `).join("")}
+        </div>`;
+    } else {
+      corpo = `<div class="mb-2">
           <span class="badge badge-secondary mr-2">Faltando</span>${escapeHtml(item.item)}
+          ${item.motivo_recusa ? `<div class="small text-danger mt-1">Recusado antes: ${escapeHtml(item.motivo_recusa)}</div>` : ""}
           <div class="mt-1 form-inline">
             <select class="form-control form-control-sm mr-2 select-doc-checklist" data-dex="${item.documento_exigido_id}" style="min-width:220px">
               <option value="">selecione um documento recebido...</option>
@@ -1310,6 +1351,7 @@ function renderChecklist(processo) {
             <button type="button" class="btn btn-outline-primary btn-sm btn-marcar-checklist" data-dex="${item.documento_exigido_id}">Marcar</button>
           </div>
         </div>`;
+    }
     return cabecalho + corpo;
   }).join("");
 
@@ -1328,6 +1370,25 @@ function renderChecklist(processo) {
       const d = await r.json();
       if (!r.ok) { alert("Erro ao marcar: " + d.erro); return; }
       await recarregarChecklist(processo.caso_id, processo.processo_id);
+    });
+  });
+
+  // Aprovar/recusar aqui recarrega o checklist E o contador da barra
+  // lateral: a fila da tela "Documentos a Aprovar" é a mesma coisa vista
+  // de outro ângulo, então decidir por um lado tem que atualizar o outro.
+  const recarregarTudo = async () => {
+    await recarregarChecklist(processo.caso_id, processo.processo_id);
+    await carregarDocumentosPendentes();
+  };
+
+  $("#checklist-corpo").querySelectorAll(".btn-aprovar-checklist").forEach(btn => {
+    btn.addEventListener("click", () => aprovarDocumento(btn.dataset.dck, recarregarTudo));
+  });
+
+  $("#checklist-corpo").querySelectorAll(".btn-recusar-checklist").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const campo = $("#checklist-corpo").querySelector(`.motivo-checklist[data-dck="${btn.dataset.dck}"]`);
+      recusarDocumento(btn.dataset.dck, campo.value, recarregarTudo);
     });
   });
 
@@ -1563,6 +1624,85 @@ function documentosHtml(documentos) {
     <p class="mb-1 mt-3"><b>Documentos anexados:</b></p>
     <div class="d-flex flex-wrap" style="gap:0.8rem">${itens}</div>
   `;
+}
+
+async function carregarDocumentosPendentes() {
+  const r = await fetch("/api/documentos-pendentes");
+  const pendentes = await r.json();
+  const el = $("#lista-documentos-pendentes");
+  const badge = $("#badge-documentos");
+
+  if (pendentes.length === 0) {
+    badge.style.display = "none";
+    el.innerHTML = `<p class="text-muted">Nenhum documento esperando conferência.</p>`;
+    return;
+  }
+
+  badge.style.display = "inline-block";
+  badge.textContent = pendentes.length;
+
+  el.innerHTML = pendentes.map(p => `
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">
+          ${escapeHtml(p.cliente_nome)}
+          <span class="badge badge-light">${escapeHtml(p.cliente_id)}</span>
+        </h3>
+      </div>
+      <div class="card-body">
+        <p class="mb-1"><b>Item do checklist:</b> ${escapeHtml(p.item)}</p>
+        <p class="mb-1 text-muted">
+          ${escapeHtml(p.grupo || "")} — ${escapeHtml(p.nome_servico || p.processo_id)}
+          · caso <a href="#" onclick="abrirCaso('${escapeHtml(p.caso_id)}'); return false;">${escapeHtml(p.caso_id)}</a>
+        </p>
+        <p class="mb-1"><b>Enviado em:</b> ${escapeHtml(p.marcado_em)}</p>
+        ${documentosHtml([{ documento_id: p.documento_id, nome_arquivo: p.nome_arquivo }])}
+        <div class="mt-3 d-flex align-items-center flex-wrap" style="gap:0.6rem">
+          <button class="btn btn-success btn-aprovar-doc" data-dck="${escapeHtml(p.documento_checklist_id)}">Aprovar</button>
+          <input type="text" class="form-control motivo-recusa-doc" data-dck="${escapeHtml(p.documento_checklist_id)}"
+            placeholder="Motivo da recusa (o cliente vê este texto)" style="max-width:420px">
+          <button class="btn btn-outline-danger btn-recusar-doc" data-dck="${escapeHtml(p.documento_checklist_id)}">Recusar</button>
+          <span class="text-muted status-doc" data-dck="${escapeHtml(p.documento_checklist_id)}"></span>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  el.querySelectorAll(".btn-aprovar-doc").forEach(btn => {
+    btn.addEventListener("click", () => aprovarDocumento(btn.dataset.dck, carregarDocumentosPendentes));
+  });
+  el.querySelectorAll(".btn-recusar-doc").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const campo = el.querySelector(`.motivo-recusa-doc[data-dck="${btn.dataset.dck}"]`);
+      recusarDocumento(btn.dataset.dck, campo.value, carregarDocumentosPendentes);
+    });
+  });
+}
+
+async function aprovarDocumento(dck, aoTerminar) {
+  const r = await fetch(`/api/checklist/${dck}/aprovar`, { method: "POST" });
+  const d = await r.json();
+  if (!r.ok) { alert("Erro ao aprovar: " + d.erro); return; }
+  if (d.aviso) alert(d.aviso);
+  await aoTerminar();
+}
+
+async function recusarDocumento(dck, motivo, aoTerminar) {
+  // O motivo é obrigatório no Core também -- a checagem aqui é só pra
+  // não fazer o funcionário esperar uma ida ao servidor pra descobrir.
+  if (!motivo || !motivo.trim()) {
+    alert("Escreva o motivo da recusa — o cliente vê esse texto e é o que diz a ele o que corrigir.");
+    return;
+  }
+  const r = await fetch(`/api/checklist/${dck}/recusar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ motivo }),
+  });
+  const d = await r.json();
+  if (!r.ok) { alert("Erro ao recusar: " + d.erro); return; }
+  if (d.aviso) alert(d.aviso);
+  await aoTerminar();
 }
 
 async function carregarPendentes() {
@@ -1834,6 +1974,7 @@ $("#enviar").addEventListener("click", enviarPipeline);
 carregarStatus();
 carregarClientes();
 carregarPendentes();
+carregarDocumentosPendentes();
 carregarCasos();
 </script>
 </body>

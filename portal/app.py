@@ -594,9 +594,23 @@ def caso_detalhe(caso_id):
     # Documentos que ainda faltam, agrupados por processo -- alimenta o
     # <select> do formulário de envio (o cliente escolhe da lista em vez
     # de escrever de cabeça o nome do documento exigido).
+    #
+    # Cada opção carrega processo + item, não só o texto: é isso que
+    # permite o envio virar uma pendência de aprovação naquele item
+    # específico do checklist, em vez de um arquivo solto que alguém
+    # teria que ligar à mão depois. Item que já está aguardando
+    # conferência sai da lista -- reenviar não adianta nada enquanto
+    # ninguém olhou o primeiro.
     itens_faltando = []
     for processo in caso["processos"]:
-        faltando = [item["item"] for item in processo["checklist"] if not item["recebido"]]
+        faltando = [
+            {
+                "valor": f"{processo['processo_id']}|{item['documento_exigido_id']}",
+                "texto": item["item"],
+            }
+            for item in processo["checklist"]
+            if item["estado"] == "faltando"
+        ]
         if faltando:
             itens_faltando.append({"processo_label": processo["nome_servico"], "itens": faltando})
 
@@ -673,18 +687,68 @@ def upload_documento():
 
     # "__outro__" é o valor do <select> quando o documento não está na
     # lista de faltantes (portal_caso.html) -- nesse caso o texto de
-    # verdade vem do campo livre que aparece ao lado.
-    tipo_documento = (request.form.get("tipo_documento") or "").strip()
-    if tipo_documento == "__outro__":
+    # verdade vem do campo livre que aparece ao lado. Qualquer outro
+    # valor é "PRO-xxxxxx|DEX-xxxxxx": o item exato do checklist que o
+    # cliente diz estar respondendo.
+    escolha = (request.form.get("tipo_documento") or "").strip()
+    processo_id = documento_exigido_id = None
+    tipo_documento = escolha
+
+    if escolha == "__outro__":
         tipo_documento = (request.form.get("tipo_documento_outro") or "").strip()
+    elif "|" in escolha:
+        processo_id, documento_exigido_id = escolha.split("|", 1)
+        # O par vem do formulário, então nada nele é confiável. Duas
+        # coisas precisam ser provadas antes de qualquer gravação: que o
+        # processo pertence ao caso que já sabemos ser deste cliente (sem
+        # isso, trocar o ID no formulário anexaria documento no processo
+        # de outra pessoa) e que o item é mesmo do serviço desse
+        # processo. A segunda é conferida de novo dentro de
+        # marcar_documento -- redundância proposital, é a única escrita
+        # do Portal que o cliente direciona.
+        con = conectar(empresa_id)
+        item = con.execute(
+            "SELECT dex.item FROM processo p "
+            "JOIN documento_exigido dex ON dex.servico_id = p.servico_id "
+            "     AND dex.empresa_id = p.empresa_id "
+            "WHERE p.processo_id = ? AND p.caso_id = ? AND p.empresa_id = ? "
+            "  AND dex.documento_exigido_id = ?",
+            (processo_id, caso_id, empresa_id, documento_exigido_id),
+        ).fetchone()
+        con.close()
+        if not item:
+            flash("Documento não encontrado na sua lista.", "erro")
+            return _voltar()
+        tipo_documento = item["item"]
+
     tipo_documento = tipo_documento or "Anexo enviado pelo cliente (Portal)"
 
-    motor_documentos.salvar_documento(
+    documento_id = motor_documentos.salvar_documento(
         empresa_id, cliente_id, conteudo, arquivo.filename,
         caso_id=caso_id,
         tipo_documento=tipo_documento,
     )
-    flash("Documento enviado.", "sucesso")
+
+    if not processo_id:
+        # Documento sem item ("outro"): continua como antes, um anexo
+        # que a equipe liga ao checklist manualmente se for o caso.
+        flash("Documento enviado.", "sucesso")
+        return redirect(url_for("caso_detalhe", caso_id=caso_id))
+
+    try:
+        motor_checklist.marcar_documento(
+            empresa_id, processo_id, documento_exigido_id, documento_id,
+            marcado_por=motor_checklist.MARCADO_POR_CLIENTE,
+            status=motor_checklist.STATUS_AGUARDANDO,
+        )
+    except ValueError as e:
+        # O arquivo já está salvo e visível pra equipe; o que falhou foi
+        # só o vínculo com o item. Dizer "enviado" e sumir com o aviso
+        # esconderia do cliente que aquele item continua em aberto.
+        flash(f"Documento enviado, mas não foi vinculado ao item: {e}", "erro")
+        return redirect(url_for("caso_detalhe", caso_id=caso_id))
+
+    flash("Documento enviado. Ele vai aparecer como aguardando aprovação.", "sucesso")
     return redirect(url_for("caso_detalhe", caso_id=caso_id))
 
 

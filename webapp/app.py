@@ -539,6 +539,79 @@ def checklist_marcar(processo_id):
     return jsonify(ok=True, documento_checklist_id=novo_id)
 
 
+def _notificar_documento_recusado(empresa_id: str, caso_id: str, item: str) -> None:
+    """Aviso de recusa. Diferente da notificação de mudança de status,
+    este e-mail diz **qual** documento precisa ser reenviado -- sem isso
+    o cliente teria que adivinhar o que corrigir. O motivo em si não vai
+    no corpo: pode conter observação interna da equipe, e o lugar de ler
+    isso é o Portal, atrás de login (domínio regulado)."""
+    destinatario = destinatario_para_notificar(empresa_id, caso_id)
+    if not destinatario or not gmail_configurado():
+        return
+    config = obter_configuracoes(empresa_id)
+    nome_empresa = config.get("nome_empresa", "nosso escritório")
+    enviar_email(
+        destinatario=destinatario["email"],
+        assunto=f"Documento precisa ser reenviado -- {nome_empresa}",
+        corpo=(
+            f"Olá {destinatario['nome']},\n\n"
+            f"O documento enviado para \"{item}\" não pôde ser aceito. "
+            "Acesse o Portal do Cliente para ver o motivo e enviar outro "
+            "arquivo:\n\n"
+            f"{PORTAL_URL_BASE}\n\n"
+            f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
+        ),
+    )
+
+
+@app.route("/api/documentos-pendentes")
+@login_required
+def documentos_pendentes():
+    """Fila de documentos que clientes enviaram pelo Portal e ninguém
+    conferiu ainda."""
+    return jsonify(motor_checklist.listar_pendentes(empresa_atual()))
+
+
+@app.route("/api/checklist/<documento_checklist_id>/aprovar", methods=["POST"])
+@login_required
+def checklist_aprovar(documento_checklist_id):
+    try:
+        motor_checklist.aprovar(
+            empresa_atual(), documento_checklist_id,
+            revisado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    # Aprovação não gera e-mail de propósito (decisão de 2026-07-29): num
+    # processo de 10 documentos seriam 10 avisos. O cliente vê no Portal.
+    return jsonify(ok=True)
+
+
+@app.route("/api/checklist/<documento_checklist_id>/recusar", methods=["POST"])
+@login_required
+def checklist_recusar(documento_checklist_id):
+    corpo = request.get_json(force=True)
+    motivo = (corpo.get("motivo") or "").strip()
+    try:
+        pendencia = motor_checklist.recusar(
+            empresa_atual(), documento_checklist_id, motivo,
+            revisado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+
+    # Recusa exige ação do cliente, então avisa -- mas o e-mail não pode
+    # desfazer a recusa se falhar: ela já está gravada.
+    try:
+        _notificar_documento_recusado(
+            empresa_atual(), pendencia["caso_id"], pendencia["item"]
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify(ok=True, aviso=f"Recusado, mas o e-mail falhou: {e}")
+    return jsonify(ok=True)
+
+
 @app.route("/api/checklist/<documento_checklist_id>/remover", methods=["POST"])
 @login_required
 def checklist_desmarcar(documento_checklist_id):
