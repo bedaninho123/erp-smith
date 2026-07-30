@@ -23,6 +23,19 @@ import sqlite3
 CORE_DB = os.environ.get("ERP_CORE_DB", "core/db/erp_smith.db")
 
 
+# WAL é uma propriedade do ARQUIVO, não da conexão -- uma vez ligado por
+# qualquer conexão, o banco inteiro fica em WAL pra sempre (até alguém
+# desligar), então toda leitura passa a não travar atrás de uma escrita
+# em andamento. busy_timeout já é por conexão (não persiste no arquivo),
+# por isso todo `sqlite3.connect()` do projeto precisa pedir de novo.
+# Sem os dois, três processos escrevendo ao mesmo tempo no mesmo arquivo
+# (painel, poller a cada 2 min, webhook) eventualmente batem em
+# "database is locked" -- não é hipótese, é questão de tempo com uso
+# real. 5s de espera antes de desistir é generoso o bastante pra
+# absorver o pico sem deixar uma requisição travada por muito tempo.
+_BUSY_TIMEOUT_MS = 5000
+
+
 def conectar(empresa_id: str) -> sqlite3.Connection:
     """Conexão já amarrada a uma empresa. As views só devolvem linha
     dessa empresa; tabela crua continua exigindo o filtro à mão (é por
@@ -35,6 +48,8 @@ def conectar(empresa_id: str) -> sqlite3.Connection:
     con = sqlite3.connect(CORE_DB)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
+    con.execute("PRAGMA journal_mode = WAL")
+    con.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
     con.create_function("empresa_atual", 0, lambda: empresa_id)
     return con
 
@@ -51,4 +66,6 @@ def conectar_admin() -> sqlite3.Connection:
     con = sqlite3.connect(CORE_DB)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
+    con.execute("PRAGMA journal_mode = WAL")
+    con.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
     return con

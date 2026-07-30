@@ -29,7 +29,7 @@ from werkzeug.security import check_password_hash
 from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
 from core import motor_checklist, motor_documentos, motor_mensagens
 from core.conexao import conectar
-from core.configuracoes import obter_configuracoes
+from core.configuracoes import atualizar_configuracao, obter_configuracoes
 from core.limitador_tentativas import excedeu_limite
 from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
 from core.motor_notificacoes import destinatario_para_notificar
@@ -114,6 +114,11 @@ def login_required(f):
                 return jsonify(erro="Não autenticado."), 401
             return redirect(url_for("login", proximo=request.path))
         return f(*args, **kwargs)
+    # Marcador lido por tests/test_controle_acesso_propagado.py -- não
+    # tem efeito em runtime, só permite a suíte varrer app.url_map e
+    # confirmar que toda rota /api/* tem os decorators certos, sem
+    # precisar reimplementar a lógica de autorização no teste.
+    wrapper._login_protegido = True
     return wrapper
 
 
@@ -136,6 +141,7 @@ def gestor_required(f):
                 return jsonify(erro="Acesso restrito a Gestor."), 403
             return redirect(url_for("index"))
         return f(*args, **kwargs)
+    wrapper._controle_acesso = "gestor"  # ver marcador em login_required
     return wrapper
 
 
@@ -151,6 +157,18 @@ def funcao_required(*funcoes):
     Campeonatos, mas também o seletor de campeonato dentro da tela
     Resultados -- travar só em "campeonatos" quebrava Resultados pra
     quem tem só essa função ligada (achado testando como a Ana)."""
+    # Falha na hora de SUBIR o app, não só num teste -- um typo aqui
+    # (ex.: "caso" em vez de "casos") faria tem_permissao() nunca achar
+    # linha nenhuma pra essa chave e devolver sempre True (permitido),
+    # liberando a rota pra qualquer Atendente em silêncio. Ver também
+    # tests/test_controle_acesso_propagado.py, que confere isso de novo
+    # sem precisar registrar cada rota manualmente.
+    for funcao in funcoes:
+        assert funcao in FUNCOES_VALIDAS, (
+            f"funcao_required: '{funcao}' não existe em "
+            f"core.motor_usuarios.FUNCOES_VALIDAS -- typo?"
+        )
+
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
@@ -161,6 +179,7 @@ def funcao_required(*funcoes):
                         return jsonify(erro="Você não tem permissão para esta função."), 403
                     return redirect(url_for("index"))
             return f(*args, **kwargs)
+        wrapper._controle_acesso = ("funcao", funcoes)  # ver login_required
         return wrapper
     return decorator
 
@@ -915,32 +934,13 @@ def configuracoes_lista():
 @gestor_required
 def configuracoes_atualizar(config_id):
     corpo = request.get_json(force=True)
-    valor = corpo.get("valor")
-    ativo = corpo.get("ativo")
-    if valor is None or not str(valor).strip():
-        return jsonify(erro="O valor não pode ficar vazio."), 400
-    if ativo not in ("Sim", "Não"):
-        return jsonify(erro="Campo 'ativo' inválido."), 400
-
-    empresa_id = empresa_atual()
-    con = conectar(empresa_id)
-    existe = con.execute(
-        "SELECT 1 FROM configuracoes WHERE config_id = ? AND empresa_id = ?",
-        (config_id, empresa_id),
-    ).fetchone()
-    if not existe:
-        con.close()
-        return jsonify(erro=f"Configuração não encontrada: {config_id}"), 404
-
-    # Uma empresa mexendo na configuração da outra mudaria, entre outras
-    # coisas, o freio de revisão humana dela (CFG revisao_humana_ativa).
-    con.execute(
-        "UPDATE configuracoes SET valor = ?, ativo = ? "
-        "WHERE config_id = ? AND empresa_id = ?",
-        (str(valor).strip(), ativo, config_id, empresa_id),
-    )
-    con.commit()
-    con.close()
+    try:
+        atualizar_configuracao(
+            empresa_atual(), config_id, corpo.get("valor"), corpo.get("ativo"),
+            alterado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
     return jsonify(ok=True)
 
 
@@ -977,11 +977,12 @@ def usuarios_atualizar(usuario_id):
 
     corpo = request.get_json(force=True)
     empresa_id = empresa_atual()
+    alterado_por = session.get("usuario_nome", "Painel administrativo")
     try:
         if "papel" in corpo:
-            atualizar_papel(empresa_id, usuario_id, corpo["papel"])
+            atualizar_papel(empresa_id, usuario_id, corpo["papel"], alterado_por=alterado_por)
         if "ativo" in corpo:
-            atualizar_ativo(empresa_id, usuario_id, corpo["ativo"])
+            atualizar_ativo(empresa_id, usuario_id, corpo["ativo"], alterado_por=alterado_por)
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True)
@@ -1000,7 +1001,10 @@ def usuarios_permissoes_lista(usuario_id):
 def usuarios_permissoes_atualizar(usuario_id):
     corpo = request.get_json(force=True)
     try:
-        atualizar_permissoes(empresa_atual(), usuario_id, corpo)
+        atualizar_permissoes(
+            empresa_atual(), usuario_id, corpo,
+            alterado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True)

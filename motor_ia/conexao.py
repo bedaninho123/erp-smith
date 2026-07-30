@@ -25,4 +25,9 @@ DOMAIN_DB = os.environ.get(
 def conectar(empresa_id: str) -> sqlite3.Connection:
     con = _conectar_core(empresa_id)
     con.execute("ATTACH DATABASE ? AS dominio", (DOMAIN_DB,))
+    # journal_mode e busy_timeout do Core já vieram de _conectar_core();
+    # o banco anexado é um ARQUIVO separado, então precisa do próprio
+    # WAL (busy_timeout, esse sim, já vale pra conexão inteira, os dois
+    # arquivos anexados incluídos -- ver core/conexao.py).
+    con.execute("PRAGMA dominio.journal_mode = WAL")
     return con

@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from core.conexao import conectar
+from core.motor_log_administrativo import registrar as registrar_log
 
 PAPEIS_VALIDOS = ("Gestor", "Atendente")
 
@@ -102,31 +103,63 @@ def _usuario_da_empresa(con, empresa_id: str, usuario_id: str) -> None:
         raise ValueError(f"Usuário não encontrado: {usuario_id}")
 
 
-def atualizar_papel(empresa_id: str, usuario_id: str, novo_papel: str) -> None:
+def atualizar_papel(
+    empresa_id: str, usuario_id: str, novo_papel: str,
+    alterado_por: str = "Painel administrativo",
+) -> None:
     if novo_papel not in PAPEIS_VALIDOS:
         raise ValueError(f"Papel inválido: {novo_papel}. Use um de {PAPEIS_VALIDOS}.")
     con = conectar(empresa_id)
     try:
-        _usuario_da_empresa(con, empresa_id, usuario_id)
+        linha = con.execute(
+            "SELECT papel FROM usuario WHERE usuario_id = ? AND empresa_id = ?",
+            (usuario_id, empresa_id),
+        ).fetchone()
+        if not linha:
+            raise ValueError(f"Usuário não encontrado: {usuario_id}")
+        papel_antigo = linha["papel"]
+
         con.execute(
             "UPDATE usuario SET papel = ? WHERE usuario_id = ? AND empresa_id = ?",
             (novo_papel, usuario_id, empresa_id),
         )
+        if papel_antigo != novo_papel:
+            registrar_log(
+                con, empresa_id, "papel_alterado", usuario_id,
+                f"Papel alterado de {papel_antigo} para {novo_papel}",
+                papel_antigo, novo_papel, alterado_por,
+            )
         con.commit()
     finally:
         con.close()
 
 
-def atualizar_ativo(empresa_id: str, usuario_id: str, ativo: str) -> None:
+def atualizar_ativo(
+    empresa_id: str, usuario_id: str, ativo: str,
+    alterado_por: str = "Painel administrativo",
+) -> None:
     if ativo not in ("Sim", "Não"):
         raise ValueError("Campo 'ativo' inválido.")
     con = conectar(empresa_id)
     try:
-        _usuario_da_empresa(con, empresa_id, usuario_id)
+        linha = con.execute(
+            "SELECT ativo FROM usuario WHERE usuario_id = ? AND empresa_id = ?",
+            (usuario_id, empresa_id),
+        ).fetchone()
+        if not linha:
+            raise ValueError(f"Usuário não encontrado: {usuario_id}")
+        ativo_antigo = linha["ativo"]
+
         con.execute(
             "UPDATE usuario SET ativo = ? WHERE usuario_id = ? AND empresa_id = ?",
             (ativo, usuario_id, empresa_id),
         )
+        if ativo_antigo != ativo:
+            registrar_log(
+                con, empresa_id, "ativo_alterado", usuario_id,
+                f"Ativo alterado de {ativo_antigo} para {ativo}",
+                ativo_antigo, ativo, alterado_por,
+            )
         con.commit()
     finally:
         con.close()
@@ -170,7 +203,10 @@ def listar_permissoes(empresa_id: str, usuario_id: str) -> list[dict]:
         con.close()
 
 
-def atualizar_permissoes(empresa_id: str, usuario_id: str, mapa: dict[str, str]) -> None:
+def atualizar_permissoes(
+    empresa_id: str, usuario_id: str, mapa: dict[str, str],
+    alterado_por: str = "Painel administrativo",
+) -> None:
     for funcao, ativo in mapa.items():
         if funcao not in FUNCOES_VALIDAS:
             raise ValueError(f"Função inválida: {funcao}.")
@@ -180,7 +216,18 @@ def atualizar_permissoes(empresa_id: str, usuario_id: str, mapa: dict[str, str])
     con = conectar(empresa_id)
     try:
         _usuario_da_empresa(con, empresa_id, usuario_id)
+        # Estado atual de cada função tocada, pra logar o valor anterior
+        # de verdade -- sem linha ainda, o padrão já é 'Sim' (ver
+        # listar_permissoes), então é isso que conta como "anterior".
+        existentes = {
+            l["funcao"]: l["ativo"]
+            for l in con.execute(
+                "SELECT funcao, ativo FROM usuario_permissao WHERE usuario_id = ? AND empresa_id = ?",
+                (usuario_id, empresa_id),
+            ).fetchall()
+        }
         for funcao, ativo in mapa.items():
+            anterior = existentes.get(funcao, "Sim")
             con.execute(
                 "INSERT OR IGNORE INTO usuario_permissao (usuario_id, empresa_id, funcao, ativo) "
                 "VALUES (?,?,?,?)",
@@ -191,6 +238,12 @@ def atualizar_permissoes(empresa_id: str, usuario_id: str, mapa: dict[str, str])
                 "WHERE usuario_id = ? AND empresa_id = ? AND funcao = ?",
                 (ativo, usuario_id, empresa_id, funcao),
             )
+            if anterior != ativo:
+                registrar_log(
+                    con, empresa_id, "permissao_alterada", usuario_id,
+                    f"Permissão '{funcao}' alterada de {anterior} para {ativo}",
+                    anterior, ativo, alterado_por,
+                )
         con.commit()
     finally:
         con.close()

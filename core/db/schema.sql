@@ -327,6 +327,25 @@ CREATE TABLE usuario_permissao (
 
 CREATE INDEX idx_usuario_permissao_empresa_id ON usuario_permissao(empresa_id);
 
+-- Log administrativo -- append-only, mesmo espírito de historico, mas
+-- pra ação de gestão (papel/ativo/permissão de usuário, configuração da
+-- empresa), não evento de Caso. Achado na auditoria de riscos de
+-- 2026-07-30: sem isso, "quem desligou a revisão humana" não tinha
+-- resposta. Ver core/motor_log_administrativo.py.
+CREATE TABLE log_administrativo (
+    log_administrativo_id TEXT PRIMARY KEY,   -- ADM-000001
+    empresa_id             TEXT NOT NULL REFERENCES empresa(empresa_id),
+    tipo_evento             TEXT NOT NULL,     -- papel_alterado | ativo_alterado | permissao_alterada | configuracao_alterada
+    alvo                    TEXT NOT NULL,     -- usuario_id ou config_id afetado
+    descricao                TEXT,
+    valor_anterior          TEXT,
+    valor_novo               TEXT,
+    criado_em                TEXT NOT NULL,     -- ISO 8601
+    criado_por                TEXT NOT NULL
+);
+
+CREATE INDEX idx_log_administrativo_empresa_id ON log_administrativo(empresa_id);
+
 -- Log de eventos de negócio do caso — append-only (só INSERT, nunca
 -- UPDATE/DELETE). RCA-007: toda troca de responsável gera registro aqui.
 -- 96_Relacionamentos_Casos: "todo evento do caso deve apontar para o

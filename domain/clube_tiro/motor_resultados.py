@@ -24,6 +24,12 @@ DB_PATH = os.environ.get(
 def conectar() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
+    # Mesmo motivo do core/conexao.py: este arquivo também é escrito
+    # pelo webapp e, via motor_ia/conexao.py, pelo poller/webhook -- sem
+    # WAL + busy_timeout, escrita concorrente esbarra em "database is
+    # locked".
+    con.execute("PRAGMA journal_mode = WAL")
+    con.execute("PRAGMA busy_timeout = 5000")
     return con
 
 

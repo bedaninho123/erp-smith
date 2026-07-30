@@ -54,9 +54,16 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.migrar_aprovacao_documentos  # idempotente, roda sobre banco em uso
 .venv\Scripts\python.exe -m core.db.migrar_papeis_usuario         # idempotente, normaliza usuario.papel para Gestor/Atendente
 .venv\Scripts\python.exe -m core.db.migrar_permissoes_usuario     # idempotente, cria a tabela usuario_permissao
+.venv\Scripts\python.exe -m core.db.migrar_log_administrativo     # idempotente, cria a tabela log_administrativo
 
 # Conferir se a tabela documento bate com os arquivos em disco (só relata, nunca apaga)
 .venv\Scripts\python.exe -m core.db.auditar_documentos
+
+# Backup do banco (Core + Domínio) e da pasta de documentos, com rotação (manual)
+.venv\Scripts\python.exe -m core.db.backup
+# Instalar/remover a Tarefa Agendada do Windows que roda o backup todo dia às 3h
+core\db\instalar_tarefa_backup.bat
+core\db\remover_tarefa_backup.bat
 .venv\Scripts\python.exe -m domain.clube_tiro.db.criar_banco --recriar
 .venv\Scripts\python.exe -m domain.clube_tiro.db.popular_conhecimento
 .venv\Scripts\python.exe -m domain.clube_tiro.db.popular_campeonatos_2026
@@ -194,6 +201,53 @@ filtro de `empresa_id`, não isto.
 Banco já em uso sem a tabela: rodar `core.db.migrar_permissoes_usuario`
 (idempotente, só cria a tabela — sem seed, porque ausência de linha já
 significa permitido).
+
+### Endurecimento de produção (auditoria de riscos, 2026-07-30)
+
+Uma auditoria pedida pelo usuário sobre pressupostos fracos do projeto
+levantou cinco pontos, todos corrigidos:
+
+- **Rede de segurança pro controle de acesso.** `funcao_required(...)`
+  (`webapp/app.py`) valida cada chave contra `FUNCOES_VALIDAS` **na hora
+  de decorar a rota** (import time, não só em teste) — um typo estoura
+  já ao subir o app, em vez de virar acesso liberado em silêncio
+  (`tem_permissao()` devolve `True` quando não acha a chave). Os três
+  decorators (`login_required`, `gestor_required`, `funcao_required`)
+  gravam um marcador em si mesmos (`_login_protegido`,
+  `_controle_acesso`) que `tests/test_controle_acesso_propagado.py` usa
+  pra varrer `app.url_map` de verdade e confirmar que toda rota `/api/*`
+  tem os dois — mesmo espírito do `test_empresa_id_propagado.py`, só que
+  por introspecção de função em vez de AST. Rota nova que fique sem
+  controle de acesso quebra a suíte, não precisa que alguém lembre de
+  escrever um teste específico pra ela.
+- **Log administrativo.** `core/motor_log_administrativo.py` registra
+  (append-only, mesma transação da mudança) toda troca de papel, ativo
+  ou permissão de usuário, e toda mudança de configuração da empresa —
+  inclusive `revisao_humana_ativa`, o freio que faz a IA parar de enviar
+  sozinha. Antes disso, "quem desligou a revisão humana" não tinha
+  resposta nenhuma. Só existe pra consulta manual (`listar()` ou SELECT
+  direto) por enquanto, não tem tela própria no painel.
+- **SQLite em modo WAL + `busy_timeout`** (`core/conexao.py`,
+  `motor_ia/conexao.py`, e os dois motores do Domínio que conectam
+  direto — `domain/clube_tiro/motor_campeonatos.py`,
+  `motor_resultados.py`). Sem isso, painel + poller (a cada 2 min) +
+  webhook escrevendo no mesmo arquivo SQLite ao mesmo tempo eventualmente
+  batia em "database is locked". WAL é propriedade do arquivo (uma vez
+  ligado, fica ligado); `busy_timeout` é por conexão, por isso todo
+  `sqlite3.connect()` do projeto pede de novo.
+- **Backup diário** (`core/db/backup.py`, instalado via
+  `core/db/instalar_tarefa_backup.bat`, roda às 3h). Copia banco do Core
+  e do Domínio via `Connection.backup()` do próprio SQLite (não cópia
+  crua do arquivo — em modo WAL, parte do commit recente só existe no
+  `-wal`, cópia crua perderia isso) e a pasta
+  `atendimento/documentos_recebidos/`, com rotação (`BACKUP_MANTER_ULTIMOS`,
+  padrão 14). Por padrão grava dentro do próprio projeto (`BACKUP_DIR`) —
+  protege contra exclusão/corrupção acidental, **não** contra falha
+  física do disco; para isso, `BACKUP_DIR` precisa apontar pra fora desta
+  máquina.
+- **`WEBHOOK_SECRET` configurado.** `atendimento/webhook.py` já avisava
+  no console quando essa variável está vazia ("aceita qualquer chamada
+  sem autenticação") — era o estado real do `.env` até esta auditoria.
 
 ### O painel tem régua: tamanho e tipografia são regra no CSS, não escolha por tela
 
