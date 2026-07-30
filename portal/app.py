@@ -784,4 +784,11 @@ def download_documento(documento_id):
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5002, debug=False, use_reloader=True)
+    # use_reloader=False de proposito (2026-07-30): nesta maquina, com
+    # dois Pythons instalados (.venv e a instalacao global), o reloader
+    # do Werkzeug entrava num loop -- cada reinicio alternava entre os
+    # dois interpretadores e gerava mais um processo filho, sem nunca
+    # convergir (mesmo achado em atendimento/webhook.py). Custo de
+    # deixar desligado: editar o arquivo exige reiniciar o processo na
+    # mao pra valer.
+    app.run(host="127.0.0.1", port=5002, debug=False, use_reloader=False)

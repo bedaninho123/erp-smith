@@ -72,6 +72,12 @@ if __name__ == "__main__":
     # debug=False desliga o debugger interativo do Werkzeug (ele permite
     # rodar codigo Python arbitrario pelo navegador em qualquer excecao --
     # risco serio se este processo algum dia for exposto alem de
-    # localhost). use_reloader continua ligado so pra reiniciar sozinho
-    # quando o codigo muda, sem esse risco.
-    app.run(host="127.0.0.1", port=5001, debug=False, use_reloader=True)
+    # localhost).
+    #
+    # use_reloader=False de proposito (2026-07-30): nesta maquina, com
+    # dois Pythons instalados (.venv e a instalacao global), o reloader
+    # do Werkzeug entrava num loop -- cada reinicio alternava entre os
+    # dois interpretadores e gerava mais um processo filho, sem nunca
+    # convergir. Custo de deixar desligado: editar o arquivo exige
+    # reiniciar o processo na mao pra valer.
+    app.run(host="127.0.0.1", port=5001, debug=False, use_reloader=False)
