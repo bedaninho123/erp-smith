@@ -1285,6 +1285,16 @@ if __name__ == "__main__":
     # debug=False desliga o debugger interativo do Werkzeug (permite
     # rodar codigo Python arbitrario pelo navegador em qualquer excecao
     # nao tratada -- risco serio se este processo for exposto alem de
-    # localhost). use_reloader continua ligado so pra reiniciar sozinho
-    # quando o codigo muda, sem esse risco.
-    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=True)
+    # localhost).
+    #
+    # use_reloader=False de proposito (2026-07-29): mesmo motivo ja
+    # aplicado em atendimento/webhook.py e portal/app.py, que o painel
+    # ficou de fora na primeira passada. Nesta maquina o python.exe do
+    # .venv e um lancador que executa o Python global como filho, e o
+    # reloader do Werkzeug reinicia usando esse interpretador de fora do
+    # .venv -- a cadeia observada alternava .venv -> global -> .venv ->
+    # global sem convergir, deixando 4 processos por instancia do painel.
+    # Custo de deixar desligado: editar o codigo exige reiniciar o
+    # processo na mao (o template .html continua recarregando sozinho,
+    # via TEMPLATES_AUTO_RELOAD la no topo do arquivo).
+    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)
