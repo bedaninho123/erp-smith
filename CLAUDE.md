@@ -245,6 +245,21 @@ levantou cinco pontos, todos corrigidos:
   protege contra exclusão/corrupção acidental, **não** contra falha
   física do disco; para isso, `BACKUP_DIR` precisa apontar pra fora desta
   máquina.
+
+  Três correções ao configurar destino externo de verdade (2026-07-29):
+  o módulo não chamava `load_dotenv()`, então `BACKUP_DIR` no `.env` —
+  que o próprio docstring, o `.env.example` e este arquivo mandavam usar
+  — não tinha efeito nenhum e o backup seguia gravando na pasta do
+  projeto, calado. Agora carrega o `.env` por caminho explícito (a
+  Tarefa Agendada pode rodar com outro diretório de trabalho).
+  `_validar_destino()` exige que a pasta-mãe do `BACKUP_DIR` exista, em
+  vez de `mkdir(parents=True)` recriar a árvore num lugar errado quando
+  o destino externo não está acessível (Drive não montado, pen drive
+  desconectado) e terminar com "sucesso" sem proteger nada. E tudo é
+  registrado em `core/db/backup.log` (hora local), com código de saída
+  != 0 na falha: a tarefa roda com `pythonw.exe`, sem console, então
+  `print()` ali é descartado em silêncio — sem o log, uma falha às 3h da
+  manhã não deixava rastro em lugar nenhum.
 - **`WEBHOOK_SECRET` configurado.** `atendimento/webhook.py` já avisava
   no console quando essa variável está vazia ("aceita qualquer chamada
   sem autenticação") — era o estado real do `.env` até esta auditoria.

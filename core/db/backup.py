@@ -20,19 +20,70 @@ Uso: `.venv\\Scripts\\python.exe -m core.db.backup`
 import os
 import shutil
 import sqlite3
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 CORE_DB = BASE_DIR / "core" / "db" / "erp_smith.db"
 DOMAIN_DB = BASE_DIR / "domain" / "clube_tiro" / "db" / "dominio_clube_tiro.db"
 DOCUMENTOS_DIR = BASE_DIR / "atendimento" / "documentos_recebidos"
 
+# Caminho explícito, não load_dotenv() sem argumento: sem isto o módulo
+# lia só o ambiente do processo, e BACKUP_DIR no .env -- que o docstring
+# acima, o .env.example e o CLAUDE.md mandam usar -- não tinha efeito
+# nenhum (o backup seguia gravando na pasta do projeto, calado). O
+# argumento também protege de a Tarefa Agendada rodar com outro
+# diretório de trabalho, quando load_dotenv() não acharia o arquivo.
+load_dotenv(BASE_DIR / ".env")
+
+LOG_PATH = Path(__file__).resolve().parent / "backup.log"
+
 BACKUP_DIR = Path(os.environ.get("BACKUP_DIR", str(BASE_DIR / "backups")))
 # 14 backups diários = duas semanas de histórico -- o bastante pra
 # perceber um problema (dado corrompido, exclusão errada) antes que o
 # backup bom saia da janela de retenção.
 MANTER_ULTIMOS = int(os.environ.get("BACKUP_MANTER_ULTIMOS", "14"))
+
+
+def _registrar(mensagem: str) -> None:
+    """Grava no log além de imprimir. A Tarefa Agendada roda com
+    pythonw.exe, que não tem console -- print() ali é descartado em
+    silêncio, então o arquivo de log é a única forma de saber, depois,
+    se o backup das 3h funcionou ou falhou. Horário em hora local, não
+    UTC (é pra você conferir "rodou essa noite?", não pra máquina ler).
+    """
+    print(mensagem)
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  {mensagem}\n")
+    except OSError:
+        # Não deixa uma falha ao escrever o log impedir o backup em si --
+        # o backup é o que importa, o log é o relato dele.
+        pass
+
+
+def _validar_destino() -> None:
+    """Exige que a pasta-mãe do BACKUP_DIR já exista.
+
+    Existe porque o BACKUP_DIR de verdade aponta pra fora desta máquina
+    (pasta do Google Drive, HD externo, unidade de rede) -- e esse tipo
+    de destino às vezes não está lá na hora do backup: Drive não montado,
+    pen drive desconectado, pasta renomeada. Sem esta checagem,
+    mkdir(parents=True) criaria a árvore inteira num lugar errado e o
+    backup terminaria com "sucesso" sem proteger nada -- exatamente a
+    falha silenciosa que este backup existe pra evitar.
+    """
+    if not BACKUP_DIR.parent.exists():
+        raise FileNotFoundError(
+            f"O destino do backup não está acessível: {BACKUP_DIR}\n"
+            f"A pasta que deveria contê-lo ({BACKUP_DIR.parent}) não existe. "
+            "Se BACKUP_DIR aponta pro Google Drive, confirme que o Google "
+            "Drive para desktop está rodando e sincronizado; se aponta pra "
+            "um HD externo ou pen drive, confirme que está conectado."
+        )
 
 
 def _copiar_banco(origem: Path, destino: Path) -> None:
@@ -52,23 +103,34 @@ def _rotacionar() -> None:
 
 
 def main() -> None:
+    _validar_destino()
+
     agora = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     destino = BACKUP_DIR / agora
     destino.mkdir(parents=True, exist_ok=True)
 
     if CORE_DB.exists():
         _copiar_banco(CORE_DB, destino / "erp_smith.db")
-        print("  + core/db/erp_smith.db")
+        _registrar("  + core/db/erp_smith.db")
     if DOMAIN_DB.exists():
         _copiar_banco(DOMAIN_DB, destino / "dominio_clube_tiro.db")
-        print("  + domain/clube_tiro/db/dominio_clube_tiro.db")
+        _registrar("  + domain/clube_tiro/db/dominio_clube_tiro.db")
     if DOCUMENTOS_DIR.exists():
         shutil.copytree(DOCUMENTOS_DIR, destino / "documentos_recebidos")
-        print("  + atendimento/documentos_recebidos/")
+        _registrar("  + atendimento/documentos_recebidos/")
 
     _rotacionar()
-    print(f"Backup salvo em {destino}")
+    _registrar(f"OK -- backup salvo em {destino}")
 
 
 if __name__ == "__main__":
-    main()
+    # Qualquer falha vira uma linha no log E código de saída != 0 (que a
+    # Tarefa Agendada guarda em LastTaskResult, visível por
+    # `Get-ScheduledTaskInfo`). Antes, uma falha às 3h da manhã não
+    # deixava rastro em lugar nenhum.
+    try:
+        main()
+    except Exception as e:
+        _registrar(f"FALHOU -- {type(e).__name__}: {e}")
+        _registrar(traceback.format_exc().rstrip())
+        raise

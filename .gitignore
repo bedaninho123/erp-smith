@@ -10,6 +10,7 @@ __pycache__/
 credentials.json
 token.json
 atendimento/poller.log
+core/db/backup.log
 atendimento/ultimo_alerta.json
 atendimento/documentos_recebidos/
 atendimento/poller.lock
