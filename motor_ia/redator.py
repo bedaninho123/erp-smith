@@ -75,7 +75,12 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
         for grupo, info in grupos.items():
             linhas.append(f"Grupo {grupo}: {info.get('count', '?')} participação(ões) registrada(s).")
             for evento in info.get("eventos", []):
-                linhas.append("  - " + "; ".join(f"{k}: {v}" for k, v in evento.items()))
+                # v pode ser None/vazio (ex.: "competicao" na maioria dos
+                # treinos) -- sem o filtro, "competicao: None" ia direto pro
+                # texto que a IA usa, e já vazou pro cliente como
+                # "Competição: None" antes desta correção.
+                partes = [f"{k}: {v}" for k, v in evento.items() if v]
+                linhas.append("  - " + "; ".join(partes))
 
     if "cr" in dados:
         cr = dados["cr"]
@@ -99,6 +104,46 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
                 "cadastral anual obrigatória, nunca chame isso de 'vencimento do CR' "
                 "(isso é o CRAF, prazo fixo de 3 ou 5 anos, um documento diferente)."
             )
+
+    if "armas" in dados:
+        armas = dados["armas"]
+        linhas.append("--- Armas registradas ---")
+        if not armas:
+            linhas.append("Nenhuma arma registrada para este cliente em nosso sistema.")
+        else:
+            linhas.append(
+                "(Aviso interno, não repetir ao cliente nem mencionar nome de "
+                "sistema algum: estes dados de arma são de teste.)"
+            )
+            for arma in armas:
+                linhas.append(
+                    f"  - {arma.get('type') or 'Arma'} {arma.get('brand') or ''} "
+                    f"{arma.get('model') or ''}, calibre {arma.get('caliber') or 'não informado'}, "
+                    f"série {arma.get('serie') or 'não informada'}"
+                )
+
+    if "documentos_vencimento" in dados:
+        documentos_vencimento = dados["documentos_vencimento"]
+        linhas.append("--- Guia de tráfego e SIMAF ---")
+        if not documentos_vencimento:
+            linhas.append("Nenhum documento com vencimento registrado para este cliente em nosso sistema.")
+        else:
+            linhas.append(
+                "(Aviso interno, não repetir ao cliente nem mencionar nome de "
+                "sistema algum: estes dados de documento são de teste.)"
+            )
+            for doc in documentos_vencimento:
+                linhas.append(f"Arma: {doc.get('arma') or 'não informada'}")
+                for guia in doc.get("guia_trafego") or []:
+                    estado = "liberada" if guia.get("liberado") else "não liberada"
+                    linhas.append(
+                        f"  - Guia de tráfego: vencimento {guia.get('vencimento') or 'não informado'}, {estado}."
+                    )
+                for simaf in doc.get("simaf") or []:
+                    estado = "liberado" if simaf.get("liberado") else "não liberado"
+                    linhas.append(
+                        f"  - SIMAF: vencimento {simaf.get('vencimento') or 'não informado'}, {estado}."
+                    )
 
     for k in dados.get("conhecimento", []):
         linhas.append(f"Conhecimento institucional: {k['pergunta']} -> {k['resposta']}")

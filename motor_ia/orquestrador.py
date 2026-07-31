@@ -35,13 +35,15 @@ _CATEGORIA_POR_INTENCAO = {
     "ATENDIMENTO_GERAL": "Consulta",
     "ATENDIMENTO_HUMANO": "Consulta",
     "CONSULTA_PROCESSO": "Consulta",
+    "CONSULTA_DOCUMENTOS_VENCIMENTO": "Consulta",
 }
 
 # Intenções que só fazem sentido responder sabendo quem é o cliente --
 # sem isso, o Consultor não teria o que buscar (processo/cadastro/
-# habitualidade/CR são sempre de alguém específico).
+# habitualidade/CR/documento de arma são sempre de alguém específico).
 _INTENCOES_QUE_EXIGEM_CADASTRO = {
     "CONSULTA_PROCESSO", "CONSULTA_CLIENTE", "CONSULTA_HABITUALIDADE", "CONSULTA_CR",
+    "CONSULTA_DOCUMENTOS_VENCIMENTO",
 }
 
 

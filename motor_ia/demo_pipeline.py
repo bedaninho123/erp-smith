@@ -53,3 +53,9 @@ if __name__ == "__main__":
         "Isso é um absurdo, ninguém me responde há uma semana, quero falar com uma pessoa AGORA",
         "CLI-000001",
     )
+    responder(EMPRESA, "Quais armas eu tenho registradas no clube?", "CLI-000001")
+    responder(
+        EMPRESA,
+        "Minha guia de tráfego está vencendo? E o SIMAF, já foi liberado?",
+        "CLI-000001",
+    )

@@ -4,7 +4,12 @@ Domínio e integrações externas (Shooting House), nunca decide nada sobre
 o conteúdo."""
 from typing import Optional
 
-from integracoes.shooting_house import consultar_cr, consultar_habitualidade
+from integracoes.shooting_house import (
+    consultar_armas,
+    consultar_cr,
+    consultar_documentos_vencimento,
+    consultar_habitualidade,
+)
 from motor_ia.classificador import ResultadoClassificacao
 from motor_ia.conexao import conectar
 from motor_ia.planejador import Plano
@@ -119,6 +124,14 @@ def consultar(
             elif fonte == "SHOOTING_HOUSE_CR":
                 cpf_cliente = (resultado.get("cliente") or {}).get("cpf")
                 resultado["cr"] = consultar_cr(cpf_cliente) if cpf_cliente else None
+            elif fonte == "SHOOTING_HOUSE_ARMAS":
+                cpf_cliente = (resultado.get("cliente") or {}).get("cpf")
+                resultado["armas"] = consultar_armas(cpf_cliente) if cpf_cliente else []
+            elif fonte == "SHOOTING_HOUSE_DOCUMENTOS_VENCIMENTO":
+                cpf_cliente = (resultado.get("cliente") or {}).get("cpf")
+                resultado["documentos_vencimento"] = (
+                    consultar_documentos_vencimento(cpf_cliente) if cpf_cliente else []
+                )
             else:
                 raise ValueError(f"Fonte desconhecida: {fonte}")
         return resultado

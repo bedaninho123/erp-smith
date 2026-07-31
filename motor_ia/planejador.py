@@ -10,14 +10,20 @@ from motor_ia.classificador import Intencao, ResultadoClassificacao
 
 # Quais fontes o Consultor deve buscar para cada intenção. VW_* são as
 # views do Core (core/db/views.sql); "conhecimento" é a tabela de Domínio
-# (domain/clube_tiro/db/schema.sql); "SHOOTING_HOUSE_HABITUALIDADE" é uma
-# fonte externa (integracoes/shooting_house.py), não um banco nosso.
+# (domain/clube_tiro/db/schema.sql); "SHOOTING_HOUSE_*" são fontes
+# externas (integracoes/shooting_house.py), não um banco nosso.
+#
+# SHOOTING_HOUSE_ARMAS entra junto de SHOOTING_HOUSE_HABITUALIDADE porque
+# o prompt do Classificador já trata "pergunta sobre armas registradas"
+# como parte da mesma intenção CONSULTA_HABITUALIDADE (ver motor_ia/
+# prompts/classificador.md) -- não é uma intenção nova.
 FONTES_POR_INTENCAO: dict[Intencao, list[str]] = {
     "CONSULTA_DOCUMENTOS": ["VW_SERVICO"],
     "CONSULTA_PROCESSO": ["VW_PROCESSO", "VW_CLIENTE"],
     "CONSULTA_CLIENTE": ["VW_CLIENTE"],
-    "CONSULTA_HABITUALIDADE": ["SHOOTING_HOUSE_HABITUALIDADE"],
+    "CONSULTA_HABITUALIDADE": ["SHOOTING_HOUSE_HABITUALIDADE", "SHOOTING_HOUSE_ARMAS"],
     "CONSULTA_CR": ["SHOOTING_HOUSE_CR"],
+    "CONSULTA_DOCUMENTOS_VENCIMENTO": ["SHOOTING_HOUSE_DOCUMENTOS_VENCIMENTO"],
     "ATENDIMENTO_GERAL": ["conhecimento"],
     "ATENDIMENTO_HUMANO": [],
 }

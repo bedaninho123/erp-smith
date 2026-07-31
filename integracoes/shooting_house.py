@@ -40,26 +40,36 @@ def _limpar_cpf(cpf: str) -> str:
 # usuário em 2026-07-23). Por isso o padrão para qualquer CPF NÃO listado
 # aqui é "sem nenhum registro", não um perfil "em dia" inventado -- seria
 # enganoso presumir habitualidade de quem nunca foi cadastrado como atirador.
+#
+# "arma" e "competicao" foram acrescentados em 2026-07-30, depois de ler a
+# especificação real da API (SwaggerHub) -- lá, cada evento vem com o nome
+# da arma usada (arma_formatada) e, quando o evento é uma competição (não
+# um treino), o nome dela (competicao). Só esses dois campos foram
+# adicionados -- a API real tem ~30 campos por evento (nr_sumula, cidade_uf,
+# calibre, sigma etc.), mas sem ter visto uma resposta de verdade ainda,
+# modelar tudo seria inventar detalhe que ninguém confirmou que o resto do
+# projeto precisa. "modalidade" e "local" continuam com o mesmo sentido de
+# antes: modalidade praticada e nome do clube/local do evento.
 _PERFIS_HABITUALIDADE_TESTE = {
     "12345678900": [  # Felipe Bedani (CLI-000001) -- em dia, caso de Renovação de CR
-        {"data_participacao": "15/01/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-        {"data_participacao": "12/03/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-        {"data_participacao": "20/05/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-        {"data_participacao": "18/07/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "15/01/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília", "arma": "Pistola .40 Taurus G3", "competicao": None},
+        {"data_participacao": "12/03/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília", "arma": "Pistola .40 Taurus G3", "competicao": None},
+        {"data_participacao": "20/05/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília", "arma": "Pistola .40 Taurus G3", "competicao": "Copa Regional de Tiro Prático"},
+        {"data_participacao": "18/07/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília", "arma": "Pistola .40 Taurus G3", "competicao": None},
     ],
     "10000000006": [  # Helena Costa -- em dia
-        {"data_participacao": "10/02/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-        {"data_participacao": "14/04/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
-        {"data_participacao": "09/06/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "10/02/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília", "arma": "Pistola 9mm Glock G3", "competicao": None},
+        {"data_participacao": "14/04/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília", "arma": "Pistola 9mm Glock G3", "competicao": None},
+        {"data_participacao": "09/06/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília", "arma": "Pistola 9mm Glock G3", "competicao": None},
     ],
     "10000000014": [  # Vanessa Teixeira -- em dia
-        {"data_participacao": "05/01/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília"},
-        {"data_participacao": "03/03/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília"},
-        {"data_participacao": "07/05/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília"},
-        {"data_participacao": "12/07/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "05/01/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília", "arma": "Revólver .38 Taurus", "competicao": None},
+        {"data_participacao": "03/03/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília", "arma": "Revólver .38 Taurus", "competicao": None},
+        {"data_participacao": "07/05/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília", "arma": "Revólver .38 Taurus", "competicao": None},
+        {"data_participacao": "12/07/2026", "modalidade": "Tiro Esportivo", "local": "Clube de Tiro Marília", "arma": "Revólver .38 Taurus", "competicao": "Campeonato Estadual de Tiro Esportivo"},
     ],
     "10000000015": [  # William Cardoso -- irregular, só 1 participação
-        {"data_participacao": "22/06/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília"},
+        {"data_participacao": "22/06/2026", "modalidade": "Tiro Prático", "local": "Clube de Tiro Marília", "arma": "Pistola .40 Taurus G2C", "competicao": None},
     ],
     "10000000020": [],  # Larissa Barbosa -- sem nenhum registro
 }
@@ -95,11 +105,26 @@ def _habitualidade_simulada(cpf: str) -> dict:
 # e LLM erra conta com facilidade). Só datas de referência, sem contagem
 # de dias restantes -- decisão do usuário pra não soar como uma contagem
 # regressiva de "vencimento" (o CR não vence).
+#
+# data_expiracao_bruta (2026-07-30): a especificação real da API tem um
+# campo `documents.cr.expirationDate` em GET /registers/shooters/{id} --
+# ao contrário do que este módulo assumia até agora ("endpoint real ainda
+# não documentado"). Existe, então, mas com uma ressalva: pelo Decreto nº
+# 11.615/2023, já confirmado com o usuário, o CR do atirador desportivo
+# NÃO tem prazo fixo de vencimento -- então esse campo bruto da API não
+# necessariamente significa "quando o CR vence" para efeito de resposta ao
+# cliente. Por isso ele é mantido aqui separado de proxima_confirmacao,
+# só para o pipeline já ter o campo disponível e testável -- nenhuma
+# lógica de negócio lê data_expiracao_bruta ainda. Decidir o que fazer com
+# ele (ignorar, ou é a data de emissão do CRAF do porte, algo diferente do
+# CR desportivo) só quando a credencial real existir e der pra confirmar
+# o que o campo de fato representa.
 _PERFIS_CR_TESTE = {
     "12345678900": {  # Felipe Bedani -- Atirador Desportivo
         "categoria_cr": "Atirador Desportivo",
         "data_ultima_confirmacao": "01/09/2025",
         "nivel_cr": 2,
+        "data_expiracao_bruta": "01/09/2026",
     },
 }
 
@@ -119,6 +144,123 @@ def _cr_simulado(cpf: str) -> Optional[dict]:
         "data_ultima_confirmacao": perfil["data_ultima_confirmacao"],
         "proxima_confirmacao": proxima_confirmacao.strftime("%d/%m/%Y"),
         "nivel_cr": perfil.get("nivel_cr"),
+        "data_expiracao_bruta": perfil.get("data_expiracao_bruta"),
+    }
+
+
+# Perfis de armas pra teste -- espelha GET /registers/shooters/weapon/
+# {shooterId} da API real. Esse endpoint real pede o ID interno do
+# Shooting House (idatirador), não CPF -- este módulo não sabe converter
+# um pro outro ainda (precisaria de um GET /registers/shooters/paginate
+# ou busca equivalente por CPF, que não foi confirmado que existe com
+# filtro direto). Por isso, mesmo padrão de consultar_cr: sempre simulado,
+# até essa resolução CPF -> idatirador existir de verdade.
+_PERFIS_ARMAS_TESTE = {
+    "12345678900": [  # Felipe Bedani
+        {"id": 1, "model": "G3", "brand": "Taurus", "caliber": ".40 S&W", "serie": "TA123456", "type": "Pistola"},
+    ],
+    "10000000006": [  # Helena Costa
+        {"id": 2, "model": "G3", "brand": "Glock", "caliber": "9mm", "serie": "GL654321", "type": "Pistola"},
+    ],
+}
+
+
+def consultar_armas(cpf: str) -> list[dict]:
+    """Armas registradas do atirador. Devolve lista vazia se o CPF não
+    tem arma simulada cadastrada -- nem todo cliente é atirador (mesma
+    regra de consultar_habitualidade). Ver comentário acima de
+    _PERFIS_ARMAS_TESTE sobre por que ainda não tem modo real."""
+    return _PERFIS_ARMAS_TESTE.get(_limpar_cpf(cpf), [])
+
+
+# Perfis de documentos com vencimento pra teste -- espelha GET /registers/
+# shooters/documentos-por-data-vencimento da API real. Esse endpoint real
+# é filtrado por INTERVALO DE DATA (dataInicio/dataFinal) e devolve o
+# clube inteiro de uma vez, não por CPF -- pra usar isso de verdade
+# precisaria buscar o idatirador do CPF e filtrar a resposta em massa por
+# ele, o que ainda não está implementado (mesma ressalva de
+# consultar_armas acima). "liberado" = documento já pode ser retirado/
+# usado; "arquivo_url" fica None no simulado (não existe arquivo de
+# verdade pra baixar).
+_PERFIS_DOCUMENTOS_VENCIMENTO_TESTE = {
+    "12345678900": [  # Felipe Bedani
+        {
+            "idarma": 1,
+            "arma": "Pistola Taurus G3 .40 S&W",
+            "cr": "12345",
+            "guia_trafego": [
+                {"vencimento": "10/12/2026", "arquivo_url": None, "liberado": True, "observacao": None},
+            ],
+            "simaf": [
+                {"vencimento": "05/03/2027", "arquivo_url": None, "liberado": True},
+            ],
+        },
+    ],
+}
+
+
+def consultar_documentos_vencimento(cpf: str) -> list[dict]:
+    """Guia de tráfego e SIMAF por arma do atirador, com data de
+    vencimento e link de download. Lista vazia = sem arma/documento
+    simulado cadastrado para este CPF. Ver comentário acima de
+    _PERFIS_DOCUMENTOS_VENCIMENTO_TESTE sobre por que ainda não tem modo
+    real."""
+    return _PERFIS_DOCUMENTOS_VENCIMENTO_TESTE.get(_limpar_cpf(cpf), [])
+
+
+# Nomes dos campos-array da resposta real de habitualidade (colunares,
+# paralelos por índice dentro de cada arma) que este módulo sabe mapear
+# pro formato simples já consumido por portal/app.py e motor_ia/
+# consultor.py. Só os campos abaixo -- a resposta real tem dezenas de
+# outros (nr_sumula, cidade_uf, sigma, cms_id...) sem descrição conferida,
+# então mapear todos seria inventar sentido para campo que ninguém viu
+# numa resposta de verdade ainda.
+_CAMPOS_EVENTO_HABITUALIDADE_REAL = {
+    "modalidades_simples": "modalidade",
+    "local": "local",
+    "arma_formatada": "arma",
+    "competicao": "competicao",
+}
+
+
+def _normalizar_habitualidade_real(dados_brutos: dict) -> dict:
+    """Converte a resposta real de GET /registers/habitualities/{cpf} --
+    colunar, agrupada em habitualidades[grupo_arma][id_arma] com arrays
+    paralelos por índice -- no MESMO formato simples que o dado simulado
+    sempre teve: habitualidades[grupo_arma] = {"count":, "eventos": [{...}
+    ]}. Sem essa conversão, portal/app.py e motor_ia/consultor.py quebram
+    no primeiro CPF consultado de verdade, porque os dois esperam
+    "eventos" direto dentro de cada grupo, não mais um nível de arma por
+    baixo.
+
+    Estrutura inferida da documentação (SwaggerHub) em 2026-07-30 --
+    NUNCA testada contra uma resposta real, porque a credencial ainda não
+    foi liberada. Conferir e ajustar os nomes de campo aqui assim que a
+    primeira resposta de verdade chegar (ver _CAMPOS_EVENTO_HABITUALIDADE_REAL).
+    """
+    habitualidades_brutas = dados_brutos.get("habitualidades") or {}
+    habitualidades = {}
+    for grupo_arma, armas in habitualidades_brutas.items():
+        eventos = []
+        for dados_arma in (armas or {}).values():
+            datas = dados_arma.get("data_participacao") or []
+            for indice, data in enumerate(datas):
+                evento = {"data_participacao": data}
+                for campo_real, campo_normalizado in _CAMPOS_EVENTO_HABITUALIDADE_REAL.items():
+                    valores = dados_arma.get(campo_real) or []
+                    if indice < len(valores):
+                        evento[campo_normalizado] = valores[indice]
+                eventos.append(evento)
+        habitualidades[grupo_arma] = {"count": len(eventos), "eventos": eventos}
+
+    return {
+        "simulado": False,
+        "idatirador": dados_brutos.get("idatirador"),
+        "atirador": dados_brutos.get("atirador"),
+        "matricula": dados_brutos.get("matricula"),
+        "cr": dados_brutos.get("cr"),
+        "cpf": dados_brutos.get("cpf"),
+        "habitualidades": habitualidades,
     }
 
 
@@ -163,10 +305,20 @@ def consultar_habitualidade(
     )
     resposta.raise_for_status()
     dados = resposta.json()
-    return dados[0] if isinstance(dados, list) and dados else dados
+    dados = dados[0] if isinstance(dados, list) and dados else dados
+    return _normalizar_habitualidade_real(dados)
 
 
 if __name__ == "__main__":
     resultado = consultar_habitualidade("12345678900")
     print(f"Modo simulado: {resultado.get('simulado', False)}")
     print(resultado)
+
+    print()
+    print("CR:", consultar_cr("12345678900"))
+
+    print()
+    print("Armas:", consultar_armas("12345678900"))
+
+    print()
+    print("Documentos com vencimento:", consultar_documentos_vencimento("12345678900"))

@@ -10,6 +10,7 @@ Classifique em uma destas categorias:
 - CONSULTA_CLIENTE: o cliente quer confirmar ou atualizar seu próprio cadastro.
 - CONSULTA_HABITUALIDADE: o cliente quer saber sobre sua habitualidade (frequência de treino/participação exigida para renovação de CR/CRAF), ou sobre suas armas registradas.
 - CONSULTA_CR: o cliente quer saber sobre a situação/validade do próprio CR (ex.: "quando vence meu CR?", "meu CR ainda está válido?", "preciso confirmar meu CR esse ano?"). Diferente de CONSULTA_PROCESSO (que é sobre o andamento de uma solicitação/processo já aberto com o despachante, não sobre a validade do CR em si) e de CONSULTA_HABITUALIDADE (frequência de treino).
+- CONSULTA_DOCUMENTOS_VENCIMENTO: o cliente quer saber sobre o vencimento ou liberação de um documento específico de uma arma que ele já possui registrada -- guia de tráfego ou SIMAF (ex.: "minha guia de tráfego está vencendo?", "meu SIMAF já foi liberado?"). Diferente de CONSULTA_DOCUMENTOS, que é sobre quais documentos são exigidos para abrir um serviço novo, não sobre o status de um documento que a arma já tem.
 - ATENDIMENTO_GERAL: dúvida geral que não se encaixa nas anteriores.
 - ATENDIMENTO_HUMANO: o cliente pede explicitamente para falar com uma pessoa, ou a mensagem tem reclamação/situação sensível.
 
