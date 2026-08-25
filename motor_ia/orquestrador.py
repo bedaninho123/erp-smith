@@ -14,8 +14,10 @@ cliente_id no banco). Perguntas que exigem identidade (CONSULTA_PROCESSO,
 CONSULTA_CLIENTE, CONSULTA_HABITUALIDADE) recebem a mensagem
 institucional pedindo CPF, em vez de silêncio.
 """
+import traceback
 from typing import Optional
 
+from core import motor_identidade, motor_log_administrativo
 from core.conexao import conectar
 from core.configuracoes import obter_configuracoes
 from core.motor_casos import localizar_ou_criar_caso
@@ -63,6 +65,54 @@ def _categoria_do_caso(empresa_id: str, classificacao: ResultadoClassificacao) -
     return _CATEGORIA_POR_INTENCAO.get(classificacao.intencao, "Outros")
 
 
+def _cpf_do_cliente(empresa_id: str, cliente_id: str) -> Optional[str]:
+    con = conectar(empresa_id)
+    try:
+        linha = con.execute(
+            "SELECT cpf FROM cliente WHERE empresa_id = ? AND cliente_id = ?",
+            (empresa_id, cliente_id),
+        ).fetchone()
+        return linha["cpf"] if linha else None
+    finally:
+        con.close()
+
+
+def _registrar_acesso_sensivel(
+    empresa_id: str, cliente_id: str, intencao: str, canal: str,
+    liberado: bool, motivo: Optional[str],
+) -> None:
+    """Deixa rastro de toda vez que alguém pede dado de arma/CR/
+    habitualidade por um canal não autenticado -- liberado ou negado.
+
+    Sem isso, a pergunta "quem consultou o dado de arma de fulano, e
+    quando?" não teria resposta nenhuma, que é exatamente a pergunta que
+    aparece quando algo dá errado com dado pessoal de terceiros. Uma
+    sequência de acessos NEGADOS ao mesmo cliente também é o sinal mais
+    visível de alguém tentando adivinhar CPF.
+
+    Falhar aqui não pode derrubar o atendimento (mesmo critério já usado
+    para o envelope de conversa em atendimento/processar.py), mas também
+    não passa calado: imprime o erro."""
+    try:
+        con = conectar(empresa_id)
+        try:
+            motor_log_administrativo.registrar(
+                con, empresa_id,
+                tipo_evento="ACESSO_DADO_SENSIVEL",
+                alvo=cliente_id,
+                descricao=f"{intencao} por {canal}",
+                valor_anterior=None,
+                valor_novo="liberado" if liberado else f"negado: {motivo}",
+                criado_por="sistema/atendimento",
+            )
+            con.commit()
+        finally:
+            con.close()
+    except Exception:
+        print("[AVISO] Falha ao registrar acesso a dado sensível no log administrativo:")
+        traceback.print_exc()
+
+
 def atender_mensagem(
     empresa_id: str,
     mensagem: str,
@@ -72,18 +122,88 @@ def atender_mensagem(
     nome: Optional[str] = None,
     cpf: Optional[str] = None,
     email: Optional[str] = None,
+    telefone: Optional[str] = None,
 ) -> dict:
     """empresa_id é o primeiro parâmetro de propósito: tudo daqui pra
     frente (identificação do cliente, consulta, memória) acontece dentro
     de uma empresa só. Quem chama é o canal de entrada, que sabe por qual
     caixa de e-mail/portal a mensagem chegou."""
+    cliente = None
     if not cliente_id:
-        cliente = identificar_cliente(empresa_id, nome=nome, cpf=cpf, email=email)
+        cliente = identificar_cliente(
+            empresa_id, nome=nome, cpf=cpf, email=email, telefone=telefone
+        )
         if cliente:
             cliente_id = cliente["cliente_id"]
 
-    classificacao = classificar(empresa_id, mensagem)
+    # Os CPFs saem do texto AQUI, em Python, e é esta lista que o portão
+    # de identidade usa lá embaixo -- nunca `classificacao.cpf_mencionado`,
+    # que é produzido pela IA a partir da mesma mensagem que um atacante
+    # escreve (ver core/motor_identidade.py::extrair_cpfs).
+    cpfs_na_mensagem = motor_identidade.extrair_cpfs(mensagem)
+    if cpf:
+        # Veio do corpo do POST no webhook, que é autenticado por segredo
+        # compartilhado -- entra como mais um candidato, não substitui.
+        cpfs_na_mensagem.append(cpf)
+
+    # O Classificador só precisa entender a INTENÇÃO da frase; o número
+    # em si não ajuda em nada e é dado pessoal atravessando a rede até um
+    # serviço de terceiro. O texto original segue inteiro para `mensagem`,
+    # sessão e memória -- o banco é nosso.
+    classificacao = classificar(empresa_id, motor_identidade.mascarar_cpfs_no_texto(mensagem))
     plano = planejar(classificacao)
+
+    # PORTÃO DE IDENTIDADE (2026-08-25, ver core/motor_identidade.py).
+    # Antes de consultar qualquer coisa sobre arma, CR ou habitualidade:
+    # o e-mail/telefone do remetente diz apenas de onde a mensagem veio,
+    # não quem a escreveu, e cabeçalho de e-mail se falsifica em um
+    # minuto. Para esse tipo de dado, exige-se o CPF escrito na própria
+    # mensagem, conferindo com o cadastro.
+    #
+    # Vem antes do Consultor de propósito: assim o CPF de quem não passou
+    # no portão nem chega a ser enviado para a API do Shooting House.
+    if cliente_id and motor_identidade.exige_confirmacao_cpf(classificacao.intencao, canal):
+        cpf_cadastro = (cliente or {}).get("cpf") or _cpf_do_cliente(empresa_id, cliente_id)
+        veredito = motor_identidade.verificar_acesso_dado_sensivel(
+            classificacao.intencao, canal,
+            cpfs_mencionados=cpfs_na_mensagem,
+            cpf_cadastro=cpf_cadastro,
+            # None quando quem chamou já entregou o cliente_id pronto (o
+            # painel, os testes) -- aí a identificação não passou por
+            # aqui e não há origem duvidosa a barrar.
+            identificado_por=(cliente or {}).get("identificado_por"),
+        )
+        _registrar_acesso_sensivel(
+            empresa_id, cliente_id, classificacao.intencao, canal,
+            veredito.liberado, veredito.motivo,
+        )
+        if not veredito.liberado:
+            config = obter_configuracoes(empresa_id)
+            return {
+                "empresa_id": empresa_id,
+                "cliente_id": cliente_id,
+                "sessao_id": None,
+                "caso_id": None,
+                "classificacao": classificacao,
+                "plano": plano,
+                "dados": {},
+                # Mensagem fixa e institucional, igual pra todos os motivos
+                # de recusa -- ver o comentário em
+                # verificar_acesso_dado_sensivel sobre por que ela não conta
+                # qual dos casos aconteceu.
+                "resposta": config.get(
+                    "mensagem_confirmar_cpf",
+                    "Para sua segurança, informações sobre registro de arma, CR e "
+                    "habitualidade só são enviadas mediante confirmação de "
+                    "identidade. Por favor, responda esta mensagem informando o "
+                    "seu CPF completo.",
+                ),
+                "auditoria": ResultadoAuditoria(
+                    aprovado=True, acao="enviar",
+                    motivo=f"Confirmação de identidade exigida: {veredito.motivo}",
+                ),
+                "memoria_id": None,
+            }
 
     if not cliente_id and classificacao.intencao in _INTENCOES_QUE_EXIGEM_CADASTRO:
         # Não dá pra consultar processo/cadastro/habitualidade de

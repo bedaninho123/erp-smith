@@ -88,9 +88,15 @@ def test_atendente_nao_acessa_rotas_de_permissao(painel_atendente):
 
 def test_gestor_le_e_atualiza_permissoes_pela_rota(painel):
     listagem = painel.get("/api/usuarios/USR-000003/permissoes").get_json()
+    # Lista escrita à mão de propósito, não lida de FUNCOES_VALIDAS:
+    # comparar o catálogo com ele mesmo não provaria nada. Assim, mexer
+    # no catálogo quebra este teste e obriga uma decisão consciente --
+    # uma função que some sem querer é acesso perdido em silêncio, uma
+    # que aparece sem querer é acesso concedido em silêncio.
     assert {p["funcao"] for p in listagem} == {
-        "casos", "clientes", "aprovacoes_pendentes", "documentos_aprovar",
-        "campeonatos", "resultados", "testar_pipeline", "status_projeto",
+        "atendimentos", "casos", "clientes", "aprovacoes_pendentes",
+        "documentos_aprovar", "campeonatos", "resultados", "testar_pipeline",
+        "status_projeto",
     }
     assert all(p["ativo"] == "Sim" for p in listagem)
 

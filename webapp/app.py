@@ -26,8 +26,10 @@ from dotenv import load_dotenv, set_key
 from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash
 
-from atendimento.processar import aprovar_mensagem_pendente, rejeitar_mensagem_pendente
-from core import motor_checklist, motor_documentos, motor_mensagens
+from atendimento.processar import (
+    aprovar_mensagem_pendente, entregar_resposta, rejeitar_mensagem_pendente,
+)
+from core import motor_checklist, motor_conversas, motor_documentos, motor_mensagens
 from core.conexao import conectar
 from core.configuracoes import atualizar_configuracao, obter_configuracoes
 from core.limitador_tentativas import excedeu_limite
@@ -46,6 +48,7 @@ from domain.clube_tiro.motor_resultados import (
 )
 from integracoes.config import shooting_house_configurado
 from integracoes.gmail import enviar_email, gmail_configurado
+from integracoes.whatsapp import status_integracao as status_whatsapp
 from motor_ia.atualizador_memoria import atualizar_memoria
 from motor_ia.auditor import auditar
 from motor_ia.classificador import classificar
@@ -1279,6 +1282,156 @@ def rejeitar(mensagem_id):
     if "erro" in resultado:
         return jsonify(resultado), 400
     return jsonify(resultado)
+
+
+# --------------------------------------------------------------------
+# Atendimentos (CRM) -- caixa de entrada unificada de E-mail e WhatsApp.
+# Lê a tabela `conversa` (core/motor_conversas.py), que passou a ser
+# alimentada pelo pipeline. Todo filtro por empresa vem de
+# empresa_atual(), nunca da query string: o conversa_id é global, então
+# sem esse filtro dava pra abrir a conversa de outra empresa sabendo o ID.
+# --------------------------------------------------------------------
+
+@app.route("/api/conversas")
+@login_required
+@funcao_required("atendimentos")
+def conversas_lista():
+    empresa_id = empresa_atual()
+    canal = (request.args.get("canal") or "").strip() or None
+    if canal and canal not in motor_conversas.CANAIS_VALIDOS:
+        return jsonify(erro=f"Canal inválido: {canal}."), 400
+    status = (request.args.get("status") or "").strip() or None
+    busca = (request.args.get("busca") or "").strip() or None
+
+    return jsonify({
+        "conversas": motor_conversas.listar_conversas(
+            empresa_id, canal=canal, status=status, busca=busca
+        ),
+        "contadores": motor_conversas.contar_por_canal(empresa_id),
+        "canais": [
+            {"chave": c, "rotulo": motor_conversas.CANAIS_ROTULO.get(c, c)}
+            for c in motor_conversas.CANAIS_VALIDOS
+        ],
+        "status_validos": list(motor_conversas.STATUS_VALIDOS),
+        # A tela avisa em cima quando o WhatsApp está simulado -- sem
+        # isso o usuário só descobriria ao ver um cliente real não
+        # receber a resposta que o painel diz ter enviado.
+        "whatsapp": status_whatsapp(),
+    })
+
+
+@app.route("/api/conversas/<conversa_id>")
+@login_required
+@funcao_required("atendimentos")
+def conversa_detalhe(conversa_id):
+    conversa = motor_conversas.obter_conversa(empresa_atual(), conversa_id)
+    if not conversa:
+        return jsonify(erro="Conversa não encontrada."), 404
+
+    con = conectar(empresa_atual())
+    try:
+        usuarios = [
+            dict(linha) for linha in con.execute(
+                "SELECT usuario_id, nome FROM usuario WHERE empresa_id = ? "
+                "AND ativo = 'Sim' ORDER BY nome",
+                (empresa_atual(),),
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+
+    conversa["usuarios"] = usuarios
+    conversa["status_validos"] = list(motor_conversas.STATUS_VALIDOS)
+    return jsonify(conversa)
+
+
+@app.route("/api/conversas/<conversa_id>/responder", methods=["POST"])
+@login_required
+@funcao_required("atendimentos")
+def conversa_responder(conversa_id):
+    """Resposta escrita por uma PESSOA no painel -- não passa pelo Motor
+    IA nem pelo Auditor de propósito: quem digitou já é o humano que a
+    revisão humana existe para garantir."""
+    empresa_id = empresa_atual()
+    conversa = motor_conversas.obter_conversa(empresa_id, conversa_id)
+    if not conversa:
+        return jsonify(erro="Conversa não encontrada."), 404
+
+    texto = ((request.get_json(silent=True) or {}).get("texto") or "").strip()
+    if not texto:
+        return jsonify(erro="Escreva uma mensagem antes de enviar."), 400
+
+    canal = conversa["canal"]
+    destino = (
+        conversa["cliente_telefone"] if canal == "WhatsApp" else conversa["cliente_email"]
+    )
+    if not destino:
+        rotulo = "telefone" if canal == "WhatsApp" else "e-mail"
+        return jsonify(
+            erro=f"O cliente não tem {rotulo} cadastrado -- não há para onde enviar."
+        ), 400
+
+    try:
+        entrega = entregar_resposta(
+            canal, destino, texto, assunto=conversa.get("assunto_principal")
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify(erro=f"{type(e).__name__}: {e}"), 400
+
+    if not entrega["enviado"]:
+        return jsonify(erro=entrega["motivo"] or "Não foi possível enviar."), 400
+
+    mensagem_id = motor_conversas.registrar_saida(
+        empresa_id,
+        conversa_id,
+        cliente_id=conversa["cliente_id"],
+        texto=texto,
+        canal=canal,
+        caso_id=conversa.get("caso_id"),
+        destino=destino,
+        assunto=conversa.get("assunto_principal"),
+        responsavel_id=session.get("usuario_id"),
+    )
+    return jsonify(
+        mensagem_id=mensagem_id, enviado=True, simulado=entrega["simulado"], canal=canal
+    )
+
+
+@app.route("/api/conversas/<conversa_id>/status", methods=["POST"])
+@login_required
+@funcao_required("atendimentos")
+def conversa_atualizar_status(conversa_id):
+    empresa_id = empresa_atual()
+    if not motor_conversas.obter_conversa(empresa_id, conversa_id):
+        return jsonify(erro="Conversa não encontrada."), 404
+    status = ((request.get_json(silent=True) or {}).get("status") or "").strip()
+    try:
+        motor_conversas.atualizar_status(
+            empresa_id, conversa_id, status,
+            atualizado_por=session.get("usuario_id") or "Painel administrativo",
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(conversa_id=conversa_id, status=status)
+
+
+@app.route("/api/conversas/<conversa_id>/responsavel", methods=["POST"])
+@login_required
+@funcao_required("atendimentos")
+def conversa_atualizar_responsavel(conversa_id):
+    empresa_id = empresa_atual()
+    if not motor_conversas.obter_conversa(empresa_id, conversa_id):
+        return jsonify(erro="Conversa não encontrada."), 404
+    responsavel_id = ((request.get_json(silent=True) or {}).get("responsavel_id") or "").strip() or None
+    try:
+        motor_conversas.atualizar_responsavel(
+            empresa_id, conversa_id, responsavel_id,
+            atualizado_por=session.get("usuario_id") or "Painel administrativo",
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(conversa_id=conversa_id, responsavel_id=responsavel_id)
 
 
 if __name__ == "__main__":

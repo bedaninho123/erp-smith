@@ -25,6 +25,7 @@ from core.motor_log_administrativo import registrar as registrar_log
 PAPEIS_VALIDOS = ("Gestor", "Atendente")
 
 FUNCOES_VALIDAS = {
+    "atendimentos": "Atendimentos (CRM)",
     "casos": "Casos",
     "clientes": "Clientes",
     "aprovacoes_pendentes": "Aprovações Pendentes",

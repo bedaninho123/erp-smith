@@ -11,6 +11,9 @@ credentials.json
 token.json
 atendimento/poller.log
 core/db/backup.log
+# Registro do modo simulado do WhatsApp -- guarda o TEXTO das respostas
+# que teriam ido para o cliente, ou seja, dado de atendimento real.
+integracoes/whatsapp_simulado.log
 atendimento/ultimo_alerta.json
 atendimento/documentos_recebidos/
 atendimento/poller.lock

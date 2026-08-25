@@ -299,6 +299,54 @@
   }
   .visualizador-corpo img { max-width: 100%; max-height: 100%; object-fit: contain; }
   .visualizador-corpo iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+
+  /* ------------------------------------------------------------------
+     ATENDIMENTOS (CRM) -- caixa de entrada e thread da conversa.
+     Segue a régua do topo do arquivo: só --e1..--e6 de espaçamento, e
+     nenhuma altura de controle nova (os botões daqui são .btn-sm, 30px).
+     ------------------------------------------------------------------ */
+  .conversa-linha {
+    display: flex; align-items: flex-start; gap: var(--e4);
+    padding: var(--e3) var(--e4);
+    border-bottom: 1px solid var(--linha);
+    cursor: pointer; background: #fff;
+  }
+  .conversa-linha:hover { background: #F6F8FA; }
+  .conversa-linha:focus-visible { outline: 2px solid #0B63CE; outline-offset: -2px; }
+  .conversa-canal {
+    flex: 0 0 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; color: #fff;
+  }
+  /* Verde do WhatsApp e azul de e-mail: o canal se reconhece pela cor
+     antes de se ler o rótulo, que é o que faz uma caixa de entrada
+     misturada ficar legível de relance. */
+  .conversa-canal.whatsapp { background: #1FA855; }
+  .conversa-canal.email    { background: #0B63CE; }
+  .conversa-corpo { flex: 1; min-width: 0; }
+  .conversa-topo { display: flex; align-items: baseline; gap: var(--e2); flex-wrap: wrap; }
+  .conversa-nome { font-weight: 600; font-size: 14px; }
+  .conversa-quando { margin-left: auto; font-size: 12px; color: var(--aco); white-space: nowrap; }
+  /* display:block não é enfeite: `overflow` e `text-overflow` são
+     ignorados em elemento inline, e esta prévia é um <span>. Sem isto o
+     corte com reticências simplesmente não acontece e uma mensagem
+     longa empurra a página inteira na horizontal (achado testando no
+     navegador de verdade, não na leitura do código). */
+  .conversa-previa {
+    display: block; font-size: 13px; color: var(--aco); margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .thread { display: flex; flex-direction: column; gap: var(--e3); }
+  .bolha { max-width: 74%; padding: var(--e3) var(--e4); border-radius: 10px; font-size: 14px; }
+  .bolha-cliente { align-self: flex-start; background: #EEF1F5; border-bottom-left-radius: 2px; }
+  .bolha-empresa { align-self: flex-end; background: #DCF3E4; border-bottom-right-radius: 2px; }
+  .bolha-meta { font-size: 11px; color: var(--aco); margin-bottom: var(--e1); }
+  /* white-space: pre-wrap preserva as quebras de linha do texto que a
+     IA escreveu (ela usa parágrafos); sem isso a resposta vira um
+     bloco corrido e ilegível. */
+  .bolha-texto { white-space: pre-wrap; word-wrap: break-word; }
+  .bolha-pendente { border: 1px dashed #C79100; background: #FFF8E1; }
 </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
@@ -332,6 +380,17 @@
       <nav class="mt-2">
         <ul class="nav nav-pills nav-sidebar flex-column" role="menu">
           <li class="nav-header">ATENDIMENTO</li>
+          {% if usuario_papel == 'Gestor' or 'atendimentos' in funcoes_ativas %}
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="atendimentos">
+              <i class="nav-icon fas fa-comments" aria-hidden="true"></i>
+              <p>
+                Atendimentos
+                <span class="right badge badge-info" id="badge-atendimentos" style="display:none"></span>
+              </p>
+            </a>
+          </li>
+          {% endif %}
           {% if usuario_papel == 'Gestor' or 'casos' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link active" data-view="casos">
@@ -903,6 +962,60 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div id="view-atendimentos" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Atendimentos</h1>
+          <p class="text-muted mb-0">Todas as conversas com clientes, por canal, num lugar só. <b>Aberta</b> = a bola está com a gente; <b>Aguardando cliente</b> = já respondemos. Responder aqui manda de verdade pelo mesmo canal por onde o cliente escreveu — e o texto sai como está, sem passar pela IA.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <div id="aviso-whatsapp" class="alert alert-warning" style="display:none">
+            <i class="fas fa-exclamation-triangle mr-1" aria-hidden="true"></i>
+            <b>WhatsApp em modo simulado.</b>
+            <span id="aviso-whatsapp-texto"></span>
+          </div>
+
+          <div class="card">
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-3">
+                  <label class="text-muted small mb-1" for="filtro-canal">Canal</label>
+                  <select class="form-control" id="filtro-canal"><option value="">Todos</option></select>
+                </div>
+                <div class="col-md-3">
+                  <label class="text-muted small mb-1" for="filtro-status-conversa">Situação</label>
+                  <select class="form-control" id="filtro-status-conversa"><option value="">Todas</option></select>
+                </div>
+                <div class="col-md-6">
+                  <label class="text-muted small mb-1" for="busca-conversa">Buscar</label>
+                  <input type="text" class="form-control" id="busca-conversa" placeholder="Nome, CPF, e-mail ou assunto">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="lista-conversas"><p class="text-muted">Carregando…</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-conversa-detalhe" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <button class="btn btn-outline-secondary btn-sm mb-2" id="voltar-atendimentos">
+            <i class="fas fa-arrow-left mr-1" aria-hidden="true"></i>Voltar para Atendimentos
+          </button>
+          <h1 class="m-0" id="conversa-titulo">Conversa</h1>
+          <p class="text-muted mb-0" id="conversa-subtitulo"></p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid" id="conversa-conteudo"><p class="text-muted">Carregando…</p></div>
       </div>
     </div>
 
@@ -2851,12 +2964,296 @@ $("#enviar").addEventListener("click", enviarPipeline);
 // Atendente sem aquela função tomaria um 403 silencioso (e uma exceção
 // não tratada, já que r.json() de um erro não é a lista que a função
 // espera) só de abrir o painel, mesmo sem clicar em nada.
+// ====================================================================
+// ATENDIMENTOS (CRM) -- caixa de entrada unificada de E-mail e WhatsApp
+// ====================================================================
+
+const badgesStatusConversa = {
+  "Aberta": "badge-warning",
+  "Aguardando cliente": "badge-info",
+  "Encerrada": "badge-secondary",
+};
+
+// Rótulo do canal para leitura humana. O valor gravado no banco é a
+// chave ("Email"), nunca o rótulo -- escrever "E-mail" no banco quebra
+// o filtro por canal (mesma regra do core/motor_conversas.py).
+const rotuloCanal = { "Email": "E-mail", "WhatsApp": "WhatsApp" };
+const iconeCanal  = { "Email": "fa-envelope", "WhatsApp": "fa-whatsapp" };
+
+let filtrosCarregados = false;
+
+async function carregarConversas() {
+  const params = new URLSearchParams();
+  const canal  = $("#filtro-canal").value;
+  const status = $("#filtro-status-conversa").value;
+  const busca  = $("#busca-conversa").value.trim();
+  if (canal)  params.set("canal", canal);
+  if (status) params.set("status", status);
+  if (busca)  params.set("busca", busca);
+
+  const r = await fetch("/api/conversas?" + params);
+  const d = await r.json();
+  if (!r.ok) {
+    $("#lista-conversas").innerHTML = `<div class="alert alert-danger">${escapeHtml(d.erro || "Falha ao carregar.")}</div>`;
+    return;
+  }
+
+  // Os selects são preenchidos a partir do que o servidor considera
+  // válido, uma vez só -- assim um canal novo aparece aqui sem ninguém
+  // precisar lembrar de editar o HTML.
+  if (!filtrosCarregados) {
+    d.canais.forEach(c => {
+      $("#filtro-canal").insertAdjacentHTML("beforeend",
+        `<option value="${escapeHtml(c.chave)}">${escapeHtml(c.rotulo)}</option>`);
+    });
+    d.status_validos.forEach(s => {
+      $("#filtro-status-conversa").insertAdjacentHTML("beforeend",
+        `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`);
+    });
+    filtrosCarregados = true;
+  }
+
+  if (d.whatsapp && !d.whatsapp.configurado) {
+    $("#aviso-whatsapp").style.display = "";
+    $("#aviso-whatsapp-texto").textContent =
+      "Responder uma conversa de WhatsApp não envia nada para o cliente ainda — "
+      + "a mensagem é gravada no histórico e num arquivo de log. Para valer de "
+      + "verdade, o número precisa ser migrado para a Cloud API da Meta.";
+  } else {
+    $("#aviso-whatsapp").style.display = "none";
+  }
+
+  const abertas = Object.values(d.contadores || {}).reduce((a, b) => a + b, 0);
+  const badge = $("#badge-atendimentos");
+  if (badge) {
+    badge.textContent = abertas;
+    badge.style.display = abertas ? "" : "none";
+  }
+
+  if (!d.conversas.length) {
+    $("#lista-conversas").innerHTML = `<div class="card"><div class="card-body"><p class="text-muted mb-0">Nenhuma conversa encontrada com esses filtros.</p></div></div>`;
+    return;
+  }
+
+  $("#lista-conversas").innerHTML = `<div class="card"><div class="card-body p-0">` +
+    d.conversas.map(c => {
+      const classeCanal = c.canal === "WhatsApp" ? "whatsapp" : "email";
+      const icone = iconeCanal[c.canal] || "fa-comment";
+      // fab (brand) para o WhatsApp, fas (solid) para o resto -- o
+      // ícone do WhatsApp só existe na família de marcas do Font Awesome.
+      const familia = c.canal === "WhatsApp" ? "fab" : "fas";
+      const previa = (c.ultima_previa || "").replace(/\s+/g, " ").slice(0, 120);
+      return `
+      <div class="conversa-linha" data-conversa="${escapeHtml(c.conversa_id)}" tabindex="0" role="button">
+        <span class="conversa-canal ${classeCanal}" title="${escapeHtml(rotuloCanal[c.canal] || c.canal)}">
+          <i class="${familia} ${icone}" aria-hidden="true"></i>
+        </span>
+        <span class="conversa-corpo">
+          <span class="conversa-topo">
+            <span class="conversa-nome">${escapeHtml(c.cliente_nome)}</span>
+            <span class="badge ${badgesStatusConversa[c.status] || 'badge-light'}">${escapeHtml(c.status)}</span>
+            ${c.pendentes ? `<span class="badge badge-danger">${c.pendentes} aguardando aprovação</span>` : ''}
+            ${c.responsavel_nome ? `<span class="badge badge-light">${escapeHtml(c.responsavel_nome)}</span>` : ''}
+            <span class="conversa-quando mono">${dataHoraBr(c.ultima_mensagem_em)}</span>
+          </span>
+          <span class="conversa-previa">${escapeHtml(previa) || '<i>sem mensagens</i>'}</span>
+        </span>
+      </div>`;
+    }).join("") + `</div></div>`;
+
+  document.querySelectorAll("#lista-conversas .conversa-linha").forEach(linha => {
+    linha.addEventListener("click", () => abrirConversa(linha.dataset.conversa));
+    // Teclado: a linha é um <div role="button">, então Enter/Espaço
+    // precisam ser tratados na mão -- um <div> não dispara click por
+    // tecla como um <button> de verdade dispara.
+    linha.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirConversa(linha.dataset.conversa); }
+    });
+  });
+}
+
+async function abrirConversa(conversaId) {
+  mostrarView("conversa-detalhe");
+  $("#conversa-conteudo").innerHTML = `<p class="text-muted">Carregando…</p>`;
+
+  const r = await fetch(`/api/conversas/${conversaId}`);
+  const c = await r.json();
+  if (!r.ok) {
+    $("#conversa-conteudo").innerHTML = `<div class="alert alert-danger">${escapeHtml(c.erro || "Falha ao carregar.")}</div>`;
+    return;
+  }
+
+  const canalRotulo = rotuloCanal[c.canal] || c.canal;
+  const destino = c.canal === "WhatsApp" ? c.cliente_telefone : c.cliente_email;
+
+  $("#conversa-titulo").textContent = c.cliente_nome;
+  $("#conversa-subtitulo").textContent =
+    `${canalRotulo} · ${c.conversa_id} · ${c.total_mensagens} mensagem(ns)`;
+
+  const bolhas = c.thread.map(b => {
+    const pendente = b.status === "Aguardando Revisão";
+    return `
+      <div class="bolha ${b.lado === 'cliente' ? 'bolha-cliente' : 'bolha-empresa'} ${pendente ? 'bolha-pendente' : ''}">
+        <div class="bolha-meta">
+          ${escapeHtml(b.autor)} · <span class="mono">${dataHoraBr(b.data_hora)}</span>
+          ${pendente ? ' · <b>rascunho aguardando aprovação</b>' : ''}
+        </div>
+        <div class="bolha-texto">${escapeHtml(b.texto)}</div>
+      </div>`;
+  }).join("");
+
+  $("#conversa-conteudo").innerHTML = `
+    <div class="row">
+      <div class="col-lg-8">
+        <div class="card">
+          <div class="card-body">
+            ${c.thread.length ? `<div class="thread">${bolhas}</div>`
+                              : `<p class="text-muted mb-0">Nenhuma mensagem nesta conversa ainda.</p>`}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-body">
+            <label class="text-muted small mb-1" for="conversa-resposta">
+              Responder por ${escapeHtml(canalRotulo)}
+              ${destino ? `<span class="mono">(${escapeHtml(destino)})</span>` : ''}
+            </label>
+            ${destino ? `
+              <textarea class="form-control" id="conversa-resposta" rows="4"
+                        placeholder="Escreva sua resposta. Ela sai exatamente como você escrever — não passa pela IA."></textarea>
+              <div class="mt-2 d-flex align-items-center" style="gap:var(--e2)">
+                <button class="btn btn-primary" id="btn-responder-conversa">
+                  <i class="fas fa-paper-plane mr-1" aria-hidden="true"></i>Enviar
+                </button>
+                <span id="conversa-resposta-aviso" class="small"></span>
+              </div>`
+            : `<div class="alert alert-warning mb-0">
+                 O cliente não tem ${c.canal === "WhatsApp" ? "telefone" : "e-mail"} cadastrado —
+                 não há para onde enviar a resposta.
+               </div>`}
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="card">
+          <div class="card-body">
+            <dl class="ficha">
+              <dt>Cliente</dt><dd>${escapeHtml(c.cliente_nome)} <span class="mono text-muted">${escapeHtml(c.cliente_id)}</span></dd>
+              <dt>CPF</dt><dd class="mono">${c.cliente_cpf ? cpfFormatado(c.cliente_cpf) : 'não informado'}</dd>
+              <dt>E-mail</dt><dd>${escapeHtml(c.cliente_email || 'não informado')}</dd>
+              <dt>Telefone</dt><dd class="mono">${escapeHtml(c.cliente_telefone || 'não informado')}</dd>
+              <dt>Canal</dt><dd>${escapeHtml(canalRotulo)}</dd>
+              <dt>Iniciada</dt><dd class="mono">${dataHoraBr(c.iniciada_em)}</dd>
+              ${c.caso_id ? `<dt>Caso</dt><dd><a href="#" id="link-caso-conversa" class="mono">${escapeHtml(c.caso_id)}</a></dd>` : ''}
+            </dl>
+            <hr>
+            <label class="text-muted small mb-1" for="conversa-status">Situação</label>
+            <select class="form-control mb-3" id="conversa-status">
+              ${c.status_validos.map(s => `<option value="${escapeHtml(s)}" ${s === c.status ? 'selected' : ''}>${escapeHtml(s)}</option>`).join("")}
+            </select>
+            <label class="text-muted small mb-1" for="conversa-responsavel">Responsável</label>
+            <select class="form-control" id="conversa-responsavel">
+              <option value="">Ninguém atribuído</option>
+              ${c.usuarios.map(u => `<option value="${escapeHtml(u.usuario_id)}" ${u.usuario_id === c.responsavel_id ? 'selected' : ''}>${escapeHtml(u.nome)}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  const btn = $("#btn-responder-conversa");
+  if (btn) btn.addEventListener("click", () => responderConversa(conversaId));
+
+  $("#conversa-status").addEventListener("change", async e => {
+    await fetch(`/api/conversas/${conversaId}/status`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: e.target.value }),
+    });
+    carregarConversas();
+  });
+
+  $("#conversa-responsavel").addEventListener("change", async e => {
+    await fetch(`/api/conversas/${conversaId}/responsavel`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ responsavel_id: e.target.value }),
+    });
+    carregarConversas();
+  });
+
+  // Reaproveita a tela de Detalhe do Caso que já existe, em vez de
+  // repetir aqui os dados do caso -- mesmo princípio já usado no
+  // caminho Cliente → Caso.
+  const linkCaso = $("#link-caso-conversa");
+  if (linkCaso) linkCaso.addEventListener("click", e => { e.preventDefault(); abrirCaso(c.caso_id); });
+}
+
+async function responderConversa(conversaId) {
+  const campo = $("#conversa-resposta");
+  const aviso = $("#conversa-resposta-aviso");
+  const botao = $("#btn-responder-conversa");
+  const texto = campo.value.trim();
+  if (!texto) { aviso.className = "small text-danger"; aviso.textContent = "Escreva uma mensagem antes de enviar."; return; }
+
+  botao.disabled = true;
+  aviso.className = "small text-muted";
+  aviso.textContent = "Enviando…";
+
+  const r = await fetch(`/api/conversas/${conversaId}/responder`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ texto }),
+  });
+  const d = await r.json();
+  botao.disabled = false;
+
+  if (!r.ok) {
+    aviso.className = "small text-danger";
+    aviso.textContent = d.erro || "Falha ao enviar.";
+    return;
+  }
+  campo.value = "";
+
+  // A confirmação é escrita DEPOIS de recarregar a conversa, não antes:
+  // abrirConversa() reescreve o innerHTML inteiro do painel e levaria
+  // junto o elemento do aviso. Escrever antes fazia a mensagem piscar e
+  // sumir -- e no modo simulado é justamente o aviso de "não foi
+  // enviado" que desaparecia, deixando o usuário achar que o cliente
+  // recebeu algo que ninguém recebeu.
+  await abrirConversa(conversaId);
+  carregarConversas();
+
+  const avisoNovo = $("#conversa-resposta-aviso");
+  if (avisoNovo) {
+    avisoNovo.className = d.simulado ? "small text-warning" : "small text-success";
+    avisoNovo.textContent = d.simulado
+      ? "Gravado no histórico, mas NÃO enviado — WhatsApp em modo simulado."
+      : "Enviado.";
+  }
+}
+
+$("#voltar-atendimentos").addEventListener("click", () => mostrarView("atendimentos"));
+$("#filtro-canal").addEventListener("change", carregarConversas);
+$("#filtro-status-conversa").addEventListener("change", carregarConversas);
+
+// Mesmo debounce da busca de Clientes: sem ele, cada tecla digitada
+// vira uma consulta ao banco.
+let debounceConversa;
+$("#busca-conversa").addEventListener("input", () => {
+  clearTimeout(debounceConversa);
+  debounceConversa = setTimeout(carregarConversas, 300);
+});
+
+// Cada chamada guardada pela função correspondente -- sem isso, um
+// Atendente sem aquela função tomaria um 403 silencioso (e uma exceção
+// não tratada, já que r.json() de um erro não é a lista que a função
+// espera) só de abrir o painel, mesmo sem clicar em nada.
 const podeVer = (funcao) => USUARIO_PAPEL === "Gestor" || FUNCOES_ATIVAS.includes(funcao);
 if (podeVer("status_projeto")) carregarStatus();
 if (podeVer("clientes")) carregarClientes();
 if (podeVer("aprovacoes_pendentes")) carregarPendentes();
 if (podeVer("documentos_aprovar")) carregarDocumentosPendentes();
 if (podeVer("casos")) carregarCasos();
+if (podeVer("atendimentos")) carregarConversas();
 </script>
 </body>
 </html>

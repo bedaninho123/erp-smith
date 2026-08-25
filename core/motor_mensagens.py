@@ -44,6 +44,8 @@ def registrar_mensagem(
     precisa_humano: Optional[str] = None,
     modelo_ia: Optional[str] = None,
     observacoes_ia: Optional[str] = None,
+    conversa_id: Optional[str] = None,
+    id_externo: Optional[str] = None,
 ) -> Optional[str]:
     # mensagem.cliente_id é NOT NULL -- remetente não identificado (ex.
     # pergunta genérica de quem não é cliente cadastrado) não gera
@@ -57,13 +59,14 @@ def registrar_mensagem(
         con.execute(
             "INSERT INTO mensagem (mensagem_id, empresa_id, cliente_id, caso_id, canal, "
             "data_hora, origem, email_remetente, assunto, mensagem, intent, "
-            "precisa_humano, status_processamento, resposta_ia, modelo_ia, observacoes_ia) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "precisa_humano, status_processamento, resposta_ia, modelo_ia, observacoes_ia, "
+            "conversa_id, id_externo) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 mensagem_id, empresa_id, cliente_id, caso_id, canal, _agora_iso(),
                 "Cliente", email_remetente, assunto, texto_recebido, intent,
                 precisa_humano, status_processamento, resposta_ia, modelo_ia,
-                observacoes_ia,
+                observacoes_ia, conversa_id, id_externo,
             ),
         )
         con.commit()
@@ -76,7 +79,8 @@ def listar_pendentes(empresa_id: str) -> list:
     con = conectar(empresa_id)
     try:
         linhas = con.execute(
-            "SELECT m.*, c.nome AS cliente_nome, c.email AS cliente_email "
+            "SELECT m.*, c.nome AS cliente_nome, c.email AS cliente_email, "
+            "c.telefone AS cliente_telefone "
             "FROM mensagem m JOIN cliente c ON c.cliente_id = m.cliente_id "
             "WHERE m.empresa_id = ? AND m.status_processamento = ? ORDER BY m.data_hora",
             (empresa_id, STATUS_AGUARDANDO_REVISAO),
@@ -90,7 +94,8 @@ def obter_mensagem(empresa_id: str, mensagem_id: str) -> Optional[dict]:
     con = conectar(empresa_id)
     try:
         linha = con.execute(
-            "SELECT m.*, c.nome AS cliente_nome, c.email AS cliente_email "
+            "SELECT m.*, c.nome AS cliente_nome, c.email AS cliente_email, "
+            "c.telefone AS cliente_telefone "
             "FROM mensagem m JOIN cliente c ON c.cliente_id = m.cliente_id "
             "WHERE m.mensagem_id = ? AND m.empresa_id = ?",
             (mensagem_id, empresa_id),
