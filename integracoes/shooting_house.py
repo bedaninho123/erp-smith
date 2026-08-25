@@ -426,6 +426,111 @@ def _normalizar_habitualidade_real(dados_brutos: dict) -> dict:
     }
 
 
+# Cadastro fictício pra tela de cadastro funcionar sem credencial. Mesmo
+# princípio dos outros perfis de teste: CPF desconhecido devolve None
+# ("não é atirador deste clube"), nunca uma pessoa inventada.
+#
+# São DOIS CPFs de propósito, e a diferença entre eles é o ponto:
+#
+# - 529.982.247-25 tem dígito verificador válido, então percorre o fluxo
+#   inteiro -- buscar, preencher, salvar. É o que usar pra ver a tela
+#   funcionando de ponta a ponta.
+# - 123.456.789-00 é o CPF fictício que o resto do projeto usa desde
+#   sempre (habitualidade, CR, armas) e NÃO tem dígito válido. Ele acha o
+#   cadastro mas é recusado por core/motor_clientes.py na hora de salvar
+#   -- o que é útil de ver acontecer, porque é exatamente o que protege
+#   contra um dígito trocado virar consulta ao Shooting House da pessoa
+#   errada.
+_PERFIS_CADASTRO_TESTE = {
+    "52998224725": {
+        "nome": "Felipe Bedani",
+        "email": "felipe.exemplo@example.com",
+        "telefone": "(14) 99999-8888",
+        "cidade": "Marília",
+        "matricula": "F101",
+        "status_filiacao": "Ativo",
+    },
+    "12345678900": {
+        "nome": "Atirador de Teste (CPF com dígito inválido)",
+        "email": None,
+        "telefone": None,
+        "cidade": "Marília",
+        "matricula": "F999",
+        "status_filiacao": "Ativo",
+    },
+}
+
+# O QUE SAI da consulta de cadastro, e nada além disso. A resposta real de
+# GET /registers/shooters/{id} traz muito mais: armas, pendência
+# financeira, situação documental do CR, foto, RG, data de nascimento.
+# Nada disso entra aqui.
+#
+# O motivo é o mesmo que vale pro projeto inteiro: esta consulta existe
+# pra preencher um cadastro de cliente do despachante -- nome, contato,
+# cidade. Trazer arma e CR "já que veio na resposta" seria criar uma
+# cópia de dado regulatório dentro do nosso banco, que é exatamente o
+# que "consultar, não copiar" proíbe. Habitualidade, CR e arma se
+# consultam ao vivo, na hora que alguém pergunta.
+_CAMPOS_CADASTRO = ("nome", "email", "telefone", "cidade", "matricula", "status_filiacao")
+
+
+def _telefone_do_shooter(dados: dict) -> Optional[str]:
+    """Monta "(DD) NNNNN-NNNN" a partir do bloco `phones` da API, que vem
+    com DDI, DDD e número separados. Formatação em Python: o cadastro é
+    texto livre e vai ser lido por gente."""
+    telefones = dados.get("phones") or {}
+    if isinstance(telefones, list):
+        telefones = telefones[0] if telefones else {}
+    ddd = str(telefones.get("ddd") or "").strip()
+    numero = re.sub(r"\D", "", str(telefones.get("number") or ""))
+    if not numero:
+        return None
+    if len(numero) > 4:
+        numero = f"{numero[:-4]}-{numero[-4:]}"
+    return f"({ddd}) {numero}" if ddd else numero
+
+
+def consultar_cadastro(cpf: str) -> Optional[dict]:
+    """Dados cadastrais do atirador, para preencher a tela de cadastro de
+    cliente do despachante. `None` = este CPF não é atirador do clube --
+    o que é normal: nem todo cliente do despachante passou pelo clube.
+
+    Devolve só os campos de `_CAMPOS_CADASTRO`; ver o comentário lá sobre
+    por que o resto da resposta é descartado de propósito.
+    """
+    cpf_limpo = _limpar_cpf(cpf)
+    if len(cpf_limpo) != 11:
+        raise ShootingHouseIndisponivel("CPF inválido para consulta.")
+
+    if not shooting_house_ativo():
+        perfil = _PERFIS_CADASTRO_TESTE.get(cpf_limpo)
+        return {"simulado": True, "cpf": cpf_limpo, **perfil} if perfil else None
+
+    # searchBy: "usado para buscar por outro ID como CPF" (especificação
+    # da API). É o que dispensa saber o idatirador interno.
+    dados = _chamar_api(f"/registers/shooters/{cpf_limpo}", {"searchBy": "cpf"})
+    if isinstance(dados, list):
+        dados = dados[0] if dados else None
+    if not isinstance(dados, dict) or not dados.get("name"):
+        return None
+
+    endereco = dados.get("address") or {}
+    return {
+        "simulado": False,
+        "cpf": cpf_limpo,
+        "nome": dados.get("name"),
+        "email": (dados.get("email") or "").lower() or None,
+        "telefone": _telefone_do_shooter(dados),
+        "cidade": endereco.get("city") or endereco.get("district") or None,
+        "matricula": dados.get("registratitionCode"),
+        # "A" = ativo, "I" = inativo (definição ShooterResume). Traduzido
+        # aqui porque letra solta não significa nada numa tela.
+        "status_filiacao": {"A": "Ativo", "I": "Inativo"}.get(
+            (dados.get("status") or "").upper()
+        ),
+    }
+
+
 def verificar_credencial() -> dict:
     """Bate no GET /checkAuth, que só responde "a autenticação vale ou
     não" -- sem CPF, sem nome, sem dado de pessoa nenhuma no caminho da

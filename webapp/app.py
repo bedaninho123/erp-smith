@@ -29,7 +29,14 @@ from werkzeug.security import check_password_hash
 from atendimento.processar import (
     aprovar_mensagem_pendente, entregar_resposta, rejeitar_mensagem_pendente,
 )
-from core import motor_checklist, motor_conversas, motor_documentos, motor_mensagens
+from core import (
+    motor_checklist,
+    motor_conversas,
+    motor_documentos,
+    motor_log_administrativo,
+    motor_mensagens,
+)
+from core.motor_identidade import mascarar_cpf
 from core.conexao import conectar
 from core.configuracoes import atualizar_configuracao, obter_configuracoes
 from core.limitador_tentativas import excedeu_limite
@@ -46,7 +53,9 @@ from domain.clube_tiro.motor_campeonatos import (
 from domain.clube_tiro.motor_resultados import (
     atualizar_resultado, criar_resultado, listar_resultados, remover_resultado,
 )
+from core.motor_clientes import ClienteInvalido, ClienteJaExiste, criar_cliente
 from integracoes.config import shooting_house_ativo
+from integracoes.shooting_house import ShootingHouseIndisponivel, consultar_cadastro
 from integracoes.gmail import enviar_email, gmail_configurado
 from integracoes.whatsapp import status_integracao as status_whatsapp
 from motor_ia.atualizador_memoria import atualizar_memoria
@@ -1106,6 +1115,102 @@ def clientes_buscar_cpf(cpf):
     if not cliente:
         return jsonify(erro="Nenhum cliente com esse CPF."), 404
     return jsonify(cliente_id=cliente["cliente_id"], nome=cliente["nome"])
+
+
+def _registrar_consulta_externa(empresa_id: str, cpf: str, encontrado: bool) -> None:
+    """Rastro de quem consultou o cadastro de qual CPF no Shooting House.
+
+    A tela é autenticada e o funcionário é de confiança -- não é isso que
+    está em questão. É que esta consulta alcança QUALQUER pessoa que já
+    passou pelo clube, inclusive quem nunca foi cliente do despachante, e
+    uma consulta assim precisa deixar rastro por princípio. O CPF vai
+    mascarado: o log é pra saber que houve consulta, não pra virar uma
+    segunda base de CPFs.
+
+    Falhar aqui não derruba o cadastro (mesmo critério do envelope de
+    conversa em atendimento/processar.py), mas não passa calado."""
+    try:
+        con = conectar(empresa_id)
+        try:
+            motor_log_administrativo.registrar(
+                con, empresa_id,
+                tipo_evento="CONSULTA_CADASTRO_EXTERNO",
+                alvo=mascarar_cpf(cpf),
+                descricao="Busca de cadastro no Shooting House pela tela de Clientes",
+                valor_anterior=None,
+                valor_novo="encontrado" if encontrado else "sem registro",
+                criado_por=session.get("usuario_id", "desconhecido"),
+            )
+            con.commit()
+        finally:
+            con.close()
+    except Exception:
+        traceback.print_exc()
+
+
+@app.route("/api/clientes/shooting-house/<cpf>")
+@login_required
+@funcao_required("clientes")
+def clientes_consultar_shooting_house(cpf):
+    """Busca o cadastro do atirador no Shooting House pra preencher o
+    formulário de cliente novo -- evita redigitar nome, e-mail e telefone
+    de quem já é filiado, e evita erro de digitação num dado que vai
+    virar chave de consulta depois.
+
+    Três estados distintos na resposta, e a tela precisa dos três
+    separados (mesmo cuidado de portal/app.py::_resumo_habitualidade):
+
+      encontrado=True   -> preenche o formulário
+      encontrado=False  -> não é atirador do clube; cadastra na mão, o
+                           que é normal (nem todo cliente do despachante
+                           passou pelo clube)
+      indisponivel=True -> NÃO se sabe; a consulta falhou. Nunca mostrar
+                           isso como "não encontrado", senão o usuário
+                           redigita tudo achando que a pessoa não existe.
+
+    Só leitura, e só os campos cadastrais -- ver _CAMPOS_CADASTRO em
+    integracoes/shooting_house.py sobre por que arma e CR não vêm junto.
+    """
+    empresa_id = empresa_atual()
+    try:
+        cadastro = consultar_cadastro(cpf)
+    except ShootingHouseIndisponivel as e:
+        return jsonify(indisponivel=True, motivo=str(e)), 200
+
+    # Consulta de dado de pessoa por CPF, feita por um funcionário, sobre
+    # alguém que ainda nem é cliente -- deixa rastro, como todo acesso a
+    # dado sensível do projeto (ver motor_ia/orquestrador.py).
+    _registrar_consulta_externa(empresa_id, cpf, encontrado=bool(cadastro))
+
+    if not cadastro:
+        return jsonify(encontrado=False), 200
+    return jsonify(encontrado=True, **cadastro), 200
+
+
+@app.route("/api/clientes", methods=["POST"])
+@login_required
+@funcao_required("clientes")
+def clientes_criar():
+    """A empresa vem da sessão, nunca do formulário -- é a regra que
+    separa o dado de um despachante do de outro."""
+    dados = request.get_json(silent=True) or {}
+    try:
+        cliente = criar_cliente(
+            empresa_atual(),
+            nome=dados.get("nome"),
+            cpf=dados.get("cpf"),
+            email=dados.get("email"),
+            telefone=dados.get("telefone"),
+            cidade=dados.get("cidade"),
+            observacoes=dados.get("observacoes"),
+        )
+    except ClienteJaExiste as e:
+        # 409 e não 400: o formulário usa isso pra oferecer "abrir a
+        # ficha existente" em vez de só reclamar.
+        return jsonify(erro=str(e), cliente_id=e.cliente_id), 409
+    except ClienteInvalido as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(cliente), 201
 
 
 @app.route("/api/campeonatos/<campeonato_id>/resultados")
