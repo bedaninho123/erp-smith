@@ -25,6 +25,20 @@
 {% if not tem_cpf %}
 <div class="ficha estado-vazio">Não conseguimos localizar seu CPF no cadastro. Fale com a gente pra atualizar.</div>
 
+{% elif indisponivel and not eventos %}
+{# "Não consegui consultar" nunca pode aparecer como "você não tem
+   registro" -- ver _resumo_habitualidade em portal/app.py. Um atirador
+   em dia lendo que não tem treino nenhum é o pior erro possível desta
+   tela. #}
+<div class="ficha" style="padding:1.4rem 1.5rem;">
+  <p style="margin:0 0 .6rem;"><b>Não foi possível consultar seus registros agora.</b></p>
+  <p style="color:var(--steel); margin:0; font-size:.9rem;">
+    Isto <b>não</b> quer dizer que você está sem registro ou fora da habitualidade — quer dizer
+    apenas que a consulta ao sistema do clube não respondeu neste momento. Tente de novo em alguns
+    minutos ou fale com a gente.
+  </p>
+</div>
+
 {% elif not cr and not eventos %}
 <div class="ficha" style="padding:1.4rem 1.5rem;">
   <p style="margin:0 0 .6rem;"><b>Você ainda não tem registro de atirador no clube.</b></p>

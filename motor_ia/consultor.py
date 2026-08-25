@@ -5,6 +5,7 @@ o conteúdo."""
 from typing import Optional
 
 from integracoes.shooting_house import (
+    ShootingHouseIndisponivel,
     consultar_armas,
     consultar_cr,
     consultar_documentos_vencimento,
@@ -35,6 +36,27 @@ def _montar_checklist_texto(con, servico_id: str) -> Optional[str]:
                 blocos.append(f"{grupo_atual}:")
         blocos.append(f"- {linha['item']}")
     return "\n".join(blocos)
+
+
+def _buscar_externo(resultado: dict, chave: str, rotulo: str, buscar) -> None:
+    """Roda uma consulta ao Shooting House e, se ela não puder ser
+    respondida, registra a fonte em `resultado["fontes_indisponiveis"]`
+    em vez de deixar a chave com um valor que parece resposta.
+
+    A diferença importa: `resultado["armas"] = []` significa "consultei e
+    esta pessoa não tem arma registrada" -- uma afirmação. Quando a API
+    está fora do ar, ou quando a consulta ainda nem tem implementação
+    real, ninguém consultou nada, e a lista vazia vira uma mentira dita
+    com confiança sobre arma de fogo. Por isso a chave NÃO é preenchida
+    nesse caso: o Redator não escreve sobre o que não está no bloco de
+    dados, e o Auditor (freio determinístico) manda o atendimento para um
+    humano ao ver a lista de indisponíveis."""
+    try:
+        resultado[chave] = buscar()
+    except ShootingHouseIndisponivel as e:
+        resultado.setdefault("fontes_indisponiveis", []).append(
+            {"fonte": rotulo, "motivo": str(e)}
+        )
 
 
 def consultar(
@@ -118,19 +140,27 @@ def consultar(
                 resultado["conhecimento"] = [dict(r) for r in linhas]
             elif fonte == "SHOOTING_HOUSE_HABITUALIDADE":
                 cpf_cliente = (resultado.get("cliente") or {}).get("cpf")
-                resultado["habitualidade"] = (
-                    consultar_habitualidade(cpf_cliente) if cpf_cliente else None
+                _buscar_externo(
+                    resultado, "habitualidade", "Registros de participação em treinos",
+                    lambda: consultar_habitualidade(cpf_cliente) if cpf_cliente else None,
                 )
             elif fonte == "SHOOTING_HOUSE_CR":
                 cpf_cliente = (resultado.get("cliente") or {}).get("cpf")
-                resultado["cr"] = consultar_cr(cpf_cliente) if cpf_cliente else None
+                _buscar_externo(
+                    resultado, "cr", "Situação do CR",
+                    lambda: consultar_cr(cpf_cliente) if cpf_cliente else None,
+                )
             elif fonte == "SHOOTING_HOUSE_ARMAS":
                 cpf_cliente = (resultado.get("cliente") or {}).get("cpf")
-                resultado["armas"] = consultar_armas(cpf_cliente) if cpf_cliente else []
+                _buscar_externo(
+                    resultado, "armas", "Armas registradas",
+                    lambda: consultar_armas(cpf_cliente) if cpf_cliente else [],
+                )
             elif fonte == "SHOOTING_HOUSE_DOCUMENTOS_VENCIMENTO":
                 cpf_cliente = (resultado.get("cliente") or {}).get("cpf")
-                resultado["documentos_vencimento"] = (
-                    consultar_documentos_vencimento(cpf_cliente) if cpf_cliente else []
+                _buscar_externo(
+                    resultado, "documentos_vencimento", "Documentos com vencimento",
+                    lambda: consultar_documentos_vencimento(cpf_cliente) if cpf_cliente else [],
                 )
             else:
                 raise ValueError(f"Fonte desconhecida: {fonte}")

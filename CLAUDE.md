@@ -10,6 +10,19 @@ ERP Smith: um ERP inteligente de atendimento e gestão de processos, desenhado p
 
 A suíte automatizada (`pytest`) cobre só o que dói perder: isolamento de dado entre clientes do Portal e entre empresas nos dois apps, o token de login sem senha, o freio determinístico do Auditor, e uma varredura estática (`tests/test_empresa_id_propagado.py`) que confere se toda função que exige `empresa_id` está sendo chamada com ele — ela lê o código em vez de executar, então alcança os caminhos que os testes de verdade nunca percorrem. O resto continua sendo validado rodando os módulos diretamente — a maioria tem um bloco `if __name__ == "__main__":` com um teste de fumaça usando dado real do banco — e testando o fluxo completo pelo painel web ou por e-mail real.
 
+> **Quem roda o quê (decidido em 2026-08-25).** O Claude Code **não roda**
+> os módulos cujo `__main__` lê o banco real (`motor_ia.classificador`,
+> `motor_ia.orquestrador`, `motor_ia.consultor`, `motor_ia.demo_pipeline`,
+> `motor_ia.identificador_cliente`, `core.motor_empresas`,
+> `core.db.auditar_documentos`). Eles imprimem nome e dado de pessoa de
+> verdade na tela, e tudo que o assistente lê entra na conversa que sobe
+> para o servidor do modelo. Esses ficam para o usuário rodar quando
+> quiser. O assistente usa `pytest`, que roda em banco temporário com
+> gente fictícia, e os `__main__` que são só lógica ou dado simulado
+> (`core.motor_identidade`, `integracoes.shooting_house`,
+> `integracoes.diagnostico_shooting_house`) — este último por desenho
+> nunca imprime valor, só nome de campo.
+
 ```bash
 # Ambiente (sempre usar o venv, nunca o Python global)
 .venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -40,7 +53,13 @@ atendimento\verificar_agora.bat
 atendimento\instalar_tarefa_agendada.bat
 atendimento\remover_tarefa_agendada.bat
 
-# Rodar um módulo isolado do Motor IA (a maioria aceita ser chamada assim para smoke test)
+# Conferir a integração com o Shooting House SEM expor dado de ninguém
+# (imprime só a estrutura da resposta; roda com SHOOTING_HOUSE_ATIVO desligado)
+.venv\Scripts\python.exe -m integracoes.diagnostico_shooting_house
+
+# Rodar um módulo isolado do Motor IA (smoke test). ATENÇÃO: estes leem o
+# banco REAL e imprimem dado de pessoa na tela -- rodar você mesmo, não
+# pedir ao assistente (ver "Quem roda o quê" acima)
 .venv\Scripts\python.exe -m motor_ia.classificador
 .venv\Scripts\python.exe -m motor_ia.orquestrador
 .venv\Scripts\python.exe -m motor_ia.demo_pipeline   # pipeline completo com dado real
@@ -55,6 +74,7 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.migrar_papeis_usuario         # idempotente, normaliza usuario.papel para Gestor/Atendente
 .venv\Scripts\python.exe -m core.db.migrar_permissoes_usuario     # idempotente, cria a tabela usuario_permissao
 .venv\Scripts\python.exe -m core.db.migrar_log_administrativo     # idempotente, cria a tabela log_administrativo
+.venv\Scripts\python.exe -m core.db.migrar_conversas_crm          # idempotente, liga mensagens antigas a conversas (tela Atendimentos)
 
 # Conferir se a tabela documento bate com os arquivos em disco (só relata, nunca apaga)
 .venv\Scripts\python.exe -m core.db.auditar_documentos
@@ -103,6 +123,94 @@ No Domínio a regra se divide em duas: `conhecimento` é compartilhado (legisla�
 Os IDs (`CLI-000001`…) continuam com numeração **global**, não por empresa. Fica estranho ver `CAS-000001` numa empresa e `CAS-000002` na outra, e é de propósito: numerar por empresa exigiria o filtro nos 5 geradores e abriria risco de colisão.
 
 Nos apps (`webapp/`, `portal/`) as views não protegem nada — os dois consultam tabela crua, então **todo `WHERE` precisa do filtro de empresa escrito à mão**. A empresa vem sempre da sessão (`session["empresa_id"]`, posta no login a partir de `usuario.empresa_id` ou `cliente.empresa_id`) e **nunca** da requisição. Nos canais de entrada (`atendimento/`), vem da configuração do servidor (`ERP_EMPRESA_ID`), também nunca do corpo do POST: o webhook só tem um segredo compartilhado como autenticador. Antes de dar por pronta qualquer consulta nova nesses arquivos, rodar `tests/test_isolamento_painel.py` e `tests/test_isolamento_portal.py`.
+
+### Atendimentos (CRM): a Conversa é o envelope, e cada canal é um fio separado
+
+`core/motor_conversas.py` (2026-08-21) alimenta a tabela `conversa`, que
+existia desde o Core mínimo mas **nunca era escrita pelo pipeline** — só
+tinha linha de migração. Sem ela, cada `mensagem` ficava solta e não
+havia histórico navegável de um cliente. A tela "Atendimentos" do painel
+é quem lê isso.
+
+Regra de agrupamento: **uma conversa por (cliente, canal)**. E-mail e
+WhatsApp da mesma pessoa são fios distintos de propósito — têm ritmo e
+histórico próprios, e juntá-los produziria uma thread ilegível.
+Conversa encerrada nunca é reaproveitada (encerrar é gesto deliberado do
+atendente); a próxima mensagem abre uma nova.
+
+Não confundir `conversa` com `sessao`: sessão é contexto curto do Motor
+IA, expira sozinha, existe pra IA saber do que se falava agora. Conversa
+é registro longo pra uma **pessoa** ler depois, nunca expira. Um cliente
+tem várias sessões dentro de uma conversa.
+
+Na thread, cada linha de `mensagem` vira **até duas bolhas**: o que o
+cliente escreveu (`mensagem`) e o que saiu como resposta (`resposta_ia`)
+— é assim que a tabela guarda desde sempre, um par por linha. Resposta
+escrita à mão pelo painel entra como `origem='Atendente'` com `mensagem`
+vazia, sem tabela nova.
+
+Resposta digitada no painel **não passa pelo Motor IA nem pelo Auditor**,
+de propósito: quem digitou já é o humano que a revisão humana existe pra
+garantir.
+
+`CANAIS_VALIDOS` é lista controlada em código (mesmo padrão de
+`STATUS_VALIDOS` do Caso e `PAPEIS_VALIDOS`), não `CHECK` no schema. O
+valor gravado é sempre a chave (`"Email"`), nunca o rótulo de tela
+(`"E-mail"`) — escrever o rótulo no banco quebra o filtro por canal.
+Banco em uso com mensagem anterior a isso: rodar
+`core.db.migrar_conversas_crm` (idempotente) — liga as mensagens órfãs,
+faz as conversas reconstruídas nascerem `Encerrada` (histórico, não
+fila) e normaliza rótulos de canal legados da planilha/Make (`Webhook` →
+`Email`), relatando na tela o que mudou.
+
+### Toda saída pro cliente passa por `entregar_resposta()`
+
+`atendimento/processar.py::entregar_resposta(canal, destino, texto)` é o
+ponto único de saída do sistema. Antes dela, `processar_mensagem` mandava
+e-mail direto e tratava qualquer outro canal como "não envia" — toda
+resposta de WhatsApp teria sido gerada e descartada em silêncio. O painel
+usa a mesma função (por isso ela é pública, não `_privada`): ter uma
+segunda implementação de "como se manda mensagem" lá repetiria o erro que
+a existência do próprio `processar.py` evitou entre webhook e poller.
+
+Aprovar um rascunho pendente devolve pelo **canal de origem da pergunta**
+(`mensagem.canal`), nunca sempre por e-mail.
+
+### WhatsApp: simulado até o número ser migrado, e isso tem custo real
+
+`integracoes/whatsapp.py`, mesmo padrão de `shooting_house.py`: sem
+`WHATSAPP_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID` no `.env`, grava o que teria
+sido enviado em `integracoes/whatsapp_simulado.log` (gitignored — guarda
+texto de atendimento real) e devolve `simulado: True`. A tela avisa isso
+em cima, e a confirmação de envio diz "NÃO enviado" com todas as letras —
+o pior resultado possível seria o usuário achar que o cliente recebeu
+algo que ninguém recebeu.
+
+Três coisas que **não** são detalhe técnico e precisam estar claras antes
+de configurar credencial:
+
+1. O aplicativo **WhatsApp Business não tem API**. Migrar o número para a
+   Cloud API o **tira do aplicativo** — não dá pra ter os dois no mesmo
+   número. Todo atendimento passa a acontecer pelo painel.
+2. A Meta entrega mensagem recebida só em **HTTPS público**. Enquanto
+   tudo roda em localhost com port-forward (decisão de 2026-07-25), não
+   há endereço pra ela chamar: receber exige resolver hospedagem antes.
+3. **Janela de 24h**: fora de 24h da última mensagem do cliente, a Meta
+   só aceita template aprovado por ela, não texto livre. `enviar_mensagem`
+   propaga o erro real da Meta em vez de um 400 seco, porque é esse o
+   caso comum.
+
+Bibliotecas não-oficiais de WhatsApp Web (`whatsapp-web.js` e afins)
+ficaram deliberadamente de fora: violam os termos da Meta e o risco é o
+número do clube ser banido — caro demais num negócio com um número só.
+
+Identificação no WhatsApp é pelo **telefone**, então
+`motor_ia/identificador_cliente.py` passou a buscar por ele (prioridade
+CPF > e-mail > telefone > nome). O casamento é pelos **8 últimos
+dígitos**: `cliente.telefone` é texto livre com todo tipo de formato no
+cadastro histórico, a Meta manda só dígitos com DDI, e o nono dígito
+brasileiro varia. Oito dígitos dentro de uma empresa só é específico o
+bastante — e o filtro de `empresa_id` continua sendo a trava real.
 
 ### O Caso é a entidade central, não Cliente nem Processo
 
@@ -174,8 +282,9 @@ Banco já em uso, com `usuario.papel` fora desses dois valores: rodar
 (2026-07-30) Gestor continua com acesso total e intocável — o catálogo
 abaixo só tem efeito pra quem é Atendente. Catálogo em
 `core/motor_usuarios.FUNCOES_VALIDAS`, mapeado 1:1 com as seções do menu
-(`casos`, `clientes`, `aprovacoes_pendentes`, `documentos_aprovar`,
-`campeonatos`, `resultados`, `testar_pipeline`, `status_projeto`).
+(`atendimentos`, `casos`, `clientes`, `aprovacoes_pendentes`,
+`documentos_aprovar`, `campeonatos`, `resultados`, `testar_pipeline`,
+`status_projeto` — `atendimentos` entrou em 2026-08-21 com a tela de CRM).
 Remoção (checklist/campeonato/resultado) e a área administrativa
 (Configurações, gestão de usuário e de permissão) não entram no catálogo
 — seguem travadas só pro Gestor, sem toggle, de propósito.
@@ -190,7 +299,7 @@ isso; `funcao_required(<chave>)` (`webapp/app.py`, sempre depois de
 administrativa OU operacional, não as duas) é o decorator que aplica.
 
 No template, `funcoes_ativas` (calculado em `index()` a partir de
-`listar_permissoes`, ou todas as 8 direto se Gestor) decide o que o menu
+`listar_permissoes`, ou o catálogo inteiro direto se Gestor) decide o que o menu
 mostra — reforço de interface, a trava de verdade é o decorator, que
 consulta o banco de novo em cada rota. `documento_arquivo`
 (`/api/documentos/<id>/arquivo`) fica de fora do catálogo, sem
@@ -285,6 +394,167 @@ Ver `docs/portal_cliente_arquitetura.md` para o rascunho completo. Autoatendimen
 `documento_checklist` liga um arquivo recebido a um item de `documento_exigido`. Quem cria essa ligação determina em que estado ela nasce, e essa é a regra inteira: marcação feita no painel nasce `Aprovado` (o funcionário abriu o arquivo pra decidir — a conferência aconteceu no mesmo gesto), envio pelo Portal nasce `Aguardando aprovação` (é uma afirmação do cliente, ninguém conferiu). `Recusado` guarda o `motivo_recusa`, que é mostrado ao cliente, e para efeito de checklist conta como faltando. **Pendente não conta na contagem X/Y nem no anel de progresso** — contar infla o progresso com trabalho que ninguém fez. A decisão continua sendo sempre humana: a IA nunca decide que um PDF é a certidão X.
 
 O envio pelo Portal manda `processo_id` e `documento_exigido_id` vindos do navegador do cliente — `portal/app.py::upload_documento` confere que o processo pertence ao caso que já se sabe ser dele. O filtro de empresa **não** cobre isso: dois clientes da mesma empresa são o caso perigoso. Ver `tests/test_aprovacao_documentos.py`.
+
+### Dado real de pessoa: a chave geral, o portão de CPF e o "não sei"
+
+(2026-08-25, quando a credencial do Shooting House chegou.) Até aqui todo
+dado de atirador era simulado, e um erro produzia no máximo uma resposta
+errada. Com a API real, o mesmo erro entrega número de série de arma,
+calibre e histórico de treino de uma pessoa de verdade. Quatro travas
+nasceram disso, e nenhuma delas é opcional:
+
+**1. `SHOOTING_HOUSE_ATIVO` é a chave geral, separada da credencial.**
+Antes, a simples presença de usuário/senha no `.env` punha o sistema
+inteiro em modo real de uma vez — inclusive o poller, que roda a cada 2
+min pela Tarefa Agendada. Não existia como guardar a credencial e
+conferir uma resposta antes de já estar atendendo cliente com ela.
+`integracoes/config.py::shooting_house_ativo()` exige as três coisas:
+credencial presente, chave ligada, URL em HTTPS (`validar_base_url()`
+falha alto se não for — Basic Auth manda usuário e senha em toda
+chamada). É também o botão de pânico: apagar o "Sim" devolve tudo pro
+simulado sem mexer em código.
+
+Para conferir a API sem ligar nada e sem dado de ninguém na tela:
+`integracoes/diagnostico_shooting_house.py` — imprime só a **planta** da
+resposta (nomes de campo, tipos, quantidades), nunca valores, e diz se o
+mapeamento de `_normalizar_habitualidade_real()` bate com a resposta de
+verdade (ele foi escrito lendo a documentação, nunca testado contra uma
+resposta real). O CPF é pedido por `getpass`, então não fica no histórico
+do terminal.
+
+Achados da leitura da especificação pública completa (2026-08-25 — 40
+endpoints, `api.swaggerhub.com/apis/shootinghouse/Parceiros/1.0.1`),
+que contrariam o que este arquivo dizia antes:
+
+- **`GET /checkAuth`** testa a credencial sem consultar CPF nenhum — é
+  como `verificar_credencial()` e o diagnóstico respondem "a credencial é
+  deste ambiente?" sem usar o dado de uma pessoa real como material de
+  teste.
+- **A conversão CPF → `idatirador` existe**: `/registers/shooters/{id}` e
+  `/registers/shooters/weapon/{id}` aceitam `?searchBy=` ("usado para
+  buscar por outro ID como CPF"). O bloqueio que justificava `consultar_cr`
+  e `consultar_armas` serem eternamente simuladas **não existe** — as duas
+  podem ser implementadas de verdade. `Shooter.documents.cr` traz `status`,
+  `number` e `expirationDate`.
+- **`data_participacao` vem com hora** (`"09/10/2025 16:30"`).
+  `_separar_data_e_hora()` separa em `data_participacao` + `hora_participacao`,
+  porque `portal/app.py` ordena com `strptime(..., "%d/%m/%Y")` e quebraria
+  a tela inteira na primeira consulta real.
+- **A credencial ESCREVE**, não só lê: cadastra filiado, **registra evento
+  de habitualidade**, registra visita, grava biometria, adiciona crédito,
+  paga pedido; e `/registers/shooters/paginate` lista o clube inteiro. O
+  risco de vazamento dela não é "alguém lê dado", é "alguém fabrica
+  habitualidade em nome do seu cliente". Vale pedir credencial somente-leitura
+  ao fornecedor.
+
+  **Nosso cliente é somente leitura, e isso é regra.** O Shooting House é
+  o sistema de registro que reporta à Polícia Federal e ao Exército
+  (confirmado com o usuário em 2026-08-25): registro gravado por nós
+  entraria nessa cadeia, e numa divergência quem vale é a fonte deles.
+  Some-se a isso o contrato de uso da API, que veda construir sistema
+  que confronte o Shooting House. `tests/test_shooting_house_somente_leitura.py`
+  lê o código-fonte (AST) e falha se um `requests.post/put/patch/delete`
+  aparecer nos módulos da integração — não existe teste de comportamento
+  que prove a AUSÊNCIA de uma chamada, e uma escrita acrescentada daqui a
+  seis meses num caminho que a suíte não percorre só apareceria gravando
+  registro de verdade.
+
+  Pelo mesmo motivo o módulo **nunca guarda cópia** do que leu (consulta
+  ao vivo, sempre) — o princípio "consultar, não copiar" das views do
+  Core deixou de ser elegância arquitetural e virou exigência regulatória.
+
+**2. `ShootingHouseIndisponivel`: "não sei" nunca vira "não tem".**
+Com o modo real ligado, `consultar_cr`, `consultar_armas` e
+`consultar_documentos_vencimento` **levantam a exceção em vez de cair no
+simulado** — elas ainda não têm implementação real (os endpoints pedem
+`idatirador`, e a conversão CPF → idatirador não existe). Sem isso, um
+atirador de verdade perguntando "meu CR está em dia?" receberia "não
+temos registro do seu CR", porque o CPF dele não está na tabela de teste.
+`motor_ia/consultor.py::_buscar_externo` registra a falha em
+`dados["fontes_indisponiveis"]` e **não preenche a chave** (`"armas": []`
+seria a afirmação "consultei, não tem nenhuma"); o Auditor tem um segundo
+freio determinístico, sem gastar IA, que manda isso pra humano. No Portal
+o mesmo cuidado aparece como um terceiro estado na tela: "consulta
+indisponível" é visualmente diferente de "sem registro de atirador".
+
+**3. Portão de identidade (`core/motor_identidade.py`).** Para
+`CONSULTA_HABITUALIDADE`, `CONSULTA_CR` e `CONSULTA_DOCUMENTOS_VENCIMENTO`
+vindas de canal não autenticado, exige o CPF escrito **na própria
+mensagem**, conferindo com o cadastro de quem o e-mail/telefone
+identificou. Roda no orquestrador **antes** do Consultor, então o CPF de
+quem não passou nem chega a ser enviado pra API. Regra de negócio, por
+isso vive no Core.
+
+Duas sutilezas que não podem se perder: (a) identificação feita **só pelo
+nome** nunca libera (`ORIGENS_INSUFICIENTES`) — o nome exibido no
+cabeçalho "De:" é escolhido por quem manda, então nome + CPF viriam da
+mesma mão e o portão não estaria conferindo nada; por isso
+`identificar_cliente` passou a devolver a chave `identificado_por`. (b) A
+mensagem de recusa é **fixa e igual para todos os motivos** — dizer "esse
+CPF não confere" transformaria o portão num verificador de palpites.
+Todo acesso, liberado ou negado, vai pro `log_administrativo` como
+`ACESSO_DADO_SENSIVEL`; uma sequência de negados no mesmo cliente é o
+sinal mais visível de alguém tentando adivinhar CPF.
+
+Isto **não** é autenticação forte, e a honestidade sobre isso importa:
+CPF circula muito no Brasil, e quem tiver CPF e falsificar o e-mail
+passa. O que a regra faz é subir o degrau e compor com os outros freios
+(revisão humana, filtro por empresa, registro de acesso). Autenticação de
+verdade pra dado sensível é o link mágico do Portal.
+
+**3b. O CPF é extraído em Python, e sai mascarado rumo à OpenAI.**
+O portão acima chegou a comparar contra `classificacao.cpf_mencionado` —
+ou seja, apoiava uma decisão de **segurança** num valor produzido pela IA
+a partir da mesma mensagem que o atacante escreve. Hoje quem acha CPF em
+texto é `core/motor_identidade.py::extrair_cpfs` (expressão regular,
+determinística), e é essa lista que o portão usa; `cpf_mencionado` segue
+existindo no Classificador mas **não decide nada** (tem comentário no
+próprio campo dizendo isso).
+
+O mesmo módulo resolve o efeito colateral que o portão criou: exigir o
+CPF na mensagem fez CPF de gente real passar a fluir constantemente até
+a OpenAI. `mascarar_cpfs_no_texto()` troca todo CPF por `***.***.789-**`
+**no texto que vai para o Classificador** — o Classificador precisa da
+intenção da frase, não do número. O texto original continua inteiro em
+`mensagem`, sessão e memória: o banco é nosso, e ali o dado completo é
+legítimo. O padrão também casa com telefone de 11 dígitos, o que é
+aceitável nos dois usos (candidato que não é CPF simplesmente não bate
+com o cadastro; e mascarar um telefone por engano erra pro lado certo).
+
+**3c. Número de série de arma nunca entra no prompt.**
+`motor_ia/redator.py::_arma_sem_serie` tira a série do bloco de dados —
+que é o texto literal enviado ao Redator e ao Auditor. Duas razões: (a)
+nenhuma resposta legítima precisa recitar número de série, o cliente sabe
+qual arma é dele; (b) o que o modelo nunca recebe, ele nunca repete numa
+resposta nem entrega a uma mensagem construída pra extrair. É a única
+proteção desse tipo que não depende de a IA cooperar.
+
+Não basta omitir o campo `serie`: a API real manda `arma_formatada` como
+`"(ABA212416) Pistola - TH380 CLUBE - 380 ACP"`, com a série embutida
+dentro do texto descritivo — daí a limpeza por expressão regular. O
+número continua no dado (o Portal, que tem login, mostra pro dono); o
+que muda é só o que atravessa a rede.
+
+**4. Identificação ambígua não escolhe ninguém.**
+`motor_ia/identificador_cliente.py` fazia `fetchone()` sobre buscas com
+`LIKE` (telefone pelos 8 últimos dígitos, nome aproximado): duas pessoas
+casando, o SQLite devolvia calada a primeira da varredura, e o
+atendimento inteiro seguia tratando um cliente como se fosse outro.
+Agora `_buscar_unico` usa `fetchmany(2)` e devolve `_AMBIGUO` — que
+interrompe a identificação em vez de cair pro próximo identificador. O
+orquestrador então pede o CPF, que é exato.
+
+E o CPF não vaza mais por mensagem de erro: ele está no caminho da URL
+(`.../habitualities/12345678900`), e a exceção crua do `requests` traz a
+URL inteira dentro — que ia parar em `atendimento/poller.log`, na coluna
+`log_ia.erro` do banco **e** num e-mail de alerta. `_chamar_api()` embrulha
+toda falha em `ShootingHouseIndisponivel` com texto já limpo (`raise ...
+from None` para o traceback não reexibir o original), e `_mascarar_cpf()`
+existe pra qualquer texto que possa acabar em log. `allow_redirects=False`
+pelo mesmo motivo de sempre: redirect para outro host reenviaria a
+credencial.
+
+Coberto por `tests/test_dado_sensivel.py`.
 
 ### Integrações externas simuladas até haver credencial
 

@@ -34,6 +34,13 @@ Intencao = Literal[
 class ResultadoClassificacao(BaseModel):
     intencao: Intencao
     resumo: str
+    # ATENÇÃO: não use este campo para decidir acesso a nada. Desde
+    # 2026-08-25 o orquestrador manda o texto com os CPFs já mascarados,
+    # então o que vier aqui é o número mascarado, não o real. E mesmo se
+    # não fosse: é um valor produzido pela IA a partir da mensagem que o
+    # remetente escreveu, então não serve de prova de identidade. Quem
+    # extrai CPF pra valer é core/motor_identidade.py::extrair_cpfs, em
+    # Python. Mantido só porque o prompt do Classificador ainda o pede.
     cpf_mencionado: Optional[str] = None
     protocolo_mencionado: Optional[str] = None
     servico_mencionado: Optional[str] = None

@@ -39,7 +39,12 @@
     </div>
     <div>
       <p class="destaque-mini-eyebrow">Habitualidade</p>
-      {% if habitualidade_resumo and habitualidade_resumo.tem_registro %}
+      {% if habitualidade_resumo and habitualidade_resumo.indisponivel and not habitualidade_resumo.tem_registro %}
+      {# Ver portal_habitualidade.html: consulta indisponível não é o
+         mesmo que ausência de registro, e o cartão não pode afirmar. #}
+      <h3 class="destaque-mini-titulo">Consulta indisponível</h3>
+      <p class="destaque-mini-meta">Tente novamente em instantes</p>
+      {% elif habitualidade_resumo and habitualidade_resumo.tem_registro %}
       <h3 class="destaque-mini-titulo">{{ habitualidade_resumo.total_participacoes }} participaç{{ 'ão' if habitualidade_resumo.total_participacoes == 1 else 'ões' }} registrada{{ '' if habitualidade_resumo.total_participacoes == 1 else 's' }}</h3>
       <p class="destaque-mini-meta">{% if habitualidade_resumo.cr %}CR — {{ habitualidade_resumo.cr.categoria_cr }}{% else %}Ver histórico completo{% endif %}</p>
       {% else %}

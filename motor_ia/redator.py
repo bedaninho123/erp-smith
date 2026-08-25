@@ -2,6 +2,7 @@
 o Consultor já buscou -- nunca inventa prazo, valor, documento ou status.
 Prompt em motor_ia/prompts/redator_email.md (arquivo, não hardcoded).
 """
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -17,6 +18,28 @@ PROMPT_PATH = Path(__file__).parent / "prompts" / "redator_email.md"
 
 def _carregar_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
+
+
+# Prefixo entre parênteses no começo do texto da arma. A API real manda
+# arma_formatada como "(ABA212416) Pistola - TH380 CLUBE - 380 ACP" --
+# aquele primeiro grupo é o NÚMERO DE SÉRIE, embutido no meio de um campo
+# descritivo. Foi o que mostrou que mascarar um campo chamado "serie" não
+# bastaria.
+_SERIE_NO_TEXTO_DA_ARMA = re.compile(r"^\s*\([^)]*\)\s*")
+
+
+def _arma_sem_serie(texto: Optional[str]) -> str:
+    """Tira o número de série do texto descritivo de uma arma.
+
+    Nenhuma resposta legítima ao cliente precisa recitar número de série
+    -- ele sabe qual arma é dele, "sua pistola .380" basta. E o que o
+    modelo nunca recebe, ele nunca pode repetir numa resposta, nem
+    entregar a uma mensagem construída pra extraí-lo. É a única proteção
+    desse tipo que não depende de a IA cooperar.
+
+    O número continua existindo no dado (o Portal, com login, mostra pro
+    dono); o que muda é só o que atravessa a rede até a OpenAI."""
+    return _SERIE_NO_TEXTO_DA_ARMA.sub("", texto or "").strip()
 
 
 def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
@@ -79,7 +102,12 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
                 # treinos) -- sem o filtro, "competicao: None" ia direto pro
                 # texto que a IA usa, e já vazou pro cliente como
                 # "Competição: None" antes desta correção.
-                partes = [f"{k}: {v}" for k, v in evento.items() if v]
+                # `arma` aqui vem de arma_formatada, que traz o número de
+                # série embutido no texto -- limpo antes de entrar no bloco.
+                partes = [
+                    f"{k}: {_arma_sem_serie(v) if k == 'arma' else v}"
+                    for k, v in evento.items() if v
+                ]
                 linhas.append("  - " + "; ".join(partes))
 
     if "cr" in dados:
@@ -116,11 +144,15 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
                 "sistema algum: estes dados de arma são de teste.)"
             )
             for arma in armas:
+                # Sem `serie` de propósito -- ver _arma_sem_serie acima.
                 linhas.append(
                     f"  - {arma.get('type') or 'Arma'} {arma.get('brand') or ''} "
-                    f"{arma.get('model') or ''}, calibre {arma.get('caliber') or 'não informado'}, "
-                    f"série {arma.get('serie') or 'não informada'}"
+                    f"{arma.get('model') or ''}, calibre {arma.get('caliber') or 'não informado'}"
                 )
+            linhas.append(
+                "Instrução: o número de série das armas não está disponível "
+                "para esta resposta e não deve ser mencionado nem estimado."
+            )
 
     if "documentos_vencimento" in dados:
         documentos_vencimento = dados["documentos_vencimento"]
@@ -147,6 +179,24 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
 
     for k in dados.get("conhecimento", []):
         linhas.append(f"Conhecimento institucional: {k['pergunta']} -> {k['resposta']}")
+
+    if dados.get("fontes_indisponiveis"):
+        # Este atendimento já vai ser travado pelo freio determinístico do
+        # Auditor antes de chegar ao cliente (motor_ia/auditor.py). O bloco
+        # está aqui mesmo assim porque o texto do Redator ainda é gravado e
+        # aparece para o atendente na tela -- e um rascunho que afirma
+        # "você não tem nenhuma arma registrada" é perigoso mesmo dentro de
+        # casa: alguém com pressa aprova.
+        linhas.append("--- Consultas que NÃO puderam ser feitas ---")
+        for fonte in dados["fontes_indisponiveis"]:
+            linhas.append(f"  - {fonte['fonte']}: consulta indisponível no momento.")
+        linhas.append(
+            "Instrução: sobre estes pontos você NÃO tem informação nenhuma. "
+            "Não afirme que não há registro, que está tudo em dia, nem que "
+            "não foi encontrado nada -- nada disso foi verificado. Diga "
+            "apenas que a consulta não pôde ser feita agora e que um "
+            "atendente vai verificar."
+        )
 
     linhas.append("--- Configurações institucionais ---")
     # prazo_resposta_humano fica de fora de propósito -- só é relevante

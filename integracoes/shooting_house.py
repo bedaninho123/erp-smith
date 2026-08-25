@@ -1,9 +1,20 @@
-"""Cliente da API de Parceiros do Shooting House
+"""Cliente SOMENTE LEITURA da API de Parceiros do Shooting House
 (https://app.swaggerhub.com/apis/shootinghouse/Parceiros/1.0.1) -- o
 sistema de gestão do clube de tiro que já guarda atirador, arma,
 habitualidade e campeonatos. O ERP Smith não duplica esse dado; consulta
 ao vivo quando precisa responder sobre ele (mesmo princípio das views do
 Core: consultar, não copiar).
+
+SOMENTE LEITURA, e isso é regra, não estilo: o Shooting House é o
+sistema de registro que reporta à Polícia Federal e ao Exército. A
+credencial TEM permissão de escrita (registrar habitualidade, cadastrar
+filiado, adicionar crédito), e é justamente por isso que nenhum caminho
+de escrita existe aqui -- ver tests/test_shooting_house_somente_leitura.py,
+que lê este arquivo e falha se alguém acrescentar um.
+
+Pelo mesmo motivo, este módulo nunca guarda cópia do que leu: consulta
+ao vivo, sempre. Dado regulatório com duas fontes é dado que uma hora
+diverge, e a fonte que vale legalmente é a deles.
 
 Enquanto a credencial (Basic Auth) não está configurada em .env
 (SHOOTING_HOUSE_USER / SHOOTING_HOUSE_PASSWORD), as funções devolvem
@@ -20,12 +31,103 @@ from integracoes.config import (
     SHOOTING_HOUSE_BASE_URL,
     SHOOTING_HOUSE_PASSWORD,
     SHOOTING_HOUSE_USER,
-    shooting_house_configurado,
+    shooting_house_ativo,
+    shooting_house_credencial_presente,
+    validar_base_url,
 )
+
+# Quanto esperar a API responder antes de desistir. Curto de propósito:
+# quem está esperando do outro lado é o poller (que roda a cada 2 min) e
+# o Portal (com um cliente olhando a tela). Uma chamada pendurada trava
+# a fila de atendimento inteira.
+TIMEOUT_SEGUNDOS = 10
+
+
+class ShootingHouseIndisponivel(Exception):
+    """Não deu pra saber a resposta -- API fora do ar, credencial
+    recusada, ou a consulta simplesmente ainda não tem implementação
+    real. O ponto é que "não sei" NUNCA pode virar "não tem nada
+    registrado" na resposta ao cliente: num domínio de arma de fogo,
+    dizer a alguém que ele não tem CR registrado quando ele tem é pior
+    do que não responder. Quem trata isso é motor_ia/consultor.py, que
+    marca a fonte como indisponível e faz o atendimento ir pra um
+    humano."""
 
 
 def _limpar_cpf(cpf: str) -> str:
     return re.sub(r"\D", "", cpf)
+
+
+def _mascarar_cpf(cpf: str) -> str:
+    """CPF vira ***.***.789-** em qualquer texto que possa acabar em log,
+    e-mail de alerta ou banco.
+
+    Isto não é preciosismo: a URL da API tem o CPF no caminho
+    (.../habitualities/12345678900), e o erro que o requests levanta traz
+    a URL inteira dentro da mensagem. Sem mascarar, um fora-do-ar da API
+    escreveria CPF de cliente real em atendimento/poller.log, na coluna
+    log_ia.erro do banco E num e-mail de alerta disparado por
+    atendimento/alertas.py -- três lugares que ninguém trata como dado
+    sensível."""
+    digitos = _limpar_cpf(cpf or "")
+    if len(digitos) != 11:
+        return "(CPF inválido)"
+    return f"***.***.{digitos[6:9]}-**"
+
+
+def _chamar_api(caminho: str, params: Optional[dict] = None) -> dict:
+    """Faz a chamada e transforma QUALQUER falha em
+    ShootingHouseIndisponivel com mensagem já limpa de dado pessoal --
+    nenhuma exceção crua do requests escapa daqui, justamente porque a
+    mensagem crua carrega a URL com o CPF (ver _mascarar_cpf).
+
+    allow_redirects=False de propósito: se a API responder um redirect
+    para http:// (ou para outro host), o requests reenviaria a credencial
+    Basic Auth para o novo endereço. Redirect aqui é tratado como falha,
+    não seguido."""
+    try:
+        resposta = requests.get(
+            f"{SHOOTING_HOUSE_BASE_URL}{caminho}",
+            params=params,
+            auth=(SHOOTING_HOUSE_USER, SHOOTING_HOUSE_PASSWORD),
+            timeout=TIMEOUT_SEGUNDOS,
+            allow_redirects=False,
+        )
+    except requests.RequestException as e:
+        raise ShootingHouseIndisponivel(
+            f"Falha de rede ao consultar o Shooting House ({type(e).__name__})."
+        ) from None  # from None: corta o encadeamento, senão a mensagem
+        # original (com a URL e o CPF dentro) reaparece no traceback.
+
+    if resposta.is_redirect or resposta.is_permanent_redirect:
+        raise ShootingHouseIndisponivel(
+            "Shooting House respondeu com um redirecionamento, que não é "
+            "seguido para não reenviar a credencial a outro endereço."
+        )
+    if resposta.status_code in (401, 403):
+        raise ShootingHouseIndisponivel(
+            "Shooting House recusou a credencial (verifique SHOOTING_HOUSE_USER "
+            "e SHOOTING_HOUSE_PASSWORD no .env)."
+        )
+    if resposta.status_code == 404:
+        # 404 aqui é ambíguo -- pode ser "atirador não existe" ou "rota
+        # errada". Tratar como "não tem registro" seria justamente a
+        # afirmação falsa que esta classe existe pra evitar.
+        raise ShootingHouseIndisponivel(
+            "Shooting House respondeu 404 para esta consulta (atirador não "
+            "encontrado ou endpoint mudou)."
+        )
+    if not resposta.ok:
+        raise ShootingHouseIndisponivel(
+            f"Shooting House respondeu HTTP {resposta.status_code}."
+        )
+
+    try:
+        return resposta.json()
+    except ValueError:
+        raise ShootingHouseIndisponivel(
+            "Shooting House respondeu algo que não é JSON."
+        ) from None
 
 
 # Perfis variados para teste (ver core/db/gerar_clientes_ficticios.py) --
@@ -169,7 +271,20 @@ def consultar_armas(cpf: str) -> list[dict]:
     """Armas registradas do atirador. Devolve lista vazia se o CPF não
     tem arma simulada cadastrada -- nem todo cliente é atirador (mesma
     regra de consultar_habitualidade). Ver comentário acima de
-    _PERFIS_ARMAS_TESTE sobre por que ainda não tem modo real."""
+    _PERFIS_ARMAS_TESTE sobre por que ainda não tem modo real.
+
+    Com o modo real LIGADO, levanta ShootingHouseIndisponivel em vez de
+    cair no simulado. Sem isso, um cliente de verdade perguntando "quais
+    armas tenho registradas?" receberia lista vazia -- porque o CPF dele
+    não está entre os de teste -- e a IA responderia "nenhuma arma
+    registrada" com toda a confiança. Resposta falsa, sobre arma de
+    fogo, para a pessoa errada."""
+    if shooting_house_ativo():
+        raise ShootingHouseIndisponivel(
+            "Consulta de armas ainda não tem implementação real: o endpoint "
+            "do Shooting House pede o ID interno do atirador (idatirador), e "
+            "a conversão CPF -> idatirador ainda não existe neste projeto."
+        )
     return _PERFIS_ARMAS_TESTE.get(_limpar_cpf(cpf), [])
 
 
@@ -204,7 +319,18 @@ def consultar_documentos_vencimento(cpf: str) -> list[dict]:
     vencimento e link de download. Lista vazia = sem arma/documento
     simulado cadastrado para este CPF. Ver comentário acima de
     _PERFIS_DOCUMENTOS_VENCIMENTO_TESTE sobre por que ainda não tem modo
-    real."""
+    real.
+
+    Mesma trava de consultar_armas com o modo real ligado -- e aqui o
+    risco é ainda mais concreto: dizer a um atirador que a guia de
+    tráfego dele está em dia (ou que não existe) sem ter consultado nada
+    pode fazê-lo transportar arma com documento vencido."""
+    if shooting_house_ativo():
+        raise ShootingHouseIndisponivel(
+            "Consulta de guia de tráfego/SIMAF ainda não tem implementação "
+            "real: o endpoint do Shooting House filtra por intervalo de data "
+            "e devolve o clube inteiro, sem busca por CPF."
+        )
     return _PERFIS_DOCUMENTOS_VENCIMENTO_TESTE.get(_limpar_cpf(cpf), [])
 
 
@@ -215,12 +341,47 @@ def consultar_documentos_vencimento(cpf: str) -> list[dict]:
 # outros (nr_sumula, cidade_uf, sigma, cms_id...) sem descrição conferida,
 # então mapear todos seria inventar sentido para campo que ninguém viu
 # numa resposta de verdade ainda.
+#
+# CONFERIDO contra a especificação em 2026-08-25: os cinco campos usados
+# (os quatro abaixo + data_participacao) existem mesmo, com estes nomes.
+# Duas ressalvas descobertas na mesma leitura, que valem na hora de olhar
+# uma resposta de verdade:
+#
+# - `competicao` NÃO é "nome da competição ou vazio", como o dado
+#   simulado deste módulo sempre fingiu. Num treino comum ela vem com o
+#   texto "TREINO". Ou seja, o filtro `if v` do Redator não a descarta, e
+#   a IA recebe "competicao: TREINO" -- que ela pode fraseiar como
+#   "Competição: TREINO" pro cliente. Conferir na primeira resposta real.
+# - `arma_formatada` traz o número de série embutido no texto
+#   ("(ABA212416) Pistola - TH380 CLUBE - 380 ACP"). É por isso que
+#   mascarar só um campo chamado "serie" não bastaria pra manter número
+#   de série fora do prompt da OpenAI.
 _CAMPOS_EVENTO_HABITUALIDADE_REAL = {
     "modalidades_simples": "modalidade",
     "local": "local",
     "arma_formatada": "arma",
     "competicao": "competicao",
 }
+
+
+def _separar_data_e_hora(valor: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """A API real manda "09/10/2025 16:30" -- data E hora no mesmo campo.
+
+    Bug pego lendo a especificação (2026-08-25), antes de acontecer: todo
+    o resto do projeto trata `data_participacao` como só o dia, e
+    `portal/app.py` faz `strptime(..., "%d/%m/%Y")` para ordenar a lista.
+    Com a hora colada, esse strptime levanta ValueError e a tela de
+    Habitualidade do Portal quebra inteira -- na primeira consulta real,
+    para o primeiro atirador de verdade.
+
+    A hora não é jogada fora (é informação legítima de um treino), só
+    guardada separada em `hora_participacao`."""
+    if not valor:
+        return None, None
+    partes = str(valor).strip().split(" ", 1)
+    dia = partes[0] or None
+    hora = partes[1].strip() if len(partes) > 1 and partes[1].strip() else None
+    return dia, hora
 
 
 def _normalizar_habitualidade_real(dados_brutos: dict) -> dict:
@@ -245,7 +406,8 @@ def _normalizar_habitualidade_real(dados_brutos: dict) -> dict:
         for dados_arma in (armas or {}).values():
             datas = dados_arma.get("data_participacao") or []
             for indice, data in enumerate(datas):
-                evento = {"data_participacao": data}
+                data_dia, hora = _separar_data_e_hora(data)
+                evento = {"data_participacao": data_dia, "hora_participacao": hora}
                 for campo_real, campo_normalizado in _CAMPOS_EVENTO_HABITUALIDADE_REAL.items():
                     valores = dados_arma.get(campo_real) or []
                     if indice < len(valores):
@@ -264,6 +426,31 @@ def _normalizar_habitualidade_real(dados_brutos: dict) -> dict:
     }
 
 
+def verificar_credencial() -> dict:
+    """Bate no GET /checkAuth, que só responde "a autenticação vale ou
+    não" -- sem CPF, sem nome, sem dado de pessoa nenhuma no caminho da
+    URL nem na resposta.
+
+    É a forma certa de descobrir se a credencial recebida pertence ao
+    ambiente configurado em SHOOTING_HOUSE_BASE_URL: credencial de
+    produção batendo no servidor de homologação (ou o contrário) é
+    recusada, e a recusa já é a resposta. Antes de existir este caminho,
+    a única maneira de testar era consultar a habitualidade de alguém --
+    ou seja, usar o dado de uma pessoa real como material de teste.
+
+    Devolve {"ok": bool, "detalhe": str}. Não levanta exceção: quem chama
+    é diagnóstico, e "falhou" aqui é resultado, não erro de programação.
+    """
+    if not shooting_house_credencial_presente():
+        return {"ok": False, "detalhe": "Credencial não configurada no .env."}
+    try:
+        validar_base_url()
+        _chamar_api("/checkAuth")
+    except (ShootingHouseIndisponivel, RuntimeError) as e:
+        return {"ok": False, "detalhe": str(e)}
+    return {"ok": True, "detalhe": "Credencial aceita por este servidor."}
+
+
 def consultar_cr(cpf: str) -> Optional[dict]:
     """Status de confirmação cadastral do CR do atirador desportivo --
     diferente de habitualidade (frequência de treino/competição). Pelo
@@ -276,8 +463,17 @@ def consultar_cr(cpf: str) -> Optional[dict]:
 
     Endpoint real do Shooting House para isso ainda não foi documentado/
     testado -- por enquanto sempre devolve dado simulado, mesmo com
-    credencial configurada.
+    credencial configurada. Com o modo real ligado, levanta
+    ShootingHouseIndisponivel em vez de devolver None (mesma razão de
+    consultar_armas: None aqui seria lido como "este cliente não tem CR",
+    e a IA diria isso a um atirador que tem).
     """
+    if shooting_house_ativo():
+        raise ShootingHouseIndisponivel(
+            "Consulta de CR ainda não tem implementação real: falta confirmar "
+            "com o Shooting House qual endpoint devolve a confirmação "
+            "cadastral do CR por CPF."
+        )
     return _cr_simulado(_limpar_cpf(cpf))
 
 
@@ -288,8 +484,14 @@ def consultar_habitualidade(
 ) -> dict:
     cpf_limpo = _limpar_cpf(cpf)
 
-    if not shooting_house_configurado():
+    if not shooting_house_ativo():
         return _habitualidade_simulada(cpf_limpo)
+
+    if len(cpf_limpo) != 11:
+        # Não manda pra API o que já se sabe que é inválido -- CPF entra
+        # na URL, e texto solto de cliente ("meu cpf é o mesmo de antes")
+        # não tem por que virar caminho de requisição.
+        raise ShootingHouseIndisponivel("CPF inválido para consulta.")
 
     params = {}
     if data_inicio:
@@ -297,19 +499,30 @@ def consultar_habitualidade(
     if data_fim:
         params["endDate"] = data_fim
 
-    resposta = requests.get(
-        f"{SHOOTING_HOUSE_BASE_URL}/registers/habitualities/{cpf_limpo}",
-        params=params,
-        auth=(SHOOTING_HOUSE_USER, SHOOTING_HOUSE_PASSWORD),
-        timeout=10,
-    )
-    resposta.raise_for_status()
-    dados = resposta.json()
+    dados = _chamar_api(f"/registers/habitualities/{cpf_limpo}", params)
     dados = dados[0] if isinstance(dados, list) and dados else dados
+    if not isinstance(dados, dict):
+        raise ShootingHouseIndisponivel(
+            "Shooting House respondeu num formato inesperado para habitualidade."
+        )
     return _normalizar_habitualidade_real(dados)
 
 
 if __name__ == "__main__":
+    # Teste de fumaça com o CPF fictício de sempre. Recusa rodar com o
+    # modo real ligado: este bloco imprime a resposta inteira na tela, e
+    # com credencial de verdade isso seria despejar o histórico de
+    # treinos e as armas de uma pessoa real no terminal (e no histórico
+    # do PowerShell). Para conferir a API real existe outro caminho, que
+    # mostra só a ESTRUTURA da resposta e nenhum valor:
+    #     .venv\Scripts\python.exe -m integracoes.diagnostico_shooting_house
+    if shooting_house_ativo():
+        raise SystemExit(
+            "Modo real ligado (SHOOTING_HOUSE_ATIVO=Sim). Este teste de fumaça "
+            "imprime dado pessoal na tela e por isso não roda assim.\n"
+            "Use: .venv\\Scripts\\python.exe -m integracoes.diagnostico_shooting_house"
+        )
+
     resultado = consultar_habitualidade("12345678900")
     print(f"Modo simulado: {resultado.get('simulado', False)}")
     print(resultado)

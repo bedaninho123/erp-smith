@@ -44,7 +44,11 @@ from core.motor_portal_auth import criar_token, localizar_cliente_por_cpf_ou_ema
 from domain.clube_tiro.motor_campeonatos import listar_campeonatos, obter_campeonato
 from domain.clube_tiro.motor_resultados import listar_resultados
 from integracoes.gmail import enviar_email, gmail_configurado
-from integracoes.shooting_house import consultar_cr, consultar_habitualidade
+from integracoes.shooting_house import (
+    ShootingHouseIndisponivel,
+    consultar_cr,
+    consultar_habitualidade,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_PATH = BASE_DIR / ".env"
@@ -266,13 +270,40 @@ def _resumo_habitualidade(cpf: str) -> dict:
     simulado enquanto a credencial não existe), nunca guarda cópia
     própria (integracoes/shooting_house.py). Devolve tem_registro=False
     sem erro pra quem nunca foi atirador -- cliente cadastrado não
-    implica atirador ativo."""
-    cr = consultar_cr(cpf)
-    hab = consultar_habitualidade(cpf)
+    implica atirador ativo.
+
+    `indisponivel=True` é um terceiro estado, diferente de
+    tem_registro=False, e a diferença é o ponto todo: "você não tem
+    registro no clube" é uma afirmação; "não consegui consultar agora"
+    é a ausência dela. Confundir os dois faria a tela dizer a um
+    atirador em dia que ele não tem CR nem treino nenhum, sempre que a
+    API estivesse fora do ar (ver ShootingHouseIndisponivel em
+    integracoes/shooting_house.py)."""
+    try:
+        cr = consultar_cr(cpf)
+    except ShootingHouseIndisponivel:
+        cr = None
+        cr_indisponivel = True
+    else:
+        cr_indisponivel = False
+
+    try:
+        hab = consultar_habitualidade(cpf)
+    except ShootingHouseIndisponivel:
+        return {
+            "cr": cr, "total_participacoes": 0, "tem_registro": False,
+            "indisponivel": True,
+        }
+
     eventos = []
     for dados in (hab.get("habitualidades") or {}).values():
         eventos.extend(dados.get("eventos", []))
-    return {"cr": cr, "total_participacoes": len(eventos), "tem_registro": bool(cr) or bool(eventos)}
+    return {
+        "cr": cr,
+        "total_participacoes": len(eventos),
+        "tem_registro": bool(cr) or bool(eventos),
+        "indisponivel": cr_indisponivel,
+    }
 
 
 @app.route("/portal")
@@ -398,9 +429,21 @@ def habitualidade():
     cpf = cliente["cpf"] if cliente else None
     cr = None
     eventos = []
+    # Tela vazia por "não consegui consultar" tem que ser visivelmente
+    # diferente de tela vazia por "você não tem registro nenhum" -- ver
+    # _resumo_habitualidade. Sem este aviso, uma queda da API do Shooting
+    # House apareceria pro atirador como um histórico de treinos zerado.
+    indisponivel = False
     if cpf:
-        cr = consultar_cr(cpf)
-        hab = consultar_habitualidade(cpf)
+        try:
+            cr = consultar_cr(cpf)
+        except ShootingHouseIndisponivel:
+            indisponivel = True
+        try:
+            hab = consultar_habitualidade(cpf)
+        except ShootingHouseIndisponivel:
+            indisponivel = True
+            hab = {}
         for modalidade, dados in (hab.get("habitualidades") or {}).items():
             for ev in dados.get("eventos", []):
                 eventos.append({**ev, "modalidade_grupo": modalidade})
@@ -413,6 +456,7 @@ def habitualidade():
         cr=cr,
         eventos=eventos,
         tem_cpf=bool(cpf),
+        indisponivel=indisponivel,
     )
 
 

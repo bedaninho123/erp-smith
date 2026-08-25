@@ -46,7 +46,7 @@ from domain.clube_tiro.motor_campeonatos import (
 from domain.clube_tiro.motor_resultados import (
     atualizar_resultado, criar_resultado, listar_resultados, remover_resultado,
 )
-from integracoes.config import shooting_house_configurado
+from integracoes.config import shooting_house_ativo
 from integracoes.gmail import enviar_email, gmail_configurado
 from integracoes.whatsapp import status_integracao as status_whatsapp
 from motor_ia.atualizador_memoria import atualizar_memoria
@@ -337,8 +337,14 @@ def status():
         for nome, caminho in MODULOS_MOTOR_IA
     ]
 
+    # "configurado" aqui significa MODO REAL LIGADO, não "tem credencial
+    # no .env" -- os dois deixaram de ser a mesma coisa quando a chave
+    # geral SHOOTING_HOUSE_ATIVO passou a existir (2026-08-25). Credencial
+    # guardada com a chave desligada aparece como não configurado de
+    # propósito: o que a tela precisa responder é "esta consulta está
+    # trazendo dado real de pessoa?", e nesse caso a resposta é não.
     integracoes = [
-        {"nome": "Shooting House (habitualidade)", "configurado": shooting_house_configurado()},
+        {"nome": "Shooting House (dado real de atirador)", "configurado": shooting_house_ativo()},
     ]
 
     # Consumo de IA por empresa -- é este número que vira base de

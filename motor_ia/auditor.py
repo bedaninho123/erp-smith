@@ -89,6 +89,25 @@ def auditar(
             motivo=plano.motivo_humano or "Sinalizado para atendimento humano.",
         )
 
+    # Segundo freio determinístico, também sem gastar chamada de IA: uma
+    # fonte externa que não pôde ser consultada (Shooting House fora do
+    # ar, credencial recusada, consulta ainda sem implementação real --
+    # ver motor_ia/consultor.py::_buscar_externo). Não dá pra pedir à IA
+    # que "tome cuidado" com o que ela não sabe: sem o dado no bloco, o
+    # comportamento natural dela é responder com o que sobrou e soar
+    # completa. Num assunto de arma de fogo, uma resposta incompleta que
+    # PARECE completa é pior que nenhuma, então isso vai para um humano.
+    indisponiveis = dados.get("fontes_indisponiveis") or []
+    if indisponiveis:
+        detalhe = "; ".join(
+            f"{f['fonte']}: {f['motivo']}" for f in indisponiveis
+        )
+        return ResultadoAuditoria(
+            aprovado=False,
+            acao="encaminhar_humano",
+            motivo=f"Consulta externa indisponível -- {detalhe}",
+        )
+
     config = obter_configuracoes(empresa_id)
     modelo = config.get("modelo_openai", "gpt-5-mini")
     bloco_dados = montar_bloco_dados(dados, cliente_nome, config)
