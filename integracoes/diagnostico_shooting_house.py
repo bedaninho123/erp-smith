@@ -24,6 +24,7 @@ Use o SEU PRÓPRIO CPF. Consultar o CPF de um cliente "só pra testar" é
 tratar dado de terceiro como material de teste -- se precisar mesmo,
 peça autorização à pessoa antes.
 """
+import argparse
 from getpass import getpass
 from urllib.parse import urlparse
 
@@ -240,6 +241,18 @@ def _conferir_habitualidade(cpf: str) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Confere a integração com o Shooting House sem expor dado de ninguém."
+    )
+    parser.add_argument(
+        "--somente-credencial", action="store_true",
+        help="Para depois do /checkAuth, sem pedir CPF nenhum. É o passo "
+             "que responde 'a credencial vale, e em qual ambiente?' sem "
+             "consultar pessoa alguma -- e por não pedir nada digitado, "
+             "roda em terminal sem entrada (script, tarefa agendada).",
+    )
+    argumentos = parser.parse_args()
+
     print()
     print("DIAGNÓSTICO DA INTEGRAÇÃO SHOOTING HOUSE")
     print("Nenhum dado pessoal é impresso: só nomes de campo e quantidades.")
@@ -249,6 +262,11 @@ def main() -> None:
         return
 
     if not _conferir_credencial():
+        return
+
+    if argumentos.somente_credencial:
+        print("Parando aqui (--somente-credencial). Nenhum CPF foi consultado.")
+        print("Para conferir a ESTRUTURA da resposta, rode sem essa opção.")
         return
 
     print("=" * 68)
@@ -261,7 +279,16 @@ def main() -> None:
     print()
     print("Use o SEU CPF, não o de um cliente. O que você digitar não aparece")
     print("na tela nem fica no histórico do terminal. Enter em branco pula.")
-    cpf = _limpar_cpf(getpass("CPF (só números, não aparece ao digitar): "))
+    try:
+        cpf = _limpar_cpf(getpass("CPF (só números, não aparece ao digitar): "))
+    except (EOFError, OSError):
+        # Terminal sem entrada (script, tarefa agendada, assistente).
+        # Melhor dizer isso do que estourar um traceback confuso.
+        print()
+        print("Este terminal não tem como receber o que você digita.")
+        print("Rode em um terminal de verdade, ou use --somente-credencial")
+        print("para ficar só na conferência que não pede CPF.")
+        return
     print()
 
     if not cpf:
