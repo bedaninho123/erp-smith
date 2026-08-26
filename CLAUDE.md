@@ -84,6 +84,16 @@ atendimento\remover_tarefa_agendada.bat
 # Instalar/remover a Tarefa Agendada do Windows que roda o backup todo dia às 3h
 core\db\instalar_tarefa_backup.bat
 core\db\remover_tarefa_backup.bat
+# Panorama de habitualidade do clube: espelha a lista de filiados e conta
+# participações. --limite controla quantos CPFs por rodada (padrão 150)
+.venv\Scripts\python.exe -m domain.clube_tiro.sincronizar_habitualidade
+.venv\Scripts\python.exe -m domain.clube_tiro.sincronizar_habitualidade --somente-lista
+# Instalar/remover a Tarefa Agendada que roda isso 4x ao dia
+domain\clube_tiro\instalar_tarefa_habitualidade.bat
+domain\clube_tiro\remover_tarefa_habitualidade.bat
+# Banco de Domínio já em uso, sem a tabela filiado: idempotente
+.venv\Scripts\python.exe -m domain.clube_tiro.db.migrar_filiados
+
 .venv\Scripts\python.exe -m domain.clube_tiro.db.criar_banco --recriar
 .venv\Scripts\python.exe -m domain.clube_tiro.db.popular_conhecimento
 .venv\Scripts\python.exe -m domain.clube_tiro.db.popular_campeonatos_2026
@@ -555,6 +565,45 @@ pelo mesmo motivo de sempre: redirect para outro host reenviaria a
 credencial.
 
 Coberto por `tests/test_dado_sensivel.py`.
+
+### Panorama de habitualidade: filiado ≠ cliente, e é retrato, não verdade
+
+(2026-08-25.) O clube precisa ver quem está atrasado em habitualidade —
+o clube inteiro, não só quem o despachante atende. Isso trouxe uma
+**segunda população** para o sistema, e a distinção é inegociável:
+
+- `core.cliente` — quem o **despachante** atende. Registro nosso, criado
+  à mão quando o primeiro caso da pessoa aparece.
+- `dominio.filiado` — quem passou pelo **clube**. Espelho de
+  `GET /registers/shooters/paginate`, sincronizado.
+
+Ligação pelo CPF, sem FK (bancos diferentes). Juntar as duas destruiria o
+sentido de `cliente`: o clube tem ~1450 filiados e o despachante atende
+um subconjunto — importar todo mundo para `cliente` seria guardar dado
+pessoal de gente que ninguém atende. `filiado` fica no Domínio pelo mesmo
+critério de `campeonato`: um escritório de advocacia nunca terá um.
+
+**Os números de habitualidade em `filiado` são um retrato com data, não a
+verdade.** Existem só porque desenhar um panorama do clube consultando ao
+vivo seriam centenas de chamadas por tela (a API só lê habitualidade por
+CPF, uma pessoa por vez). Três regras que vêm junto: toda tela mostra
+`sincronizado_em`; nenhuma afirmação a cliente sai daí (pergunta de
+cliente é consulta ao vivo, como o Portal já faz); e `NULL` ("nunca
+consultado") nunca pode parecer `0` ("consultei, não teve").
+
+**O sistema NÃO diz se alguém cumpriu o mínimo legal**, e isso é decisão,
+não pendência. O mínimo do art. 35 do Decreto nº 11.615/2023 depende do
+nível do CR (8, ou 12+4, ou 20+6) — e a API do Shooting House **não expõe
+o nível de ninguém** (`documents.cr` só tem status, número e validade).
+Mesmo princípio que o usuário aplicou em 2026-07-25 sobre `nivel_cr`: não
+fabricar critério que ninguém confirmou. Aqui o custo de errar é dizer a
+um atirador que está em dia quando não está.
+
+A sincronização (`domain/clube_tiro/sincronizar_habitualidade.py`) roda
+por Tarefa Agendada 4x ao dia e atende por rodada os `--limite` filiados
+**há mais tempo sem sincronizar** — é o rodízio que cobre 900 pessoas sem
+despejar tudo na API de uma vez. Falha de um não derruba a rodada nem
+apaga o retrato anterior dele.
 
 ### Integrações externas simuladas até haver credencial
 

@@ -430,6 +430,14 @@
           </li>
           {% endif %}
           <li class="nav-header">CLUBE</li>
+          {% if usuario_papel == 'Gestor' or 'habitualidade' in funcoes_ativas %}
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="habitualidade">
+              <i class="nav-icon fas fa-bullseye" aria-hidden="true"></i>
+              <p>Habitualidade</p>
+            </a>
+          </li>
+          {% endif %}
           {% if usuario_papel == 'Gestor' or 'campeonatos' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="campeonatos">
@@ -657,6 +665,42 @@
             <div class="card-header"><h3 class="card-title">Histórico</h3></div>
             <div class="card-body p-0">
               <ul class="list-group list-group-flush" id="caso-historico"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-habitualidade" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Habitualidade</h1>
+          <p class="text-muted mb-0">Panorama do clube: quem está atrasado e há quanto tempo.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <!-- Este aviso não é decoração. Os números vêm de um retrato
+               sincronizado, não de consulta ao vivo, e quem olhar a tela
+               precisa saber disso antes de agir. -->
+          <div class="alert alert-info" id="habitualidade-aviso"></div>
+
+          <div class="card">
+            <div class="card-body">
+              <div class="row" id="habitualidade-resumo"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover text-nowrap">
+                <thead><tr>
+                  <th>Filiado</th><th>CPF</th><th>Matrícula</th>
+                  <th class="text-right">Participações (12 meses)</th>
+                  <th>Última participação</th><th>Retrato de</th>
+                </tr></thead>
+                <tbody id="habitualidade-body"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1219,6 +1263,7 @@ function carregarView(viewName) {
   if (viewName === "config") { carregarConfiguracoes(); carregarUsuarios(); }
   if (viewName === "campeonatos") carregarCampeonatos();
   if (viewName === "resultados") carregarResultadosCampeonatosLista();
+  if (viewName === "habitualidade") carregarHabitualidade();
 }
 
 function ativarView(btn) {
@@ -1790,6 +1835,61 @@ function editarResultado(res) {
 }
 
 $("#cancelar-edicao-resultado").addEventListener("click", resetFormularioResultado);
+
+// ---------------------------------------------------------------
+// Panorama de habitualidade do clube
+// ---------------------------------------------------------------
+async function carregarHabitualidade() {
+  const r = await fetch("/api/filiados/panorama");
+  const d = await r.json();
+  const resumo = d.resumo || {};
+
+  // O aviso vem antes de qualquer número, de propósito: quem lê a tela
+  // precisa saber que isto é um retrato, e de quando ele é, ANTES de
+  // decidir alguma coisa com base nele.
+  const maisAntigo = resumo.mais_antigo
+    ? `Retrato mais antigo desta tela: ${dataHoraBr(resumo.mais_antigo)}.`
+    : "Nenhum filiado foi sincronizado ainda.";
+  $("#habitualidade-aviso").innerHTML =
+    `<b>Estes números são um retrato, não consulta ao vivo.</b> ${escapeHtml(maisAntigo)}
+     São contagens de participação nos últimos ${d.janela_meses} meses — o sistema
+     <b>não</b> afirma se alguém cumpriu o mínimo legal, porque isso depende do nível
+     do CR, que a integração não fornece. Para responder a um filiado, consulte ao vivo.`;
+
+  const cartao = (rotulo, valor, cor) => `
+    <div class="col-md-3">
+      <div class="ficha">
+        <span class="stat-numero ${cor || ''}">${valor ?? 0}</span>
+        <span class="text-muted">${escapeHtml(rotulo)}</span>
+      </div>
+    </div>`;
+  $("#habitualidade-resumo").innerHTML =
+    cartao("Filiados ativos", resumo.total) +
+    cartao("Sem nenhuma participação", resumo.sem_participacao, "text-danger") +
+    cartao("Ainda não consultados", resumo.sem_dado, "text-warning");
+
+  const linhas = d.filiados || [];
+  $("#habitualidade-body").innerHTML = linhas.length ? linhas.map(f => {
+    // Nunca sincronizado é diferente de zero participações: um é "não
+    // sei", o outro é "sei que não teve". Cores e textos diferentes.
+    const semDado = f.participacoes_12m === null || f.participacoes_12m === undefined;
+    const participacoes = semDado
+      ? `<span class="text-muted">não consultado</span>`
+      : `<span class="${f.participacoes_12m === 0 ? 'text-danger' : ''}">${f.participacoes_12m}</span>`;
+    return `
+    <tr>
+      <td>${escapeHtml(f.nome)}</td>
+      <td class="text-monospace">${f.cpf ? cpfFormatado(f.cpf) : '—'}</td>
+      <td class="text-monospace">${escapeHtml(f.matricula || '—')}</td>
+      <td class="text-right">${participacoes}</td>
+      <td class="text-monospace">${f.ultima_participacao ? dataBr(f.ultima_participacao) : '—'}</td>
+      <td class="text-monospace text-muted">${f.sincronizado_em ? dataHoraBr(f.sincronizado_em) : '—'}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="6" class="text-muted">
+      Nenhum filiado sincronizado. Rode:
+      <code>python -m domain.clube_tiro.sincronizar_habitualidade</code>
+    </td></tr>`;
+}
 
 // ---------------------------------------------------------------
 // Cadastro de cliente novo, com busca no Shooting House

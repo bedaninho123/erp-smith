@@ -531,6 +531,85 @@ def consultar_cadastro(cpf: str) -> Optional[dict]:
     }
 
 
+# Lista de filiados simulada. Os CPFs são exatamente os de
+# _PERFIS_HABITUALIDADE_TESTE, de propósito: assim o panorama do clube
+# nasce com variedade real -- gente em dia, gente irregular e gente sem
+# registro nenhum -- em vez de uma tabela toda zerada que não mostra se a
+# tela funciona.
+_FILIADOS_TESTE = [
+    {"idatirador": 101, "matricula": "F101", "nome": "Felipe Bedani",
+     "cpf": "12345678900", "email": "felipe.exemplo@example.com", "status_filiacao": "Ativo"},
+    {"idatirador": 102, "matricula": "F102", "nome": "Helena Costa",
+     "cpf": "10000000006", "email": None, "status_filiacao": "Ativo"},
+    {"idatirador": 103, "matricula": "F103", "nome": "Vanessa Teixeira",
+     "cpf": "10000000014", "email": None, "status_filiacao": "Ativo"},
+    {"idatirador": 104, "matricula": "F104", "nome": "William Cardoso",
+     "cpf": "10000000015", "email": None, "status_filiacao": "Ativo"},
+    {"idatirador": 105, "matricula": "F105", "nome": "Larissa Barbosa",
+     "cpf": "10000000020", "email": None, "status_filiacao": "Ativo"},
+    {"idatirador": 106, "matricula": "F106", "nome": "Ex-Filiado Exemplo",
+     "cpf": "39053344705", "email": None, "status_filiacao": "Inativo"},
+]
+
+
+def listar_filiados(somente_ativos: bool = True) -> list[dict]:
+    """Lista os filiados do clube (GET /registers/shooters/paginate).
+
+    É o espelho que alimenta a tabela `filiado` do Domínio. Traz só campos
+    de identificação -- nada de arma, CR ou situação financeira, pela mesma
+    razão de `consultar_cadastro`.
+
+    ATENÇÃO ao volume: um clube real tem mais de mil filiados. Este
+    endpoint é o ÚNICO que devolve gente em massa, e é por isso que a
+    sincronização de habitualidade não pode se apoiar nele -- habitualidade
+    continua sendo uma consulta por CPF, uma pessoa por vez.
+    """
+    if not shooting_house_ativo():
+        return [
+            f for f in _FILIADOS_TESTE
+            if not somente_ativos or f["status_filiacao"] == "Ativo"
+        ]
+
+    filiados = []
+    pagina = 1
+    while True:
+        parametros = {"status": 1 if somente_ativos else 0, "page": pagina}
+        resposta = _chamar_api("/registers/shooters/paginate", parametros)
+
+        if isinstance(resposta, list):
+            lote, tem_proxima = resposta, False
+        else:
+            lote = resposta.get("data") or []
+            paginacao = (resposta.get("meta") or {}).get("pagination") or {}
+            pagina_atual = paginacao.get("current_page") or pagina
+            total_paginas = paginacao.get("total_pages") or paginacao.get("last_page") or 1
+            tem_proxima = pagina_atual < total_paginas
+
+        for item in lote:
+            cpf_limpo = _limpar_cpf(str(item.get("cpf") or ""))
+            if len(cpf_limpo) != 11 or not item.get("name"):
+                # Sem CPF válido não dá pra ligar com nada nem consultar
+                # habitualidade depois -- entra no relatório da
+                # sincronização em vez de virar linha inútil no banco.
+                continue
+            filiados.append({
+                "idatirador": item.get("id"),
+                "matricula": item.get("registratitionCode"),
+                "nome": item.get("name"),
+                "cpf": cpf_limpo,
+                "email": (item.get("email") or "").lower() or None,
+                "status_filiacao": {"A": "Ativo", "I": "Inativo"}.get(
+                    (item.get("status") or "").upper()
+                ),
+            })
+
+        if not tem_proxima or not lote:
+            return filiados
+        pagina += 1
+        if pagina > 200:  # trava de segurança contra paginação sem fim
+            return filiados
+
+
 def verificar_credencial() -> dict:
     """Bate no GET /checkAuth, que só responde "a autenticação vale ou
     não" -- sem CPF, sem nome, sem dado de pessoa nenhuma no caminho da

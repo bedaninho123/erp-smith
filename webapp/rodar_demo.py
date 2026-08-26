@@ -101,9 +101,22 @@ def _criar_banco_dominio() -> None:
     con.close()
 
 
+def _popular_habitualidade() -> None:
+    """Roda a sincronização em modo simulado, para a tela de Habitualidade
+    nascer com dado variado -- gente em dia, irregular e sem registro. Sem
+    isto ela abriria vazia e não daria pra ver se funciona."""
+    from domain.clube_tiro.sincronizar_habitualidade import sincronizar
+
+    saida = sincronizar(EMPRESA, limite=50)
+    hab = saida.get("habitualidade") or {}
+    print(f"  Filiados sincronizados: {saida['lista']['total']} "
+          f"(habitualidade consultada: {hab.get('consultados', 0)})")
+
+
 def main() -> None:
     _criar_banco_core()
     _criar_banco_dominio()
+    _popular_habitualidade()
 
     print()
     print("=" * 60)

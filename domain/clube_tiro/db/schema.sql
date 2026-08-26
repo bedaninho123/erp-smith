@@ -119,3 +119,70 @@ CREATE TABLE resultado_campeonato (
 CREATE INDEX idx_resultado_empresa_id ON resultado_campeonato(empresa_id);
 CREATE INDEX idx_resultado_campeonato ON resultado_campeonato(campeonato_id);
 CREATE INDEX idx_resultado_cliente ON resultado_campeonato(cliente_id);
+
+-- Filiado do clube -- ESPELHO da lista do Shooting House, não cadastro
+-- próprio (2026-08-25). Diferente de core.cliente em natureza, e a
+-- distinção é deliberada:
+--
+--   core.cliente  = quem o DESPACHANTE atende. Registro nosso, criado à
+--                   mão quando o primeiro caso da pessoa aparece.
+--   filiado       = quem passou pelo CLUBE. Vem de
+--                   GET /registers/shooters/paginate, sincronizado.
+--
+-- A mesma pessoa costuma ser as duas coisas, e a ligação é pelo CPF --
+-- sem FK, porque são bancos diferentes (mesma regra de
+-- resultado_campeonato.cliente_id). Juntar tudo numa tabela só
+-- destruiria o sentido de `cliente`: o clube tem ~1450 filiados e o
+-- despachante atende um subconjunto, e importar todo mundo para
+-- `cliente` seria guardar dado pessoal de gente que ninguém atende.
+--
+-- Por que fica no Domínio e não no Core: "filiado de clube de tiro" é
+-- vocabulário deste domínio. Um escritório de advocacia nunca terá um.
+-- Mesmo critério que manteve campeonato aqui.
+--
+-- ATENÇÃO ao ler esta tabela: como é banco anexado, ela NÃO passa pelas
+-- views do Core que se filtram sozinhas. Todo WHERE precisa de
+-- empresa_id escrito à mão.
+CREATE TABLE filiado (
+    filiado_id           TEXT PRIMARY KEY,             -- FIL-000001
+    empresa_id           TEXT NOT NULL,                  -- cross-db → core.empresa
+    idatirador           INTEGER,                        -- id interno do Shooting House
+    matricula            TEXT,                           -- registratitionCode ("F101")
+    nome                 TEXT NOT NULL,
+    cpf                  TEXT NOT NULL,                  -- só dígitos -- é a chave de ligação com core.cliente
+    email                TEXT,
+    status_filiacao      TEXT,                           -- 'Ativo' | 'Inativo' (status A/I da API)
+
+    -- ---- retrato da habitualidade, NÃO a verdade sobre ela ----
+    -- O Shooting House é o sistema de registro que reporta à PF e ao
+    -- Exército; estes números são uma cópia guardada só para conseguir
+    -- desenhar um panorama do clube inteiro sem fazer centenas de
+    -- consultas a cada tela aberta.
+    --
+    -- Toda tela que os exibir precisa mostrar `sincronizado_em` junto, e
+    -- NENHUMA afirmação a cliente pode sair daqui -- pergunta de cliente
+    -- é respondida com consulta ao vivo, como já é hoje no Portal.
+    --
+    -- Só a CONTAGEM e a última data são guardadas, de propósito: separar
+    -- treino de competição depende de confirmar o significado do campo
+    -- `competicao` da API contra uma resposta real (ele vem com o texto
+    -- "TREINO" num treino comum), e guardar uma classificação não
+    -- conferida convidaria alguém a confiar nela.
+    participacoes_12m    INTEGER,                        -- NULL = nunca sincronizado
+    ultima_participacao  TEXT,                           -- ISO 8601 (YYYY-MM-DD)
+    sincronizado_em      TEXT,                           -- ISO 8601, NULL = nunca
+    sincronizacao_erro   TEXT,                           -- último motivo de falha, NULL = ok
+
+    criado_em            TEXT NOT NULL,
+    atualizado_em        TEXT NOT NULL,
+
+    -- Mesma razão da UNIQUE composta de core.cliente: o mesmo CPF pode
+    -- ser filiado de dois clubes diferentes atendidos pelo sistema.
+    UNIQUE (empresa_id, cpf)
+);
+
+CREATE INDEX idx_filiado_empresa_id ON filiado(empresa_id);
+CREATE INDEX idx_filiado_cpf ON filiado(cpf);
+-- A sincronização varre por "quem foi sincronizado há mais tempo",
+-- então este índice é o que faz uma rodada limitada ser barata.
+CREATE INDEX idx_filiado_sincronizado ON filiado(empresa_id, sincronizado_em);

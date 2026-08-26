@@ -47,6 +47,7 @@ from core.motor_usuarios import (
     FUNCOES_VALIDAS, atualizar_ativo, atualizar_papel, atualizar_permissoes,
     criar_usuario, listar_permissoes, listar_usuarios, tem_permissao,
 )
+from domain.clube_tiro import motor_filiados
 from domain.clube_tiro.motor_campeonatos import (
     atualizar_campeonato, criar_campeonato, listar_campeonatos, remover_campeonato,
 )
@@ -1146,6 +1147,32 @@ def _registrar_consulta_externa(empresa_id: str, cpf: str, encontrado: bool) -> 
             con.close()
     except Exception:
         traceback.print_exc()
+
+
+@app.route("/api/filiados/panorama")
+@login_required
+@funcao_required("habitualidade")
+def filiados_panorama():
+    """Panorama de habitualidade do clube inteiro -- quem está atrasado e
+    há quanto tempo.
+
+    Os números NÃO saem daqui ao vivo: vêm da tabela `filiado`, que é um
+    retrato sincronizado de tempos em tempos (o Shooting House não avisa
+    ninguém quando alguém lança habitualidade, e a consulta é por CPF, uma
+    pessoa por vez -- ver domain/clube_tiro/sincronizar_habitualidade.py).
+
+    Por isso `sincronizado_em` vai junto de cada linha e o resumo carrega
+    a sincronização mais antiga: a tela precisa dizer o quanto o retrato
+    pode estar velho. E nenhuma afirmação a cliente sai daqui -- pergunta
+    de cliente continua sendo respondida por consulta ao vivo.
+    """
+    empresa_id = empresa_atual()
+    somente_ativos = request.args.get("todos") != "1"
+    return jsonify(
+        resumo=motor_filiados.resumo_do_clube(empresa_id),
+        filiados=motor_filiados.listar_panorama(empresa_id, somente_ativos),
+        janela_meses=motor_filiados.JANELA_MESES,
+    )
 
 
 @app.route("/api/clientes/shooting-house/<cpf>")

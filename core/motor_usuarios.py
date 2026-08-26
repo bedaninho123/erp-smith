@@ -32,6 +32,7 @@ FUNCOES_VALIDAS = {
     "documentos_aprovar": "Documentos a Aprovar",
     "campeonatos": "Campeonatos",
     "resultados": "Resultados",
+    "habitualidade": "Habitualidade do Clube",
     "testar_pipeline": "Testar Pipeline",
     "status_projeto": "Status do Projeto",
 }
