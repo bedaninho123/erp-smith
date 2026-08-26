@@ -514,14 +514,20 @@ def consultar_cadastro(cpf: str) -> Optional[dict]:
     if not isinstance(dados, dict) or not dados.get("name"):
         return None
 
-    endereco = dados.get("address") or {}
+    # `cidade` fica vazia de propósito. O bloco `address` da API tem
+    # address, number, complement, district e zip -- NÃO tem cidade.
+    # A versão anterior caía em `district` como reserva, o que gravaria o
+    # BAIRRO no campo cidade do cadastro: um erro silencioso, que ninguém
+    # perceberia até alguém filtrar clientes por cidade e não achar
+    # ninguém. Campo vazio é honesto; campo preenchido com a coisa errada
+    # não é.
     return {
         "simulado": False,
         "cpf": cpf_limpo,
         "nome": dados.get("name"),
         "email": (dados.get("email") or "").lower() or None,
         "telefone": _telefone_do_shooter(dados),
-        "cidade": endereco.get("city") or endereco.get("district") or None,
+        "cidade": None,
         "matricula": dados.get("registratitionCode"),
         # "A" = ativo, "I" = inativo (definição ShooterResume). Traduzido
         # aqui porque letra solta não significa nada numa tela.
@@ -571,7 +577,14 @@ def listar_filiados(somente_ativos: bool = True) -> list[dict]:
         ]
 
     filiados = []
+    # Não dá pra saber, pela PRIMEIRA resposta, se o parâmetro `page`
+    # está sendo respeitado -- só comparando com a segunda. Ou seja: uma
+    # chamada repetida é inevitável para detectar. Duplicar gente no
+    # resultado, não: este conjunto garante que a mesma pessoa entre uma
+    # vez só, aconteça o que acontecer com a paginação.
+    cpfs_vistos = set()
     pagina = 1
+    ultima_pagina_vista = 0
     while True:
         parametros = {"status": 1 if somente_ativos else 0, "page": pagina}
         resposta = _chamar_api("/registers/shooters/paginate", parametros)
@@ -581,9 +594,24 @@ def listar_filiados(somente_ativos: bool = True) -> list[dict]:
         else:
             lote = resposta.get("data") or []
             paginacao = (resposta.get("meta") or {}).get("pagination") or {}
-            pagina_atual = paginacao.get("current_page") or pagina
-            total_paginas = paginacao.get("total_pages") or paginacao.get("last_page") or 1
-            tem_proxima = pagina_atual < total_paginas
+            pagina_atual = paginacao.get("current_page") or 0
+            total_paginas = paginacao.get("total_pages") or 1
+
+            # A especificação documenta só `sortBy` e `status` neste
+            # endpoint -- `page` é suposição nossa, tirada do formato da
+            # resposta (que traz current_page/total_pages). Se ele for
+            # ignorado, `current_page` fica parada no 1 e o laço pediria
+            # a MESMA página até bater a trava: 200 chamadas à API do
+            # fornecedor e milhares de linhas repetidas.
+            #
+            # Então a condição de continuar não é "existe próxima", é "a
+            # página ANDOU". Não andou, para -- com uma página de dado em
+            # vez de nenhuma, e sem martelar ninguém.
+            if pagina_atual <= ultima_pagina_vista:
+                tem_proxima = False
+            else:
+                ultima_pagina_vista = pagina_atual
+                tem_proxima = pagina_atual < total_paginas
 
         for item in lote:
             cpf_limpo = _limpar_cpf(str(item.get("cpf") or ""))
@@ -592,6 +620,9 @@ def listar_filiados(somente_ativos: bool = True) -> list[dict]:
                 # habitualidade depois -- entra no relatório da
                 # sincronização em vez de virar linha inútil no banco.
                 continue
+            if cpf_limpo in cpfs_vistos:
+                continue
+            cpfs_vistos.add(cpf_limpo)
             filiados.append({
                 "idatirador": item.get("id"),
                 "matricula": item.get("registratitionCode"),

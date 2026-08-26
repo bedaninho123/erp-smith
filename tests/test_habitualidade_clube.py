@@ -191,6 +191,78 @@ def test_panorama_ordena_por_quem_precisa_de_atencao(dominio):
     assert panorama[0]["filiado_id"] == atrasado
 
 
+def test_paginacao_que_nao_anda_para_em_vez_de_martelar_a_api(monkeypatch):
+    """`page` é suposição nossa -- a especificação do endpoint documenta
+    só sortBy e status. Se ele for ignorado, a API devolve sempre a
+    página 1, e um laço ingênuo pediria a mesma coisa até bater a trava:
+    200 chamadas ao fornecedor e milhares de linhas repetidas."""
+    from integracoes import shooting_house
+
+    chamadas = []
+
+    def _sempre_a_pagina_1(caminho, params=None):
+        chamadas.append(params)
+        return {
+            "data": [{"id": 1, "name": "Fulano", "cpf": "52998224725", "status": "A"}],
+            "meta": {"pagination": {"current_page": 1, "total_pages": 121}},
+        }
+
+    monkeypatch.setattr(shooting_house, "shooting_house_ativo", lambda: True)
+    monkeypatch.setattr(shooting_house, "_chamar_api", _sempre_a_pagina_1)
+
+    filiados = shooting_house.listar_filiados()
+
+    # Duas chamadas é o mínimo possível: só comparando a segunda resposta
+    # com a primeira dá pra saber que a página não andou. O que não pode
+    # é continuar depois disso, nem trazer a mesma pessoa duas vezes.
+    assert len(chamadas) == 2, f"deveria parar na segunda; fez {len(chamadas)}"
+    assert len(filiados) == 1, "trouxe gente repetida"
+
+
+def test_paginacao_que_anda_percorre_todas(monkeypatch):
+    """Controle positivo: sem isto, um laço que parasse sempre na
+    primeira página passaria no teste acima e traria 1/121 do clube."""
+    from integracoes import shooting_house
+
+    # Uma pessoa DIFERENTE por página -- é o que paginação de verdade faz,
+    # e é o que separa "percorreu as três" de "pediu três vezes a mesma".
+    por_pagina = {1: "52998224725", 2: "11144477735", 3: "39053344705"}
+
+    def _paginado(caminho, params=None):
+        pagina = params["page"]
+        return {
+            "data": [{"id": pagina, "name": f"Filiado {pagina}",
+                      "cpf": por_pagina[pagina], "status": "A"}],
+            "meta": {"pagination": {"current_page": pagina, "total_pages": 3}},
+        }
+
+    monkeypatch.setattr(shooting_house, "shooting_house_ativo", lambda: True)
+    monkeypatch.setattr(shooting_house, "_chamar_api", _paginado)
+
+    assert len(shooting_house.listar_filiados()) == 3
+
+
+def test_cadastro_nao_grava_bairro_no_campo_cidade(monkeypatch):
+    """O bloco `address` da API não tem cidade -- tem district (bairro).
+    Preencher cidade com o bairro seria um erro silencioso, que só
+    apareceria quando alguém filtrasse clientes por cidade."""
+    from integracoes import shooting_house
+
+    monkeypatch.setattr(shooting_house, "shooting_house_ativo", lambda: True)
+    monkeypatch.setattr(
+        shooting_house, "_chamar_api",
+        lambda caminho, params=None: {
+            "name": "Fulano", "cpf": "52998224725", "status": "A",
+            "address": {"address": "Rua X", "district": "Centro", "zip": "17500000"},
+        },
+    )
+
+    cadastro = shooting_house.consultar_cadastro("52998224725")
+
+    assert cadastro["cidade"] is None
+    assert "Centro" not in str(cadastro.values())
+
+
 def test_resumo_conta_sem_dado_e_sem_participacao(dominio):
     sem_dado = motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_A)  # noqa: F841
     zerado = motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_B)
