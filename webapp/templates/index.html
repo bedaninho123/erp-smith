@@ -1669,13 +1669,10 @@ async function removerCampeonato(campeonatoId, nome) {
   await carregarCampeonatos();
 }
 
-function dataBr(iso) {
-  if (!iso) return "—";
-  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return iso;
-  const [, ano, mes, dia] = m;
-  return `${dia}/${mes}/${ano}`;
-}
+// (Havia uma segunda definição de dataBr aqui, idêntica à de baixo.
+// Declaração de função em JS é içada, então a última sempre vencia e
+// esta era código morto -- editar ela não mudaria nada na tela, o que é
+// a pior espécie de armadilha. Ficou só a de baixo.)
 
 async function carregarCampeonatos() {
   const anoSelect = $("#campeonato-filtro-ano");
@@ -2811,14 +2808,53 @@ function cpfFormatado(cpf) {
 // Só a data, sem hora -- para campo em que a hora não significa nada
 // (prazo de processo é um dia, não um instante). O banco guarda ISO,
 // então sem isto a tabela mostrava "2026-08-09T00:00:00Z" cru.
+// FUSO HORÁRIO (corrigido em 2026-08-25)
+// -------------------------------------
+// O banco guarda tudo em UTC, com "Z" no fim (ver _agora_iso() nos
+// motores do Core). Estas funções liam os números direto do texto e
+// mostravam como se já fossem locais -- ou seja, TODA hora do painel
+// aparecia 3 horas adiantada no horário de Brasília. Passou despercebido
+// por muito tempo porque ninguém confere a hora de um caso; apareceu na
+// tela de Habitualidade, cujo propósito é justamente dizer "de quando é
+// este dado" -- e ali um horário no futuro parece defeito.
+//
+// A conversão acontece SÓ quando a marcação de fuso é explícita (Z ou
+// ±hh:mm). Sem marcação não dá pra saber o que o valor significa, e
+// deslocar no escuro erraria calado -- então o texto sai como está.
+function _temFusoExplicito(iso) {
+  return /(Z|[+-]\d{2}:?\d{2})$/.test(String(iso).trim());
+}
+
+function _dataLocal(iso) {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function _dd(numero) {
+  return String(numero).padStart(2, "0");
+}
+
 function dataBr(iso) {
   if (!iso) return "";
+  if (_temFusoExplicito(iso)) {
+    const d = _dataLocal(iso);
+    // Sem isto, um evento das 02h UTC apareceria no dia seguinte ao que
+    // de fato aconteceu aqui.
+    if (d) return `${_dd(d.getDate())}/${_dd(d.getMonth() + 1)}/${d.getFullYear()}`;
+  }
   const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
 
 function dataHoraBr(iso) {
   if (!iso) return "";
+  if (_temFusoExplicito(iso)) {
+    const d = _dataLocal(iso);
+    if (d) {
+      return `${_dd(d.getDate())}/${_dd(d.getMonth() + 1)}/${d.getFullYear()}`
+           + ` - ${_dd(d.getHours())}:${_dd(d.getMinutes())} hrs`;
+    }
+  }
   const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
   if (!m) return iso;
   const [, ano, mes, dia, hora, min] = m;
