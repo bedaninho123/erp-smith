@@ -446,6 +446,12 @@ que contrariam o que este arquivo dizia antes:
   e `consultar_armas` serem eternamente simuladas **não existe** — as duas
   podem ser implementadas de verdade. `Shooter.documents.cr` traz `status`,
   `number` e `expirationDate`.
+- **O mapeamento de habitualidade foi CONFIRMADO contra uma resposta real**
+  (2026-08-25, credencial no `.env` com a chave geral ainda desligada): os
+  cinco campos existem com os nomes exatos, e a conversão somou 38
+  participações em 2 grupos de arma. Duas diferenças entre especificação e
+  realidade, nenhuma em campo que usamos: a spec diz `qtd_arma`, a resposta
+  traz `qtd_armas`; e existe um `evento_2` que a spec não menciona.
 - **`data_participacao` vem com hora** (`"09/10/2025 16:30"`).
   `_separar_data_e_hora()` separa em `data_participacao` + `hora_participacao`,
   porque `portal/app.py` ordena com `strptime(..., "%d/%m/%Y")` e quebraria

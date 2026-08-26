@@ -67,15 +67,45 @@ def _descrever(valor, indentacao: int = 0, profundidade: int = 0) -> list[str]:
         return [f"{espaco}... (não descido mais fundo)"]
 
     if isinstance(valor, dict):
+        # Blocos irmãos com a MESMA forma são descritos uma vez só.
+        #
+        # Sem isto, a primeira resposta real ficou com cerca de 2000
+        # linhas: o atirador tinha 35 armas, e cada uma repetia os mesmos
+        # 47 campos. Estrutura repetida não acrescenta informação
+        # nenhuma, e uma saída que ninguém consegue ler não serve pra
+        # conferir nada -- que é o único propósito deste módulo.
+        # Só BLOCOS irmãos são colapsados -- lista e valor simples seguem
+        # descritos um a um. Agrupar por "não é bloco" juntava número com
+        # lista e quebrava na hora de medir o tamanho.
+        ja_descritos = set()
         linhas = []
         for chave, sub in valor.items():
-            nome = _chave_segura(chave)
-            if isinstance(sub, (dict, list)):
-                tamanho = len(sub)
-                linhas.append(f"{espaco}{nome}: {_tipo_legivel(sub)} com {tamanho} item(ns)")
+            if chave in ja_descritos:
+                continue
+
+            if isinstance(sub, dict):
+                assinatura = tuple(sorted(sub.keys()))
+                irmaos = [
+                    outra for outra, outro in valor.items()
+                    if outra != chave and isinstance(outro, dict)
+                    and tuple(sorted(outro.keys())) == assinatura
+                ]
+                ja_descritos.update(irmaos)
+                sufixo = (
+                    f"   [+{len(irmaos)} bloco(s) irmão(s) com a MESMA forma, "
+                    "não repetidos aqui]" if irmaos else ""
+                )
+                linhas.append(
+                    f"{espaco}{_chave_segura(chave)}: bloco com {len(sub)} item(ns){sufixo}"
+                )
+                linhas.extend(_descrever(sub, indentacao + 1, profundidade + 1))
+            elif isinstance(sub, list):
+                linhas.append(
+                    f"{espaco}{_chave_segura(chave)}: lista com {len(sub)} item(ns)"
+                )
                 linhas.extend(_descrever(sub, indentacao + 1, profundidade + 1))
             else:
-                linhas.append(f"{espaco}{nome}: {_tipo_legivel(sub)}")
+                linhas.append(f"{espaco}{_chave_segura(chave)}: {_tipo_legivel(sub)}")
         return linhas
 
     if isinstance(valor, list):

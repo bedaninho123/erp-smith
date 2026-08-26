@@ -342,8 +342,16 @@ def consultar_documentos_vencimento(cpf: str) -> list[dict]:
 # então mapear todos seria inventar sentido para campo que ninguém viu
 # numa resposta de verdade ainda.
 #
-# CONFERIDO contra a especificação em 2026-08-25: os cinco campos usados
-# (os quatro abaixo + data_participacao) existem mesmo, com estes nomes.
+# CONFIRMADO CONTRA UMA RESPOSTA REAL em 2026-08-25 (não só contra a
+# especificação): os cinco campos usados (os quatro abaixo +
+# data_participacao) existem com estes nomes exatos, e a conversão rodou
+# somando 38 participações em 2 grupos de arma. A estrutura é a esperada:
+# habitualidades[grupo][id_arma][campo] = lista paralela por índice.
+#
+# Duas diferenças entre especificação e realidade apareceram na conferência,
+# nenhuma delas em campo que usamos -- mas valem como lembrete de que uma
+# não substitui a outra: a especificação diz `qtd_arma`, a resposta traz
+# `qtd_armas`; e existe um `evento_2` que a especificação não menciona.
 # Duas ressalvas descobertas na mesma leitura, que valem na hora de olhar
 # uma resposta de verdade:
 #
