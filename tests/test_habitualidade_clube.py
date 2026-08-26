@@ -242,6 +242,58 @@ def test_paginacao_que_anda_percorre_todas(monkeypatch):
     assert len(shooting_house.listar_filiados()) == 3
 
 
+def test_listar_todos_pede_as_duas_listas_de_status(monkeypatch):
+    """Não existe "todos" neste endpoint: status é 1 (ativo) ou 0
+    (inativo), e só. O código mandava 0 achando que era "sem filtro", e a
+    primeira execução real trouxe 547 pessoas num clube de 1454 --
+    exatamente o número de inativos.
+
+    O estrago seria silencioso: o panorama listaria só inativos, e a
+    sincronização de habitualidade, que busca quem está 'Ativo', não
+    acharia ninguém e não faria nada, sem erro nenhum."""
+    from integracoes import shooting_house
+
+    pedidos = []
+
+    def _por_status(caminho, params=None):
+        pedidos.append(params["status"])
+        cpf = "52998224725" if params["status"] == 1 else "11144477735"
+        nome = "Ativo Um" if params["status"] == 1 else "Inativo Um"
+        return {
+            "data": [{"id": 1, "name": nome, "cpf": cpf,
+                      "status": "A" if params["status"] == 1 else "I"}],
+            "meta": {"pagination": {"current_page": 1, "total_pages": 1}},
+        }
+
+    monkeypatch.setattr(shooting_house, "shooting_house_ativo", lambda: True)
+    monkeypatch.setattr(shooting_house, "_chamar_api", _por_status)
+
+    todos = shooting_house.listar_filiados(somente_ativos=False)
+
+    assert sorted(pedidos) == [0, 1], "precisa pedir as DUAS listas"
+    assert {f["status_filiacao"] for f in todos} == {"Ativo", "Inativo"}
+    assert len(todos) == 2
+
+
+def test_listar_somente_ativos_nao_pede_os_inativos(monkeypatch):
+    """Controle positivo: a rodada normal não precisa gastar uma chamada
+    a mais trazendo quem saiu do clube."""
+    from integracoes import shooting_house
+
+    pedidos = []
+
+    def _registra(caminho, params=None):
+        pedidos.append(params["status"])
+        return {"data": [], "meta": {"pagination": {"current_page": 1, "total_pages": 1}}}
+
+    monkeypatch.setattr(shooting_house, "shooting_house_ativo", lambda: True)
+    monkeypatch.setattr(shooting_house, "_chamar_api", _registra)
+
+    shooting_house.listar_filiados(somente_ativos=True)
+
+    assert pedidos == [1]
+
+
 def test_cadastro_nao_grava_bairro_no_campo_cidade(monkeypatch):
     """O bloco `address` da API não tem cidade -- tem district (bairro).
     Preencher cidade com o bairro seria um erro silencioso, que só

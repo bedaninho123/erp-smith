@@ -403,6 +403,33 @@ def test_data_de_participacao_real_vem_com_hora_e_e_separada():
     datetime.strptime(eventos[0]["data_participacao"], "%d/%m/%Y")
 
 
+def test_lista_vazia_e_zero_participacoes_nao_e_falha(modo_real, monkeypatch):
+    """A API devolve [] para quem não tem nenhuma participação. Isso é
+    resposta legítima, e é o caso MAIS importante do panorama: é quem
+    está atrasado.
+
+    Tratar como falha invertia o princípio do projeto ao contrário --
+    transformava "sei que não treinou" em "não sei", e a pessoa sumia da
+    lista de quem precisa de atenção. Achado na primeira sincronização
+    real: 3 das 25 pessoas consultadas eram assim."""
+    monkeypatch.setattr(shooting_house, "_chamar_api", lambda caminho, params=None: [])
+
+    resultado = consultar_habitualidade(CPF_DE_TESTE)
+
+    assert resultado["simulado"] is False
+    assert resultado["habitualidades"] == {}
+    assert resultado["cpf"] == CPF_DE_TESTE
+
+
+def test_formato_realmente_estranho_continua_sendo_falha(modo_real, monkeypatch):
+    """Controle positivo: afrouxar a lista vazia não pode fazer o código
+    engolir qualquer coisa. "Não sei" ainda precisa existir."""
+    monkeypatch.setattr(shooting_house, "_chamar_api", lambda caminho, params=None: "vixe")
+
+    with pytest.raises(ShootingHouseIndisponivel):
+        consultar_habitualidade(CPF_DE_TESTE)
+
+
 def test_mascara_de_cpf_esconde_o_suficiente():
     mascarado = _mascarar_cpf("123.456.789-00")
 

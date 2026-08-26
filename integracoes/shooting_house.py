@@ -577,6 +577,14 @@ def listar_filiados(somente_ativos: bool = True) -> list[dict]:
     endpoint é o ÚNICO que devolve gente em massa, e é por isso que a
     sincronização de habitualidade não pode se apoiar nele -- habitualidade
     continua sendo uma consulta por CPF, uma pessoa por vez.
+
+    NÃO EXISTE "todos" neste endpoint: `status` é 1 (ativo) ou 0 (inativo),
+    e só. Este código mandava 0 achando que era "sem filtro", e a primeira
+    execução real trouxe 547 pessoas num clube de 1454 -- exatamente o
+    número de INATIVOS. O estrago seria silencioso: o panorama listaria só
+    inativos, e a sincronização de habitualidade, que busca quem está
+    'Ativo', não acharia ninguém e não faria nada, sem erro nenhum. Para
+    ter o clube inteiro é preciso pedir as duas listas e juntar.
     """
     if not shooting_house_ativo():
         return [
@@ -584,6 +592,15 @@ def listar_filiados(somente_ativos: bool = True) -> list[dict]:
             if not somente_ativos or f["status_filiacao"] == "Ativo"
         ]
 
+    if somente_ativos:
+        return _listar_por_status(ativos=True)
+    # Duas chamadas, uma por status. A deduplicação por CPF de
+    # _listar_por_status vale dentro de cada lista; aqui as duas são
+    # concatenadas, e um CPF não pode estar nas duas ao mesmo tempo.
+    return _listar_por_status(ativos=True) + _listar_por_status(ativos=False)
+
+
+def _listar_por_status(ativos: bool) -> list[dict]:
     filiados = []
     # Não dá pra saber, pela PRIMEIRA resposta, se o parâmetro `page`
     # está sendo respeitado -- só comparando com a segunda. Ou seja: uma
@@ -594,7 +611,7 @@ def listar_filiados(somente_ativos: bool = True) -> list[dict]:
     pagina = 1
     ultima_pagina_vista = 0
     while True:
-        parametros = {"status": 1 if somente_ativos else 0, "page": pagina}
+        parametros = {"status": 1 if ativos else 0, "page": pagina}
         resposta = _chamar_api("/registers/shooters/paginate", parametros)
 
         if isinstance(resposta, list):
@@ -723,7 +740,23 @@ def consultar_habitualidade(
         params["endDate"] = data_fim
 
     dados = _chamar_api(f"/registers/habitualities/{cpf_limpo}", params)
-    dados = dados[0] if isinstance(dados, list) and dados else dados
+
+    if isinstance(dados, list):
+        if not dados:
+            # LISTA VAZIA = a pessoa não tem nenhuma participação
+            # registrada. É resposta legítima, não falha -- e é o caso
+            # mais importante do panorama, porque é exatamente quem está
+            # atrasado.
+            #
+            # Até 2026-08-25 isto caía no "formato inesperado" abaixo e
+            # virava ShootingHouseIndisponivel: o sistema transformava
+            # "sei que não treinou" em "não consegui consultar", e a
+            # pessoa aparecia como erro em vez de aparecer como zero.
+            # Descoberto na primeira sincronização real -- 3 das 25
+            # pessoas consultadas eram assim.
+            return _normalizar_habitualidade_real({"cpf": cpf_limpo})
+        dados = dados[0]
+
     if not isinstance(dados, dict):
         raise ShootingHouseIndisponivel(
             "Shooting House respondeu num formato inesperado para habitualidade."
