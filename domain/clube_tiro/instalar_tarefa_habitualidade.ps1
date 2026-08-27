@@ -30,17 +30,33 @@ $acao = New-ScheduledTaskAction -Execute $pythonw `
     -Argument "-m domain.clube_tiro.sincronizar_habitualidade --limite 150" `
     -WorkingDirectory $raiz
 
+# Cada gatilho entre parenteses e SEM virgula. Com virgula, o PowerShell
+# entende os horarios como uma lista de argumentos do -At do primeiro
+# gatilho, e o comando falha inteiro.
 $gatilhos = @(
-    New-ScheduledTaskTrigger -Daily -At "07:00",
-    New-ScheduledTaskTrigger -Daily -At "12:00",
-    New-ScheduledTaskTrigger -Daily -At "18:00",
-    New-ScheduledTaskTrigger -Daily -At "23:00"
+    (New-ScheduledTaskTrigger -Daily -At "07:00")
+    (New-ScheduledTaskTrigger -Daily -At "12:00")
+    (New-ScheduledTaskTrigger -Daily -At "18:00")
+    (New-ScheduledTaskTrigger -Daily -At "23:00")
 )
 
 # IgnoreNew: se uma rodada demorar mais que o intervalo, a proxima e
 # descartada em vez de empilhar duas varreduras na API ao mesmo tempo.
+#
+# StartWhenAvailable: a maquina nao fica ligada o tempo todo (o usuario
+# sobe o painel manualmente). Sem isto, uma rodada das 7h com o
+# computador desligado simplesmente nao acontece -- e o "Retrato de" da
+# tela vai envelhecendo sem ninguem perceber. Com isto, ela roda assim
+# que a maquina volta.
+#
+# As duas flags de bateria existem pelo mesmo motivo: por padrao o
+# Windows NAO inicia tarefa com o note na bateria, e a rodada seria
+# pulada em silencio. Falha silenciosa e exatamente o que aconteceu com
+# o poller do e-mail, que passou quatro semanas quebrado sem avisar.
 $config = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew `
-    -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+    -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
+    -StartWhenAvailable `
+    -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
 Register-ScheduledTask -TaskName "ERPSmithHabitualidade" -Action $acao `
     -Trigger $gatilhos -Settings $config -Force | Out-Null
