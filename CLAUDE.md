@@ -81,6 +81,10 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.migrate_dados_teste        # cria EMP-000001 + dado migrado da planilha
 .venv\Scripts\python.exe -m core.db.gerar_clientes_ficticios   # aceita um empresa_id como argumento
 .venv\Scripts\python.exe -m core.db.popular_documentos_exigidos
+# Revisao das listas de documento por servico (2026-08-27): separa o que se
+# COLETA do que se CONFERE, completa Guia de Trafego e Apostilamento.
+# Idempotente -- apaga o checklist antigo do servico e insere o revisado.
+.venv\Scripts\python.exe -m core.db.revisar_checklist_cac
 .venv\Scripts\python.exe -m core.db.migrar_aprovacao_documentos  # idempotente, roda sobre banco em uso
 .venv\Scripts\python.exe -m core.db.migrar_papeis_usuario         # idempotente, normaliza usuario.papel para Gestor/Atendente
 .venv\Scripts\python.exe -m core.db.migrar_permissoes_usuario     # idempotente, cria a tabela usuario_permissao
