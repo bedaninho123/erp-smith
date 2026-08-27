@@ -273,19 +273,45 @@ def consultar_armas(cpf: str) -> list[dict]:
     regra de consultar_habitualidade). Ver comentário acima de
     _PERFIS_ARMAS_TESTE sobre por que ainda não tem modo real.
 
-    Com o modo real LIGADO, levanta ShootingHouseIndisponivel em vez de
-    cair no simulado. Sem isso, um cliente de verdade perguntando "quais
-    armas tenho registradas?" receberia lista vazia -- porque o CPF dele
-    não está entre os de teste -- e a IA responderia "nenhuma arma
-    registrada" com toda a confiança. Resposta falsa, sobre arma de
-    fogo, para a pessoa errada."""
-    if shooting_house_ativo():
+    Passou a ter modo real em 2026-08-26. Até então levantava
+    ShootingHouseIndisponivel, porque se acreditava que o endpoint só
+    aceitava o `idatirador` interno e que a conversão CPF -> idatirador
+    não existia. Existe: é o `searchBy`, o mesmo parâmetro que faz a
+    busca de cadastro funcionar.
+
+    Uma lista vazia aqui é uma AFIRMAÇÃO ("consultei, esta pessoa não tem
+    arma registrada"), e é por isso que a falha de rede vira exceção em
+    vez de lista vazia -- dizer a um atirador que ele não tem arma quando
+    a consulta nem aconteceu seria o pior erro possível desta função."""
+    cpf_limpo = _limpar_cpf(cpf)
+    if not shooting_house_ativo():
+        return _PERFIS_ARMAS_TESTE.get(cpf_limpo, [])
+
+    if len(cpf_limpo) != 11:
+        raise ShootingHouseIndisponivel("CPF inválido para consulta.")
+
+    dados = _chamar_api(
+        f"/registers/shooters/weapon/{cpf_limpo}", {"searchBy": "cpf"}
+    )
+    if isinstance(dados, dict):
+        # Algumas rotas embrulham a lista em {"data": [...]}.
+        dados = dados.get("data") or []
+    if not isinstance(dados, list):
         raise ShootingHouseIndisponivel(
-            "Consulta de armas ainda não tem implementação real: o endpoint "
-            "do Shooting House pede o ID interno do atirador (idatirador), e "
-            "a conversão CPF -> idatirador ainda não existe neste projeto."
+            "Shooting House respondeu num formato inesperado para armas."
         )
-    return _PERFIS_ARMAS_TESTE.get(_limpar_cpf(cpf), [])
+    return [
+        {
+            "id": a.get("id"),
+            "type": a.get("type"),
+            "brand": a.get("brand"),
+            "model": a.get("model"),
+            "caliber": a.get("caliber"),
+            "serie": a.get("serie"),
+            "sigma": a.get("sigma"),
+        }
+        for a in dados if isinstance(a, dict)
+    ]
 
 
 # Perfis de documentos com vencimento pra teste -- espelha GET /registers/
@@ -664,6 +690,90 @@ def _listar_por_status(ativos: bool) -> list[dict]:
         pagina += 1
         if pagina > 200:  # trava de segurança contra paginação sem fim
             return filiados
+
+
+def _buscar_atirador(cpf_limpo: str) -> Optional[dict]:
+    """GET /registers/shooters/{cpf}?searchBy=cpf -- a resposta crua.
+
+    `searchBy` é o parâmetro que a especificação descreve como "usado para
+    buscar por outro ID como CPF"; é ele que dispensa saber o `idatirador`
+    interno. O valor "cpf" ainda não foi confirmado contra a API real: se
+    estiver errado, o sintoma é não achar ninguém, não um erro."""
+    dados = _chamar_api(f"/registers/shooters/{cpf_limpo}", {"searchBy": "cpf"})
+    if isinstance(dados, list):
+        dados = dados[0] if dados else None
+    return dados if isinstance(dados, dict) and dados.get("name") else None
+
+
+def consultar_ficha_completa(cpf: str) -> Optional[dict]:
+    """Tudo que a API sabe sobre o atirador, para EXIBIR na tela do
+    painel -- nunca para guardar.
+
+    Diferente de `consultar_cadastro`, que é enxuta de propósito: aquela
+    alimenta o formulário de cliente novo, e trazer arma ou CR pra lá
+    criaria cópia de dado regulatório no nosso banco. Esta é consulta ao
+    vivo, mostrada e descartada -- é o "consultar, não copiar" fazendo o
+    trabalho dele.
+
+    None = este CPF não é atirador do clube. Devolve `simulado: True`
+    enquanto a chave geral estiver desligada.
+    """
+    cpf_limpo = _limpar_cpf(cpf)
+    if len(cpf_limpo) != 11:
+        raise ShootingHouseIndisponivel("CPF inválido para consulta.")
+
+    if not shooting_house_ativo():
+        perfil = _PERFIS_CADASTRO_TESTE.get(cpf_limpo)
+        if not perfil:
+            return None
+        return {
+            "simulado": True, "cpf": cpf_limpo, **perfil,
+            "rg": None, "nascimento": None, "filiado_desde": None,
+            "profissao": None, "estado_civil": None, "titulo": None,
+            "endereco": None, "cr": None,
+        }
+
+    dados = _buscar_atirador(cpf_limpo)
+    if not dados:
+        return None
+
+    endereco = dados.get("address") or {}
+    cr_bruto = ((dados.get("documents") or {}).get("cr")) or {}
+    return {
+        "simulado": False,
+        "cpf": cpf_limpo,
+        "idatirador": dados.get("id"),
+        "matricula": dados.get("registratitionCode"),
+        "nome": dados.get("name"),
+        "email": (dados.get("email") or "").lower() or None,
+        "telefone": _telefone_do_shooter(dados),
+        "rg": dados.get("rg"),
+        "nascimento": dados.get("birthDate"),
+        "filiado_desde": dados.get("affiliationDate"),
+        "profissao": dados.get("profession"),
+        "estado_civil": dados.get("civilStatus"),
+        "titulo": (dados.get("title") or {}).get("name"),
+        "status_filiacao": {"A": "Ativo", "I": "Inativo"}.get(
+            (dados.get("status") or "").upper()
+        ),
+        # Só a rua/bairro/CEP -- a API não tem cidade neste bloco (ver
+        # consultar_cadastro), então não se inventa uma.
+        "endereco": {
+            "logradouro": endereco.get("address"),
+            "numero": endereco.get("number"),
+            "complemento": endereco.get("complement"),
+            "bairro": endereco.get("district"),
+            "cep": endereco.get("zip"),
+        } if endereco else None,
+        # `status` aqui é "situação documental em dia", booleano da API --
+        # não é a mesma coisa que "o CR não vence" (Decreto nº
+        # 11.615/2023). A tela mostra o campo, sem concluir nada dele.
+        "cr": {
+            "numero": cr_bruto.get("number"),
+            "em_dia": cr_bruto.get("status"),
+            "data_expiracao_bruta": cr_bruto.get("expirationDate"),
+        } if cr_bruto else None,
+    }
 
 
 def verificar_credencial() -> dict:

@@ -17,6 +17,7 @@ from datetime import date
 import pytest
 
 from domain.clube_tiro import motor_filiados
+from integracoes.shooting_house import ShootingHouseIndisponivel
 from tests.conftest import EMPRESA_A, EMPRESA_B
 
 FILIADO_A = {
@@ -27,6 +28,14 @@ FILIADO_B = {
     "idatirador": 102, "matricula": "F102", "nome": "Atirador Dois",
     "cpf": "11144477735", "email": None, "status_filiacao": "Ativo",
 }
+
+
+@pytest.fixture
+def modo_real_sh(monkeypatch):
+    """Finge a chave geral ligada, sem tocar no .env nem chamar a API."""
+    from integracoes import shooting_house
+
+    monkeypatch.setattr(shooting_house, "shooting_house_ativo", lambda: True)
 
 
 @pytest.fixture
@@ -344,6 +353,31 @@ def test_busca_por_cpf_com_ou_sem_pontuacao(dois_filiados, digitado):
     assert _nomes(EMPRESA_A, busca=digitado) == ["Ana Atiradora"]
 
 
+def test_busca_com_varias_palavras_casa_nome_com_preposicao(dominio):
+    """Caso real do usuário: procurar "felipe b" não achava "Felipe de
+    Moura Bedani", porque o termo era procurado como um bloco só. Nome de
+    gente tem preposição no meio -- é a regra, não a exceção."""
+    motor_filiados.salvar_filiado(
+        EMPRESA_A, dict(FILIADO_A, nome="Felipe de Moura Bedani")
+    )
+    motor_filiados.salvar_filiado(EMPRESA_A, dict(FILIADO_B, nome="Felipe Carvalho"))
+
+    assert _nomes(EMPRESA_A, busca="felipe b") == ["Felipe de Moura Bedani"]
+    assert sorted(_nomes(EMPRESA_A, busca="felipe")) == [
+        "Felipe Carvalho", "Felipe de Moura Bedani",
+    ]
+
+
+def test_palavras_somam_em_vez_de_alternar(dominio):
+    """Cada palavra estreita a busca. Se elas alternassem (OR), digitar
+    mais tornaria o resultado MAIOR -- o contrário do que quem digita
+    espera."""
+    motor_filiados.salvar_filiado(EMPRESA_A, dict(FILIADO_A, nome="Ana Souza"))
+    motor_filiados.salvar_filiado(EMPRESA_A, dict(FILIADO_B, nome="Bruno Lima"))
+
+    assert _nomes(EMPRESA_A, busca="ana bruno") == []
+
+
 def test_busca_por_nome_nao_devolve_o_clube_inteiro(dois_filiados):
     """A armadilha do filtro de CPF: reduzir "Ana" a dígitos dá string
     vazia, e um LIKE '%%' casaria com todo mundo -- a busca devolveria o
@@ -565,6 +599,100 @@ def test_marcacao_de_cliente_nao_atravessa_a_empresa(painel, dominio):
 
     assert dados["filiados"][0]["cliente_id"] is None
     assert dados["total_tambem_clientes"] == 0
+
+
+# --------------------------------------------------------------------
+# Ficha do filiado: consulta AO VIVO, não o retrato guardado
+# --------------------------------------------------------------------
+
+def test_ficha_traz_cadastro_armas_e_participacoes(painel, dominio):
+    resposta = painel.get("/api/filiados/52998224725/ficha")
+
+    d = resposta.get_json()
+    assert resposta.status_code == 200
+    assert d["ficha"]["nome"]
+    assert d["simulado"] is True   # a chave geral está desligada
+    assert d["indisponivel"] == {"ficha": None, "armas": None, "habitualidade": None}
+
+
+def test_ficha_recusa_cpf_invalido(painel, dominio):
+    assert painel.get("/api/filiados/123/ficha").status_code == 400
+
+
+def test_uma_fonte_fora_do_ar_nao_derruba_a_ficha_inteira(painel, dominio, monkeypatch):
+    """Cada bloco falha sozinho. Uma tela que some inteira porque um
+    pedaço falhou esconde o que estava funcionando -- e aqui o que
+    funciona pode ser justamente o que a pessoa veio ver."""
+    def _fora_do_ar(cpf):
+        raise ShootingHouseIndisponivel("Shooting House respondeu HTTP 503.")
+
+    monkeypatch.setattr("webapp.app.consultar_armas", _fora_do_ar)
+
+    d = painel.get("/api/filiados/52998224725/ficha").get_json()
+
+    assert d["armas"] is None
+    assert "503" in d["indisponivel"]["armas"]
+    # O resto continua lá.
+    assert d["ficha"]["nome"]
+    assert d["indisponivel"]["habitualidade"] is None
+
+
+def test_ficha_de_quem_nao_e_atirador_nao_e_erro(painel, dominio):
+    """CPF válido que não é do clube devolve ficha nula, não falha --
+    e a tela distingue isso de "não consegui consultar"."""
+    d = painel.get("/api/filiados/11144477735/ficha").get_json()
+
+    assert d["ficha"] is None
+    assert d["indisponivel"]["ficha"] is None
+
+
+def test_ficha_deixa_rastro_no_log(painel, dominio):
+    """Consulta ao vivo de arma e habitualidade de uma pessoa, por CPF.
+    Todo acesso desses deixa registro, com o CPF mascarado."""
+    from core import motor_log_administrativo
+
+    painel.get("/api/filiados/52998224725/ficha")
+
+    registros = [
+        r for r in motor_log_administrativo.listar(EMPRESA_A)
+        if r["tipo_evento"] == "CONSULTA_CADASTRO_EXTERNO"
+    ]
+    assert registros
+    assert "52998224725" not in registros[0]["alvo"]
+
+
+def test_armas_tem_modo_real_agora(modo_real_sh, monkeypatch):
+    """Até 2026-08-26 esta consulta levantava exceção no modo real,
+    porque se acreditava que o endpoint só aceitava o idatirador interno.
+    O `searchBy` derrubou esse bloqueio."""
+    from integracoes import shooting_house
+
+    monkeypatch.setattr(
+        shooting_house, "_chamar_api",
+        lambda caminho, params=None: [
+            {"id": 1, "type": "Pistola", "brand": "Taurus", "model": "TH380",
+             "caliber": "380 ACP", "serie": "ABA212416", "sigma": "1234"}
+        ],
+    )
+
+    armas = shooting_house.consultar_armas("52998224725")
+
+    assert armas[0]["serie"] == "ABA212416"
+
+
+def test_falha_de_rede_em_armas_nao_vira_lista_vazia(modo_real_sh, monkeypatch):
+    """Lista vazia é uma AFIRMAÇÃO: "consultei, não tem arma". Dizer isso
+    a um atirador quando a consulta nem aconteceu seria o pior erro
+    possível desta função."""
+    from integracoes import shooting_house
+
+    def _cai(caminho, params=None):
+        raise ShootingHouseIndisponivel("rede fora")
+
+    monkeypatch.setattr(shooting_house, "_chamar_api", _cai)
+
+    with pytest.raises(ShootingHouseIndisponivel):
+        shooting_house.consultar_armas("52998224725")
 
 
 def test_resumo_conta_sem_dado_e_sem_participacao(dominio):

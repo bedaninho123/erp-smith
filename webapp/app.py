@@ -15,10 +15,12 @@ escrito à mão. Os dois lugares em que esquecer doeria mais são
 empresas, de propósito -- ver a UNIQUE composta em core/db/schema.sql).
 """
 import os
+import re
 import secrets
 import sqlite3
 import subprocess
 import traceback
+from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
@@ -56,7 +58,13 @@ from domain.clube_tiro.motor_resultados import (
 )
 from core.motor_clientes import ClienteInvalido, ClienteJaExiste, criar_cliente
 from integracoes.config import shooting_house_ativo
-from integracoes.shooting_house import ShootingHouseIndisponivel, consultar_cadastro
+from integracoes.shooting_house import (
+    ShootingHouseIndisponivel,
+    consultar_armas,
+    consultar_cadastro,
+    consultar_ficha_completa,
+    consultar_habitualidade,
+)
 from integracoes.gmail import enviar_email, gmail_configurado
 from integracoes.whatsapp import status_integracao as status_whatsapp
 from motor_ia.atualizador_memoria import atualizar_memoria
@@ -1245,6 +1253,75 @@ def filiados_panorama():
         total_encontrados=len(filiados),
         total_tambem_clientes=sum(1 for f in filiados if f["cliente_id"]),
         janela_meses=motor_filiados.JANELA_MESES,
+    )
+
+
+def _consultar_ou_indisponivel(buscar):
+    """Devolve (valor, motivo_da_falha). Cada bloco da ficha falha
+    sozinho: se a consulta de armas cair, habitualidade e cadastro
+    continuam aparecendo. Uma tela que some inteira porque um pedaço
+    falhou esconde o que estava funcionando."""
+    try:
+        return buscar(), None
+    except ShootingHouseIndisponivel as e:
+        return None, str(e)
+
+
+@app.route("/api/filiados/<cpf>/ficha")
+@login_required
+@funcao_required("habitualidade")
+def filiado_ficha(cpf):
+    """Tudo que o Shooting House sabe sobre um filiado, CONSULTADO AO
+    VIVO -- não é o retrato guardado na tabela `filiado`.
+
+    É a diferença que a tela precisa deixar clara: o panorama mostra o
+    retrato (rápido, serve pra ordenar prioridade); esta ficha pergunta
+    na hora (é o que serve pra falar com a pessoa).
+
+    Nada daqui é gravado. `consultar_ficha_completa` existe separada de
+    `consultar_cadastro` exatamente por isso -- aquela alimenta o
+    formulário de cliente novo e é enxuta de propósito, esta é para
+    exibir e descartar.
+    """
+    empresa_id = empresa_atual()
+    digitos = re.sub(r"\D", "", cpf or "")
+    if len(digitos) != 11:
+        return jsonify(erro="CPF inválido."), 400
+
+    ficha, erro_ficha = _consultar_ou_indisponivel(
+        lambda: consultar_ficha_completa(digitos)
+    )
+    habitualidade, erro_hab = _consultar_ou_indisponivel(
+        lambda: consultar_habitualidade(digitos)
+    )
+    armas, erro_armas = _consultar_ou_indisponivel(lambda: consultar_armas(digitos))
+
+    # Consulta ao vivo de dado de arma e habitualidade de uma pessoa,
+    # por CPF -- deixa rastro, como todo acesso a dado sensível aqui.
+    _registrar_consulta_externa(empresa_id, digitos, encontrado=bool(ficha))
+
+    eventos = []
+    for grupo, dados in ((habitualidade or {}).get("habitualidades") or {}).items():
+        for evento in dados.get("eventos", []):
+            eventos.append({**evento, "grupo": grupo})
+    # Mais recente primeiro. Data em formato inesperado não derruba a
+    # tela: vai pro fim em vez de estourar o sort.
+    def _quando(evento):
+        try:
+            return datetime.strptime(evento.get("data_participacao") or "", "%d/%m/%Y")
+        except ValueError:
+            return datetime.min
+    eventos.sort(key=_quando, reverse=True)
+
+    return jsonify(
+        ficha=ficha,
+        armas=armas,
+        eventos=eventos,
+        total_participacoes=len(eventos),
+        # Um por bloco: a tela mostra "não foi possível consultar" só na
+        # parte que falhou, e nunca como se fosse "não tem".
+        indisponivel={"ficha": erro_ficha, "armas": erro_armas, "habitualidade": erro_hab},
+        simulado=bool((ficha or {}).get("simulado") or (habitualidade or {}).get("simulado")),
     )
 
 

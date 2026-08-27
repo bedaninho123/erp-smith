@@ -255,21 +255,28 @@ def listar_panorama(
             sql += " AND ultima_participacao <= ?"
             parametros.append(participou_ate)
 
-        busca = (busca or "").strip()
-        if busca:
+        # Cada PALAVRA vira uma condição, e todas precisam casar. Sem
+        # isso, "felipe b" procurava esse texto como um bloco só e não
+        # achava "Felipe de Moura Bedani" -- que é como nome de gente é
+        # cadastrado de verdade, com preposição no meio.
+        #
+        # Palavras somam (AND) em vez de alternarem (OR) porque cada
+        # palavra digitada é um pedaço a mais de certeza: quem escreve
+        # "felipe b" quer estreitar, não alargar.
+        for palavra in (busca or "").split():
             # Parênteses obrigatórios: sem eles o OR se espalharia por
             # cima do filtro de empresa, e a busca passaria a varrer o
             # banco inteiro (mesma armadilha já documentada em
             # webapp/app.py::clientes_lista).
             sql += " AND (nome LIKE ? OR cpf LIKE ? OR matricula LIKE ?)"
-            curinga = f"%{busca}%"
+            curinga = f"%{palavra}%"
             # O CPF é guardado só com dígitos. Sem isto, digitar
             # "123.456.789-00" -- que é como a própria tela mostra --
             # não acharia ninguém.
-            digitos = re.sub(r"\D", "", busca)
-            # Sem dígito nenhum na busca, usar o texto cru é seguro: ele
-            # não casa com uma coluna que só tem número. Trocar por "%%"
-            # aqui faria toda busca por nome devolver o clube inteiro.
+            digitos = re.sub(r"\D", "", palavra)
+            # Sem dígito nenhum na palavra, usar o texto cru é seguro:
+            # ele não casa com uma coluna que só tem número. Trocar por
+            # "%%" faria toda busca por nome devolver o clube inteiro.
             cpf_curinga = f"%{digitos}%" if digitos else curinga
             parametros += [curinga, cpf_curinga, curinga]
 

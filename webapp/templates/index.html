@@ -765,6 +765,19 @@
       </div>
     </div>
 
+    <div id="view-filiado-detalhe" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <button class="btn btn-outline-secondary btn-sm" id="voltar-filiados" type="button">
+            &larr; Voltar para Filiados
+          </button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid" id="filiado-ficha"></div>
+      </div>
+    </div>
+
     <div id="view-clientes" class="view">
       <div class="content-header">
         <div class="container-fluid">
@@ -2013,7 +2026,7 @@ async function carregarHabitualidade() {
            title="Também é cliente do despachante — abrir ficha">cliente</button>`
       : "";
     return `
-    <tr>
+    <tr class="linha-filiado cursor-pointer" data-cpf="${escapeHtml(f.cpf || '')}">
       <td>${escapeHtml(f.nome)}${inativo}${tambemCliente}</td>
       <td class="text-monospace">${f.cpf ? cpfFormatado(f.cpf) : '—'}</td>
       <td class="text-monospace">${escapeHtml(f.matricula || '—')}</td>
@@ -2037,10 +2050,113 @@ async function carregarHabitualidade() {
   // pendurar um listener por linha vazaria a cada redesenho.
   $("#habitualidade-body").querySelectorAll("[data-abrir-cliente]").forEach((botao) => {
     botao.addEventListener("click", (e) => {
+      // Sem isto o clique subiria pra linha e abriria as DUAS telas.
       e.stopPropagation();
       abrirCliente(botao.dataset.abrirCliente);
     });
   });
+
+  ligarLinhasClicaveis(
+    $("#habitualidade-body"), ".linha-filiado",
+    tr => abrirFiliado(tr.dataset.cpf),
+    tr => `Ver ficha completa deste filiado`,
+  );
+}
+
+$("#voltar-filiados").addEventListener("click", () => {
+  mostrarView("habitualidade");
+  carregarHabitualidade();
+});
+
+// A ficha do filiado é CONSULTA AO VIVO ao Shooting House -- diferente do
+// panorama, que mostra o retrato guardado. É a tela pra quando alguém
+// está falando com a pessoa.
+async function abrirFiliado(cpf) {
+  if (!cpf) return;
+  mostrarView("filiado-detalhe");
+  $("#filiado-ficha").innerHTML = `<p class="text-muted">Consultando o clube…</p>`;
+
+  const r = await fetch(`/api/filiados/${encodeURIComponent(cpf)}/ficha`);
+  const d = await r.json();
+  if (!r.ok) {
+    $("#filiado-ficha").innerHTML = `<div class="alert alert-danger">${escapeHtml(d.erro || "Não foi possível consultar.")}</div>`;
+    return;
+  }
+
+  const f = d.ficha;
+  // "Não consegui consultar" nunca pode parecer "não tem" -- é a regra
+  // que vale no projeto inteiro, e aqui cada bloco falha sozinho.
+  const aviso = (motivo) => `<div class="alert alert-warning mb-2">
+      <b>Não foi possível consultar agora.</b> Isso não quer dizer que não exista
+      — apenas que a consulta falhou. ${escapeHtml(motivo)}</div>`;
+
+  const cabecalho = d.indisponivel.ficha
+    ? aviso(d.indisponivel.ficha)
+    : !f
+      ? `<div class="alert alert-secondary">Este CPF não consta como atirador do clube.</div>`
+      : `<div class="card"><div class="card-body">
+          <p class="ficha-id">${escapeHtml(f.matricula || "sem matrícula")}</p>
+          <h3 class="ficha-titulo">${escapeHtml(f.nome)}</h3>
+          <dl class="ficha">
+            <dt>CPF</dt><dd class="mono">${cpfFormatado(f.cpf)}</dd>
+            <dt>Situação</dt><dd>${escapeHtml(f.status_filiacao || "—")}</dd>
+            <dt>Filiado desde</dt><dd class="mono">${f.filiado_desde ? dataBr(f.filiado_desde) : "—"}</dd>
+            <dt>Nascimento</dt><dd class="mono">${f.nascimento ? dataBr(f.nascimento) : "—"}</dd>
+            <dt>E-mail</dt><dd>${escapeHtml(f.email || "—")}</dd>
+            <dt>Telefone</dt><dd>${escapeHtml(f.telefone || "—")}</dd>
+            <dt>Título</dt><dd>${escapeHtml(f.titulo || "—")}</dd>
+            <dt>Profissão</dt><dd>${escapeHtml(f.profissao || "—")}</dd>
+            ${f.endereco ? `<dt>Endereço</dt><dd>${escapeHtml(
+                [f.endereco.logradouro, f.endereco.numero, f.endereco.bairro, f.endereco.cep]
+                  .filter(Boolean).join(", ") || "—")}</dd>` : ""}
+            ${f.cr ? `<dt>CR</dt><dd class="mono">${escapeHtml(f.cr.numero || "—")}</dd>` : ""}
+          </dl>
+          ${f.cr ? `<p class="text-muted mb-0" style="font-size:.85rem">
+            A situação documental vem como está no sistema do clube. O CR do atirador
+            desportivo não tem prazo fixo que expira sozinho — não trate a data como
+            vencimento sem conferir.</p>` : ""}
+        </div></div>`;
+
+  const armas = d.indisponivel.armas
+    ? aviso(d.indisponivel.armas)
+    : `<div class="card"><div class="card-body">
+        <h5>Armas registradas</h5>
+        ${(d.armas || []).length ? `<table class="table table-sm">
+          <thead><tr><th>Tipo</th><th>Marca</th><th>Modelo</th><th>Calibre</th><th>Série</th></tr></thead>
+          <tbody>${d.armas.map(a => `<tr>
+            <td>${escapeHtml(a.type || "—")}</td>
+            <td>${escapeHtml(a.brand || "—")}</td>
+            <td>${escapeHtml(a.model || "—")}</td>
+            <td>${escapeHtml(String(a.caliber ?? "—"))}</td>
+            <td class="text-monospace">${escapeHtml(a.serie || "—")}</td>
+          </tr>`).join("")}</tbody></table>`
+          : `<p class="text-muted mb-0">Nenhuma arma registrada para este atirador.</p>`}
+      </div></div>`;
+
+  const habitualidade = d.indisponivel.habitualidade
+    ? aviso(d.indisponivel.habitualidade)
+    : `<div class="card"><div class="card-body">
+        <h5>Participações — ${d.total_participacoes} registro(s)</h5>
+        ${d.eventos.length ? `<table class="table table-sm">
+          <thead><tr><th>Data</th><th>Grupo</th><th>Modalidade</th><th>Arma</th><th>Local</th></tr></thead>
+          <tbody>${d.eventos.map(e => `<tr>
+            <td class="text-monospace">${escapeHtml(e.data_participacao || "—")}${
+              e.hora_participacao ? ` <span class="text-muted">${escapeHtml(e.hora_participacao)}</span>` : ""}</td>
+            <td>${escapeHtml(e.grupo || "—")}</td>
+            <td>${escapeHtml(e.modalidade || "—")}</td>
+            <td>${escapeHtml(e.arma || "—")}</td>
+            <td>${escapeHtml(e.local || "—")}</td>
+          </tr>`).join("")}</tbody></table>`
+          : `<p class="text-muted mb-0">Nenhuma participação registrada no período que a API devolve.</p>`}
+      </div></div>`;
+
+  const simulado = d.simulado
+    ? `<div class="alert alert-warning"><b>Dados simulados.</b> A integração com o
+       Shooting House está desligada — isto não é o cadastro real de ninguém.</div>`
+    : `<p class="text-muted" style="font-size:.85rem">Consultado ao vivo no Shooting
+       House agora — não é o retrato guardado que aparece na lista.</p>`;
+
+  $("#filiado-ficha").innerHTML = simulado + cabecalho + armas + habitualidade;
 }
 
 // ---------------------------------------------------------------
