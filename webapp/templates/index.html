@@ -655,6 +655,30 @@
 
           <div class="content-header px-0">
             <div class="container-fluid px-0">
+              <h1 class="m-0">Financeiro do clube</h1>
+              <p class="text-muted mb-0" id="dash-fin-nota"></p>
+            </div>
+          </div>
+
+          <div class="row" id="dash-fin-tiles"></div>
+
+          <div class="row">
+            <div class="col-lg-7">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title" id="dash-fin-fila-titulo">Anuidade vencida ou vencendo</h3></div>
+                <div class="card-body"><div id="dash-fin-fila"></div></div>
+              </div>
+            </div>
+            <div class="col-lg-5">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Situação do CR dos filiados</h3></div>
+                <div class="card-body"><div id="dash-fin-cr"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-header px-0">
+            <div class="container-fluid px-0">
               <h1 class="m-0">Clube</h1>
               <p class="text-muted mb-0" id="dash-clube-frescor"></p>
             </div>
@@ -2272,7 +2296,79 @@ async function carregarDashboard() {
       </div>
     </div>`;
 
+  desenharFinanceiro(d);
   desenharClube(d);
+}
+
+function desenharFinanceiro(d) {
+  const f = d.financeiro;
+  if (!f) return;
+
+  $("#dash-fin-nota").textContent = f.sincronizado_em
+    ? `Situação de anuidade de ${f.ativos} filiados ativos, espelhada do Shooting House em ${dataHoraBr(f.sincronizado_em)}.`
+    : `Situação de anuidade de ${f.ativos} filiados ativos.`;
+
+  $("#dash-fin-tiles").innerHTML =
+    dashTile({
+      rotulo: "Anuidade em dia",
+      valor: f.pct_em_dia === null ? "—" : `${f.pct_em_dia}<span style="font-size:20px;color:var(--aco)">%</span>`,
+      extra: `<div class="dash-delta dash-neutro">${f.em_dia} de ${f.ativos} ativos${f.sem_dado ? ` — ${f.sem_dado} sem informação` : ""}</div>`,
+    }) +
+    dashTile({
+      rotulo: "Em atraso",
+      valor: f.em_atraso,
+      extra: `<div class="dash-delta ${f.em_atraso ? "dash-desce" : "dash-neutro"}">pelo status que o Shooting House calcula</div>`,
+    }) +
+    dashTile({
+      rotulo: `Vencem em ${f.dias_proximo} dias`,
+      valor: f.vence_em_30,
+      extra: `<div class="dash-delta dash-neutro">${f.vence_em_90} vencem dentro de ${f.dias_horizonte} dias</div>`,
+    }) +
+    dashTile({
+      rotulo: "Comanda aberta",
+      valor: f.comanda_aberta,
+      extra: `<div class="dash-delta dash-neutro">${f.pendencia_financeira} com pendência financeira geral</div>`,
+    });
+
+  // Os dois campos discordam para parte dos filiados, e a tela não
+  // esconde isso: juntar "status em dia" com "data de validade" num
+  // número só seria inventar uma regra que o fornecedor não documenta.
+  const divergem = f.vencida - f.em_atraso;
+  $("#dash-fin-fila-titulo").textContent =
+    `Anuidade vencida ou vencendo nos próximos ${f.dias_proximo} dias`;
+  $("#dash-fin-fila").innerHTML = f.vencendo_lista.length
+    ? `<table class="table table-sm mb-0">
+        <thead><tr><th>Filiado</th><th>Vale até</th><th>Status no Shooting House</th></tr></thead>
+        <tbody>${f.vencendo_lista.map(x => `
+          <tr>
+            <td>${escapeHtml(x.nome)}</td>
+            <td class="mono">${dataBr(x.anuidade_validade)}</td>
+            <td>${x.anuidade_em_dia === "Sim"
+                  ? '<span class="badge badge-success">Em dia</span>'
+                  : x.anuidade_em_dia === "Não"
+                    ? '<span class="badge badge-danger">Em atraso</span>'
+                    : '<span class="badge badge-secondary">sem informação</span>'}</td>
+          </tr>`).join("")}</tbody>
+      </table>
+      <p class="text-muted mt-3 mb-0" style="font-size:12px">
+        ${f.vencida} com a validade já passada e ${f.em_atraso} marcados em atraso pelo Shooting House.
+        ${divergem !== 0
+          ? `Os dois números <b>não são o mesmo</b> — ${Math.abs(divergem)} filiado(s) estão num estado e não no outro.
+             A regra que o fornecedor usa para marcar "em dia" não é documentada, então a tela mostra os dois
+             separados em vez de escolher um.`
+          : ""}
+        ${f.sem_validade ? ` ${f.sem_validade} ativo(s) não têm data de validade cadastrada.` : ""}
+      </p>`
+    : `<p class="text-muted mb-0">Nenhuma anuidade vencida ou vencendo nos próximos ${f.dias_proximo} dias.</p>`;
+
+  const cr = f.cr;
+  $("#dash-fin-cr").innerHTML = `
+    <div class="ficha">
+      <dt>CR vencido</dt><dd class="mono">${cr.vencido}</dd>
+      <dt>Vence em ${f.dias_horizonte} dias</dt><dd class="mono">${cr.vence_em_90}</dd>
+      <dt>Sem data no cadastro</dt><dd class="mono">${cr.sem_dado}</dd>
+    </div>
+    <p class="insight mt-3 mb-0" style="border-left-color:#396BB3">Não é financeiro, mas vem na mesma resposta da API — e é a informação que mais vira serviço para o despachante. ${cr.vencido} filiado(s) com CR vencido é ${cr.vencido} renovação(ões) esperando alguém oferecer.</p>`;
 }
 
 function desenharClube(d) {
@@ -2288,13 +2384,9 @@ function desenharClube(d) {
   $("#dash-clube-tiles").innerHTML =
     dashTile({ rotulo: "Filiados ativos", valor: c.ativos,
       extra: `<div class="dash-delta dash-neutro">${c.inativos} inativos no histórico</div>` }) +
-    dashTile({ rotulo: "Novos filiados no mês", valor: c.novos_no_mes,
-      procedencia: `<span class="proc proc-parcial">com ressalva</span>`,
-      extra: `<div class="dash-delta dash-neutro">${
-        c.carga_no_mes
-          ? `não inclui a carga inicial de ${c.carga_no_mes} pessoas`
-          : "data em que o sistema viu a pessoa, não a de filiação"
-      }</div>` }) +
+    dashTile({ rotulo: "Novos filiados no mês",
+      valor: d.novos_filiados.meses[d.novos_filiados.meses.length - 1].total,
+      extra: `<div class="dash-delta dash-neutro">pela data de filiação registrada no clube</div>` }) +
     dashTile({ rotulo: `Sem treinar há ${c.dias_sumido}+ dias`, valor: c.sumidos,
       extra: `<div class="dash-delta dash-neutro">${c.sem_participacao} nunca treinaram na janela de 12 meses</div>` }) +
     dashTile({ rotulo: "Cobertura do retrato", valor: `${pctCobertura}<span style="font-size:20px;color:var(--aco)">%</span>`,
@@ -2344,22 +2436,22 @@ function desenharClube(d) {
     : vazioHabitualidade(cob);
 
   // --- novos filiados ----------------------------------------------------
+  // Pela data REAL de filiação. A ressalva antiga ("é quando o sistema
+  // viu a pessoa") e a exclusão do dia da carga inicial deixaram de ser
+  // necessárias quando se descobriu que a resposta da API traz
+  // affiliationDate -- o clube tem filiação registrada desde 2021.
   const novos = d.novos_filiados;
   $("#dash-novos").innerHTML = barrasVerticais(
     novos.meses.map(m => ({
       rotulo: m.rotulo,
-      valores: [m.carga_inicial ? 0 : m.total],
+      valores: [m.total],
       parcial: m.em_curso,
-      titulo: m.carga_inicial
-        ? `${m.mes} — mês da carga inicial (${novos.total_da_carga} pessoas de uma vez), fora do gráfico`
-        : `${m.mes} — ${m.total} novo(s)`,
+      titulo: `${m.mes} — ${m.total} nova(s) filiação(ões)`,
     })),
     ["#0E8C7A"], 120,
-  ) + `<p class="text-muted mt-3 mb-0" style="font-size:12px">${
-    novos.dia_da_carga
-      ? `O mês da carga inicial (<span class="mono">${dataBr(novos.dia_da_carga)}</span>, ${novos.total_da_carga} pessoas) fica zerado de propósito: foi o dia em que o sistema conheceu o clube inteiro, não um mês de crescimento.`
-      : "Conta quando o sistema viu a pessoa pela primeira vez — a API não devolve data de filiação."
-  }</p>`;
+  ) + `<p class="text-muted mt-3 mb-0" style="font-size:12px">Pela data de filiação registrada no clube${
+    novos.sem_data ? ` — ${novos.sem_data} de ${novos.total} cadastros não têm essa data preenchida` : ""
+  }.</p>`;
 
   // --- penetração ---------------------------------------------------------
   const pen = d.penetracao;

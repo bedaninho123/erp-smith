@@ -91,10 +91,15 @@ def _proximo_id(con) -> str:
 def salvar_filiado(empresa_id: str, dados: dict) -> str:
     """Insere ou atualiza pelo par (empresa_id, cpf).
 
-    Atualiza só os campos de identificação -- nunca zera o retrato de
+    Atualiza identificação E situação financeira -- nunca zera o retrato de
     habitualidade. Sincronizar a lista de filiados e sincronizar a
     habitualidade são rodadas separadas, e a primeira não pode apagar o
     trabalho da segunda.
+
+    Os campos financeiros (2026-08-27) vêm na MESMA resposta da lista, e
+    por isso entram aqui: a situação de anuidade do clube inteiro se
+    atualiza numa rodada de `--somente-lista`, que são ~40 chamadas
+    paginadas, sem consultar CPF nenhum um a um.
     """
     con = conectar()
     try:
@@ -104,26 +109,46 @@ def salvar_filiado(empresa_id: str, dados: dict) -> str:
             (empresa_id, dados["cpf"]),
         ).fetchone()
 
+        # Ordem única para os dois caminhos -- sem isto, acrescentar um
+        # campo novo exige lembrar de mexer no INSERT e no UPDATE, e o dia
+        # em que alguém lembrar de só um é o dia em que a coluna para de
+        # atualizar em silêncio para quem já existe.
+        financeiros = (
+            dados.get("data_filiacao"), dados.get("tipo_filiado"),
+            dados.get("anuidade_em_dia"), dados.get("anuidade_validade"),
+            dados.get("financeiro_em_dia"), dados.get("cr_numero"),
+            dados.get("cr_validade"), dados.get("cr_em_dia"),
+            dados.get("tem_pedido_aberto"),
+        )
+        COLUNAS_FIN = (
+            "data_filiacao", "tipo_filiado", "anuidade_em_dia", "anuidade_validade",
+            "financeiro_em_dia", "cr_numero", "cr_validade", "cr_em_dia",
+            "tem_pedido_aberto",
+        )
+
         if existente:
+            atribuicoes = ", ".join(f"{c} = ?" for c in COLUNAS_FIN)
             con.execute(
                 "UPDATE filiado SET idatirador = ?, matricula = ?, nome = ?, "
-                "email = ?, status_filiacao = ?, atualizado_em = ? "
+                f"email = ?, status_filiacao = ?, {atribuicoes}, atualizado_em = ? "
                 "WHERE filiado_id = ? AND empresa_id = ?",
                 (dados.get("idatirador"), dados.get("matricula"), dados["nome"],
-                 dados.get("email"), dados.get("status_filiacao"), agora,
-                 existente["filiado_id"], empresa_id),
+                 dados.get("email"), dados.get("status_filiacao"), *financeiros,
+                 agora, existente["filiado_id"], empresa_id),
             )
             con.commit()
             return existente["filiado_id"]
 
         filiado_id = _proximo_id(con)
+        colunas = ", ".join(COLUNAS_FIN)
+        marcadores = ",".join("?" * len(COLUNAS_FIN))
         con.execute(
             "INSERT INTO filiado (filiado_id, empresa_id, idatirador, matricula, "
-            "nome, cpf, email, status_filiacao, criado_em, atualizado_em) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            f"nome, cpf, email, status_filiacao, {colunas}, criado_em, atualizado_em) "
+            f"VALUES (?,?,?,?,?,?,?,?,{marcadores},?,?)",
             (filiado_id, empresa_id, dados.get("idatirador"), dados.get("matricula"),
              dados["nome"], dados["cpf"], dados.get("email"),
-             dados.get("status_filiacao"), agora, agora),
+             dados.get("status_filiacao"), *financeiros, agora, agora),
         )
         con.commit()
         return filiado_id

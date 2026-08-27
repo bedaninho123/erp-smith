@@ -191,6 +191,29 @@ CREATE TABLE filiado (
     sincronizado_em      TEXT,                           -- ISO 8601, NULL = nunca
     sincronizacao_erro   TEXT,                           -- último motivo de falha, NULL = ok
 
+    -- ---- vínculo e situação financeira (2026-08-27) ----
+    -- Vêm todos da MESMA resposta de GET /registers/shooters/paginate,
+    -- ou seja: o clube inteiro em ~40 chamadas paginadas, não numa
+    -- consulta por CPF como a habitualidade. É essa diferença que faz o
+    -- Financeiro poder ser sincronizado várias vezes ao dia sem peso.
+    --
+    -- Mesma natureza de retrato dos campos de habitualidade acima: são
+    -- cópia com data, e `sincronizado_em` vale para eles também. NENHUMA
+    -- afirmação a filiado sobre a anuidade dele sai daqui.
+    --
+    -- 'Sim'/'Não'/NULL, e o NULL importa: é "o campo não veio", não
+    -- "está devendo". Acusar de inadimplente quem tem cadastro
+    -- incompleto seria o pior erro possível desta tela.
+    data_filiacao        TEXT,          -- ISO 8601, a data REAL de filiação
+    tipo_filiado         TEXT,          -- 'F', 'C'... como a API devolve
+    anuidade_em_dia      TEXT,          -- monthly.status
+    anuidade_validade    TEXT,          -- monthly.expirationDate (ISO)
+    financeiro_em_dia    TEXT,          -- financial.status
+    cr_numero            TEXT,
+    cr_validade          TEXT,          -- documents.cr.expirationDate (ISO)
+    cr_em_dia            TEXT,          -- documents.cr.status
+    tem_pedido_aberto    TEXT,          -- orders.status (comanda aberta)
+
     criado_em            TEXT NOT NULL,
     atualizado_em        TEXT NOT NULL,
 

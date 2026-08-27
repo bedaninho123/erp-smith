@@ -1304,7 +1304,11 @@ def dashboard():
         },
         habitualidade_dia=motor_indicadores_clube.serie_por_dia(empresa_id),
         habitualidade_mes=motor_indicadores_clube.serie_por_mes(empresa_id),
-        novos_filiados=motor_indicadores_clube.novos_filiados_por_mes(empresa_id),
+        # Pela data REAL de filiação (affiliationDate da API), não mais
+        # por "quando o sistema viu a pessoa" -- a ressalva que a tela
+        # carregava desde ontem deixou de existir.
+        novos_filiados=motor_indicadores_clube.filiacoes_por_mes(empresa_id),
+        financeiro=motor_indicadores_clube.financeiro(empresa_id),
         tarefas=motor_tarefas.contar_tarefas(empresa_id),
         # A tela precisa saber se o freio está ligado para escrever a
         # frase certa sobre autonomia da IA -- com revisão humana ligada,

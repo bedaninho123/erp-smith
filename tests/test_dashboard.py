@@ -194,7 +194,8 @@ def test_valor_em_andamento_avisa_quando_o_catalogo_esta_vazio(banco):
 # Clube: as duas armadilhas que apareceram rodando de verdade
 # --------------------------------------------------------------------
 
-def _semear_filiado(cpf: str, nome: str, datas, criado_em: str, ativo: str = "Ativo") -> None:
+def _semear_filiado(cpf: str, nome: str, datas, criado_em: str, ativo: str = "Ativo",
+                    data_filiacao: str = None) -> None:
     import json
     import sqlite3
 
@@ -204,35 +205,40 @@ def _semear_filiado(cpf: str, nome: str, datas, criado_em: str, ativo: str = "At
     con.execute(
         "INSERT INTO filiado (filiado_id, empresa_id, nome, cpf, status_filiacao, "
         "participacoes_12m, ultima_participacao, participacoes_datas, sincronizado_em, "
-        "criado_em, atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "data_filiacao, criado_em, atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (f"FIL-{cpf}", EMPRESA_A, nome, cpf, ativo,
          None if datas is None else len(datas),
          None if not datas else max(datas),
          None if datas is None else json.dumps(datas),
          None if datas is None else "2026-08-27T08:00:00Z",
-         criado_em, criado_em),
+         data_filiacao, criado_em, criado_em),
     )
     con.commit()
     con.close()
 
 
-def test_carga_inicial_nao_conta_como_novo_filiado_do_mes(banco):
-    """A importação trouxe o clube inteiro num dia. Contar esse dia diria
-    '1.525 novos filiados este mês' -- o número que mais interessa ao dono
-    virando o mais errado da tela."""
-    from domain.clube_tiro.motor_indicadores_clube import resumo as resumo_clube
+def test_filiacao_vem_da_data_real_e_nao_de_quando_o_sistema_viu(banco):
+    """Este teste substituiu um que protegia um remendo: a contagem
+    antiga era por `criado_em` (quando o sistema viu a pessoa) e precisava
+    excluir o dia da carga inicial para não marcar "1.525 novos filiados
+    este mês". Com `affiliationDate` vindo da API, o remendo deixou de
+    existir -- e o que precisa ser protegido agora é que quem NÃO tem a
+    data seja contado à parte, em vez de virar um mês fraco."""
+    from domain.clube_tiro.motor_indicadores_clube import filiacoes_por_mes
 
     hoje = date.today()
-    dia_carga = hoje.replace(day=1).isoformat()
+    dia_importacao = f"{hoje.replace(day=1).isoformat()}T09:00:00Z"
+    # Cinco importados no mesmo dia, mas filiados ao clube em 2021.
     for i in range(5):
-        _semear_filiado(f"1000000000{i}", f"Carga {i}", [], f"{dia_carga}T09:00:00Z")
-    _semear_filiado("20000000001", "Entrou depois", [], f"{hoje.isoformat()}T09:00:00Z")
+        _semear_filiado(f"1000000000{i}", f"Antigo {i}", [], dia_importacao,
+                        data_filiacao="2021-05-10")
+    _semear_filiado("20000000001", "Filiou agora", [], dia_importacao,
+                    data_filiacao=hoje.replace(day=1).isoformat())
 
-    saida = resumo_clube(EMPRESA_A, hoje=hoje)
+    saida = filiacoes_por_mes(EMPRESA_A, hoje=hoje)
 
-    assert saida["novos_no_mes"] == 1, "a carga inicial entrou na contagem do mês"
-    assert saida["carga_no_mes"] == 5
-    assert saida["dia_da_carga"] == dia_carga
+    assert saida["meses"][-1]["total"] == 1, "a importação virou filiação do mês"
+    assert saida["sem_data"] == 0
 
 
 def test_filiado_nunca_consultado_nao_vira_zero_participacao(banco):

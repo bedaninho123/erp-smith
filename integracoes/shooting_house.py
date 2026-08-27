@@ -592,6 +592,50 @@ _FILIADOS_TESTE = [
 ]
 
 
+def _dentro(bloco: dict, *caminho):
+    """Desce por um caminho de chaves, devolvendo None em qualquer buraco.
+
+    A resposta da API traz `monthly`, `financial`, `documents` e `orders`
+    como blocos aninhados que às vezes vêm vazios ou ausentes. Sem isto,
+    um bloco faltando viraria KeyError no meio de uma sincronização de 40
+    páginas -- e derrubaria a rodada inteira por causa de um cadastro
+    incompleto.
+    """
+    atual = bloco
+    for chave in caminho:
+        if not isinstance(atual, dict):
+            return None
+        atual = atual.get(chave)
+    return atual
+
+
+def _sim_nao(valor) -> Optional[str]:
+    """bool da API -> "Sim"/"Não" do projeto. **None continua None.**
+
+    A distinção é a de sempre: `False` é "consultei, está em atraso";
+    `None` é "o campo não veio". Transformar ausência em "Não" faria o
+    painel acusar de inadimplente quem só tem cadastro incompleto.
+    """
+    if valor is None:
+        return None
+    return "Sim" if bool(valor) else "Não"
+
+
+def _data_iso(valor) -> Optional[str]:
+    """Data da API -> 'AAAA-MM-DD'. Aceita os dois formatos que aparecem
+    na mesma resposta (ISO e dd/mm/aaaa) e devolve None no que não
+    entender -- data ilegível vira ausência, nunca data errada."""
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    if len(texto) >= 10 and texto[4] == "-" and texto[7] == "-":
+        return texto[:10]
+    if len(texto) >= 10 and texto[2] == "/" and texto[5] == "/":
+        dia, mes, ano = texto[:10].split("/")
+        return f"{ano}-{mes}-{dia}"
+    return None
+
+
 def listar_filiados(somente_ativos: bool = True) -> list[dict]:
     """Lista os filiados do clube (GET /registers/shooters/paginate).
 
@@ -683,6 +727,27 @@ def _listar_por_status(ativos: bool) -> list[dict]:
                 "status_filiacao": {"A": "Ativo", "I": "Inativo"}.get(
                     (item.get("status") or "").upper()
                 ),
+                # --- vínculo e situação financeira (2026-08-27) ---
+                # Estes campos vêm DE GRAÇA nesta mesma resposta. Descobrir
+                # isso mudou o desenho inteiro do Financeiro: a situação de
+                # anuidade do clube todo sai em ~40 chamadas paginadas, e
+                # não numa consulta por CPF como a habitualidade.
+                #
+                # `monthly` é a anuidade/mensalidade: status é "em dia sim
+                # ou não" e expirationDate é ATÉ QUANDO vale. `financial` é
+                # a situação financeira geral (inclui comanda em aberto).
+                # Os dois são bool na origem -- convertidos aqui para o
+                # "Sim"/"Não" que o resto do projeto usa, com None quando o
+                # campo não veio: ausente não é "está devendo".
+                "data_filiacao": _data_iso(item.get("affiliationDate")),
+                "tipo_filiado": item.get("type"),
+                "anuidade_em_dia": _sim_nao(_dentro(item, "monthly", "status")),
+                "anuidade_validade": _data_iso(_dentro(item, "monthly", "expirationDate")),
+                "financeiro_em_dia": _sim_nao(_dentro(item, "financial", "status")),
+                "cr_numero": _dentro(item, "documents", "cr", "number"),
+                "cr_validade": _data_iso(_dentro(item, "documents", "cr", "expirationDate")),
+                "cr_em_dia": _sim_nao(_dentro(item, "documents", "cr", "status")),
+                "tem_pedido_aberto": _sim_nao(_dentro(item, "orders", "status")),
             })
 
         if not tem_proxima or not lote:

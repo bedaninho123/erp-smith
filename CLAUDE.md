@@ -103,6 +103,9 @@ domain\clube_tiro\remover_tarefa_habitualidade.bat
 # Banco de Domínio já em uso, sem as datas de participação: idempotente
 # (é o que faz o gráfico de habitualidade por dia do Dashboard existir)
 .venv\Scripts\python.exe -m domain.clube_tiro.db.migrar_datas_habitualidade
+# Situação de anuidade, CR e data real de filiação: idempotente. Depois de
+# rodar, preencher com `sincronizar_habitualidade --somente-lista` (~84s)
+.venv\Scripts\python.exe -m domain.clube_tiro.db.migrar_financeiro_filiado
 
 .venv\Scripts\python.exe -m domain.clube_tiro.db.criar_banco --recriar
 .venv\Scripts\python.exe -m domain.clube_tiro.db.popular_conhecimento
@@ -426,6 +429,64 @@ Três coisas que a tela é obrigada a mostrar junto:
   **fora** de "novos filiados no mês" — senão o número que mais interessa
   ao dono seria o mais errado da tela. Também pego rodando: o quadro
   marcava 6 novos filiados sendo que os 6 eram a importação.
+
+### Financeiro do clube: vem de graça na lista, e o que a API não dá
+
+(2026-08-27.) `GET /registers/shooters/paginate` — a MESMA chamada que já
+espelhava a lista de filiados — devolve muito mais do que o código lia.
+O mapeamento pegava nome, CPF, e-mail, matrícula e status, e jogava fora:
+
+- `affiliationDate` — a **data real de filiação** (o clube tem registro
+  desde 2021). Isso apagou de vez a ressalva do gráfico de novos
+  filiados, que até então contava por `criado_em` ("quando NÓS vimos a
+  pessoa") e precisava excluir o dia da carga inicial.
+- `monthly: {status, expirationDate}` — anuidade em dia e **até quando
+  vale**.
+- `financial: {status}` — situação financeira geral.
+- `documents.cr: {status, number, expirationDate}` — validade do CR.
+- `orders: {status, ids}` — comanda aberta.
+
+**O ganho não é só de campo, é de arquitetura.** A situação financeira do
+clube inteiro sai em ~40 chamadas paginadas (`--somente-lista`, ~84s),
+contra as ~978 consultas uma-a-uma da habitualidade (~18 min). Por isso o
+Financeiro pode ser sincronizado várias vezes ao dia e a habitualidade
+não. Banco em uso: `domain.clube_tiro.db.migrar_financeiro_filiado`.
+
+**Dois campos que NÃO são a mesma coisa, e a tela mostra os dois.**
+`anuidade_em_dia` é o status que o Shooting House calcula;
+`anuidade_validade` é a data. Eles discordam para parte dos filiados
+reais (179 marcados em atraso, 269 com validade vencida). Sem saber a
+regra do fornecedor, juntar num número só seria inventar uma
+interpretação e apresentá-la como fato — a tela diz quantos estão em cada
+estado e que os dois não coincidem.
+
+`'Sim'`/`'Não'`/`NULL`, e **o NULL importa**: é "o campo não veio", não
+"está devendo". Acusar de inadimplente quem tem cadastro incompleto seria
+o pior erro possível desta tela, porque é dela que sai cobrança.
+
+**O que a API NÃO entrega, e por quê** (levantado contra a API real, não
+lido na documentação):
+
+- **Histórico de pagamento, valor pago e forma de pagamento.**
+  `GET /store/orders` (a única rota que devolveria pedidos em massa por
+  período) responde **HTTP 500 em qualquer combinação de parâmetros**,
+  inclusive com o `status` que a especificação marca como obrigatório. É
+  erro do lado deles. Enquanto não for corrigido, o painel mostra
+  **situação** (em dia, vencendo, vencida) e não **dinheiro**.
+  `/financial/payments-type` dá o catálogo de formas de pagamento (Boleto,
+  Pix, Cartão, Crediário…), mas não como cada pessoa pagou.
+- **Anuidade é produto de loja.** Não existe endpoint de anuidade: no
+  catálogo (`/store/product`) ela aparece como "Anuidade - Até 6x" e
+  "anuidade - de 7x a 10x". Ou seja, pagamento de anuidade é um **pedido**
+  — e é justamente pedido que o endpoint em massa não devolve.
+- **Etapas de campeonato.** `GET /championship/stage` devolve **lista
+  vazia** para esta credencial, com e sem parâmetros. Sem id de etapa não
+  há como chamar `GET /championship/rankingCategoryResults/{stage}/{category}`,
+  que é onde estão os resultados por prova e categoria. O catálogo de
+  modalidades (`/championship/modalities/groups`, 13 grupos) funciona.
+
+As três viraram pergunta para o suporte do Shooting House — ver
+[[project-decisoes-abertas-erp-smith]].
 
 ### webapp/ é o painel administrativo real, não uma ferramenta descartável
 

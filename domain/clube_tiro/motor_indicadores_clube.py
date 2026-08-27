@@ -153,86 +153,19 @@ def serie_por_mes(empresa_id: str, meses: int = 12, hoje: Optional[date] = None)
     }
 
 
-def novos_filiados_por_mes(empresa_id: str, meses: int = 12,
-                           hoje: Optional[date] = None) -> dict:
-    """Quantos filiados apareceram pela primeira vez em cada mês.
-
-    RESSALVA que precisa viajar junto com o número, e por isso vem no
-    retorno: `criado_em` é quando NÓS vimos a pessoa pela primeira vez,
-    não quando ela se filiou ao clube -- a API não devolve data de
-    filiação. A carga inicial trouxe o clube inteiro num dia só, e esse
-    dia aparece como `dia_da_carga`: é um pico de importação, não de
-    crescimento. A partir dele o número é honesto, com defasagem de
-    algumas horas (o tempo até a próxima rodada do rodízio).
-    """
-    hoje = hoje or _hoje()
-    con = conectar()
-    try:
-        # O dia com mais primeiras aparições de toda a base é a carga
-        # inicial. Detectado, não chutado: assim continua certo mesmo que
-        # a base seja recriada em outra data.
-        carga = con.execute(
-            "SELECT SUBSTR(criado_em, 1, 10) AS dia, COUNT(*) AS total FROM filiado "
-            "WHERE empresa_id = ? GROUP BY dia ORDER BY total DESC LIMIT 1",
-            (empresa_id,),
-        ).fetchone()
-
-        linhas = con.execute(
-            "SELECT SUBSTR(criado_em, 1, 7) AS mes, COUNT(*) AS total FROM filiado "
-            "WHERE empresa_id = ? GROUP BY mes",
-            (empresa_id,),
-        ).fetchall()
-    finally:
-        con.close()
-
-    por_mes = {l["mes"]: l["total"] for l in linhas}
-
-    referencia = hoje.replace(day=1)
-    chaves = []
-    for _ in range(meses):
-        chaves.append(referencia.strftime("%Y-%m"))
-        referencia = (referencia - timedelta(days=1)).replace(day=1)
-    chaves.reverse()
-
-    dia_carga = carga["dia"] if carga else None
-    mes_carga = dia_carga[:7] if dia_carga else None
-    mes_atual = hoje.strftime("%Y-%m")
-
-    return {
-        "dia_da_carga": dia_carga,
-        "total_da_carga": carga["total"] if carga else 0,
-        "meses": [
-            {
-                "mes": chave,
-                "rotulo": _ROTULO_MES[int(chave[5:7]) - 1],
-                "total": por_mes.get(chave, 0),
-                "em_curso": chave == mes_atual,
-                # O mês da carga inicial não é crescimento do clube, é o
-                # dia em que o sistema conheceu todo mundo de uma vez.
-                "carga_inicial": chave == mes_carga,
-            }
-            for chave in chaves
-        ],
-    }
-
-
-def _dia_da_carga(con, empresa_id: str) -> Optional[str]:
-    """O dia em que mais gente apareceu pela primeira vez -- a carga
-    inicial. Detectado, não chutado, para continuar certo se a base for
-    recriada em outra data."""
-    linha = con.execute(
-        "SELECT SUBSTR(criado_em, 1, 10) AS dia, COUNT(*) AS total FROM filiado "
-        "WHERE empresa_id = ? GROUP BY dia ORDER BY total DESC LIMIT 1",
-        (empresa_id,),
-    ).fetchone()
-    return linha["dia"] if linha else None
+# `novos_filiados_por_mes()` (contagem por `criado_em`) viveu aqui por um
+# dia. Foi removida em 2026-08-27, quando se descobriu que a resposta da
+# API traz `affiliationDate`: quem responde "quantos filiados novos por
+# mês" agora é `filiacoes_por_mes()`, no fim deste arquivo, pela data
+# REAL de filiação. Manter as duas seria manter duas respostas diferentes
+# para a mesma pergunta -- e a pior delas ainda precisava de um remendo
+# para excluir o dia da carga inicial.
 
 
 def resumo(empresa_id: str, hoje: Optional[date] = None) -> dict:
     """Os números de cabeçalho do bloco do clube."""
     hoje = hoje or _hoje()
     limite_sumido = (hoje - timedelta(days=DIAS_SUMIDO)).isoformat()
-    inicio_mes = hoje.replace(day=1).isoformat()
 
     con = conectar()
     try:
@@ -263,21 +196,9 @@ def resumo(empresa_id: str, hoje: Optional[date] = None) -> dict:
             ).fetchall()
         ]
 
-        # A carga inicial trouxe o clube inteiro num dia só. Se esse dia
-        # cai no mês corrente, contá-lo aqui diria "1.525 novos filiados
-        # este mês" -- e o número que mais interessa ao dono viraria o
-        # mais errado da tela. Fica de fora, e a tela diz que ficou.
-        dia_carga = _dia_da_carga(con, empresa_id)
-        novos_no_mes = con.execute(
-            "SELECT COUNT(*) FROM filiado WHERE empresa_id = ? "
-            "AND SUBSTR(criado_em, 1, 10) >= ? AND SUBSTR(criado_em, 1, 10) != ?",
-            (empresa_id, inicio_mes, dia_carga or ""),
-        ).fetchone()[0]
-        carga_no_mes = con.execute(
-            "SELECT COUNT(*) FROM filiado WHERE empresa_id = ? "
-            "AND SUBSTR(criado_em, 1, 10) = ? AND SUBSTR(criado_em, 1, 10) >= ?",
-            (empresa_id, dia_carga or "", inicio_mes),
-        ).fetchone()[0]
+        # Filiação do mês NÃO é contada aqui: é `filiacoes_por_mes()`, pela
+        # data real de filiação. Este resumo já teve um `novos_no_mes` por
+        # `criado_em` e ele saiu junto com a descoberta do affiliationDate.
     finally:
         con.close()
 
@@ -289,11 +210,6 @@ def resumo(empresa_id: str, hoje: Optional[date] = None) -> dict:
         "sumidos": linha["sumidos"] or 0,
         "sumidos_lista": sumidos_lista,
         "dias_sumido": DIAS_SUMIDO,
-        "novos_no_mes": novos_no_mes,
-        # Quantos do mês vieram da carga inicial e por isso NÃO entraram
-        # na contagem acima -- a tela precisa poder explicar o buraco.
-        "carga_no_mes": carga_no_mes,
-        "dia_da_carga": dia_carga,
         "retrato_mais_antigo": linha["retrato_mais_antigo"],
         "retrato_mais_recente": linha["retrato_mais_recente"],
     }
@@ -312,3 +228,152 @@ if __name__ == "__main__":
         meses.append(referencia.strftime("%Y-%m"))
         referencia = (referencia - timedelta(days=1)).replace(day=1)
     print(f"Meses do gráfico: {' '.join(reversed(meses))}")
+
+
+# ---------------------------------------------------------------------
+# Financeiro do clube
+#
+# Tudo aqui sai da MESMA resposta que espelha a lista de filiados
+# (GET /registers/shooters/paginate), sincronizada com `--somente-lista`:
+# ~40 chamadas paginadas para o clube inteiro, contra as ~978 consultas
+# uma-a-uma da habitualidade. É por isso que o Financeiro pode ser
+# atualizado várias vezes ao dia e a habitualidade não.
+#
+# O QUE NÃO EXISTE AQUI, e não é esquecimento: valor pago, forma de
+# pagamento e histórico de faturamento. O endpoint que devolveria isso em
+# massa (GET /store/orders) responde HTTP 500 no ambiente do clube, em
+# qualquer combinação de parâmetros. Enquanto o fornecedor não corrigir,
+# o painel mostra SITUAÇÃO (em dia, vencendo, vencida) e não DINHEIRO.
+# ---------------------------------------------------------------------
+
+# Janelas do alerta de vencimento de anuidade. 30 dias é tempo de cobrar
+# sem atropelar; 90 é o horizonte que deixa o mês seguinte previsível.
+DIAS_VENCE_PROXIMO = 30
+DIAS_VENCE_HORIZONTE = 90
+
+
+def financeiro(empresa_id: str, hoje: Optional[date] = None) -> dict:
+    """Situação de anuidade e de pendência do clube.
+
+    **Dois campos que NÃO significam a mesma coisa**, e o painel mostra os
+    dois separados de propósito: `anuidade_em_dia` é o status que o
+    Shooting House calcula, e `anuidade_validade` é a data até quando ela
+    vale. Eles discordam para uma parte dos filiados -- há quem esteja
+    marcado em dia com a validade já passada. Sem saber a regra que o
+    fornecedor usa, juntar os dois num número só seria inventar uma
+    interpretação e apresentá-la como fato.
+    """
+    hoje = hoje or _hoje()
+    proximo = (hoje + timedelta(days=DIAS_VENCE_PROXIMO)).isoformat()
+    horizonte = (hoje + timedelta(days=DIAS_VENCE_HORIZONTE)).isoformat()
+
+    con = conectar()
+    try:
+        linha = con.execute(
+            "SELECT COUNT(*) AS ativos, "
+            "SUM(anuidade_em_dia = 'Sim') AS em_dia, "
+            "SUM(anuidade_em_dia = 'Não') AS em_atraso, "
+            "SUM(anuidade_em_dia IS NULL) AS sem_dado, "
+            "SUM(financeiro_em_dia = 'Não') AS pendencia_financeira, "
+            "SUM(tem_pedido_aberto = 'Sim') AS comanda_aberta, "
+            "SUM(anuidade_validade IS NOT NULL AND anuidade_validade < ?) AS vencida, "
+            "SUM(anuidade_validade IS NOT NULL AND anuidade_validade >= ? "
+            "    AND anuidade_validade < ?) AS vence_em_30, "
+            "SUM(anuidade_validade IS NOT NULL AND anuidade_validade >= ? "
+            "    AND anuidade_validade < ?) AS vence_em_90, "
+            "SUM(anuidade_validade IS NULL) AS sem_validade, "
+            "MAX(sincronizado_em) AS sincronizado_em "
+            "FROM filiado WHERE empresa_id = ? AND status_filiacao = 'Ativo'",
+            (hoje.isoformat(), hoje.isoformat(), proximo,
+             hoje.isoformat(), horizonte, empresa_id),
+        ).fetchone()
+
+        # Quem vence primeiro aparece primeiro: é a fila de cobrança.
+        vencendo = [
+            dict(l) for l in con.execute(
+                "SELECT nome, cpf, anuidade_validade, anuidade_em_dia FROM filiado "
+                "WHERE empresa_id = ? AND status_filiacao = 'Ativo' "
+                "AND anuidade_validade IS NOT NULL AND anuidade_validade < ? "
+                "ORDER BY anuidade_validade LIMIT 8",
+                (empresa_id, proximo),
+            ).fetchall()
+        ]
+
+        # Validade do CR -- não é financeiro, mas é a mesma resposta da
+        # API e é a informação que mais gera serviço para o despachante.
+        cr = con.execute(
+            "SELECT SUM(cr_validade IS NOT NULL AND cr_validade < ?) AS vencido, "
+            "SUM(cr_validade IS NOT NULL AND cr_validade >= ? AND cr_validade < ?) AS vence_em_90, "
+            "SUM(cr_validade IS NULL) AS sem_dado "
+            "FROM filiado WHERE empresa_id = ? AND status_filiacao = 'Ativo'",
+            (hoje.isoformat(), hoje.isoformat(), horizonte, empresa_id),
+        ).fetchone()
+    finally:
+        con.close()
+
+    saida = {chave: (linha[chave] or 0) for chave in linha.keys() if chave != "sincronizado_em"}
+    saida["sincronizado_em"] = linha["sincronizado_em"]
+    saida["dias_proximo"] = DIAS_VENCE_PROXIMO
+    saida["dias_horizonte"] = DIAS_VENCE_HORIZONTE
+    saida["vencendo_lista"] = vencendo
+    saida["cr"] = {chave: (cr[chave] or 0) for chave in cr.keys()}
+    # Percentual só existe se houver base -- sem filiado ativo, "0% em
+    # dia" seria uma afirmação sobre um clube que não tem ninguém.
+    saida["pct_em_dia"] = (
+        round(saida["em_dia"] * 100 / saida["ativos"]) if saida["ativos"] else None
+    )
+    return saida
+
+
+def filiacoes_por_mes(empresa_id: str, meses: int = 12,
+                      hoje: Optional[date] = None) -> dict:
+    """Novos filiados por mês pela data REAL de filiação.
+
+    Substitui a contagem por `criado_em` (quando o sistema viu a pessoa),
+    que precisava excluir o dia da carga inicial e ainda assim só valia
+    daquele dia em diante. `affiliationDate` vem na resposta da API e dá o
+    histórico verdadeiro -- o clube tem filiação registrada desde 2021.
+
+    `sem_data` conta quem não tem a data preenchida: sem esse número, um
+    mês baixo poderia ser cadastro incompleto em vez de mês fraco.
+    """
+    hoje = hoje or _hoje()
+    con = conectar()
+    try:
+        linhas = con.execute(
+            "SELECT SUBSTR(data_filiacao, 1, 7) AS mes, COUNT(*) AS total FROM filiado "
+            "WHERE empresa_id = ? AND data_filiacao IS NOT NULL GROUP BY mes",
+            (empresa_id,),
+        ).fetchall()
+        sem_data = con.execute(
+            "SELECT COUNT(*) FROM filiado WHERE empresa_id = ? AND data_filiacao IS NULL",
+            (empresa_id,),
+        ).fetchone()[0]
+        total = con.execute(
+            "SELECT COUNT(*) FROM filiado WHERE empresa_id = ?", (empresa_id,)
+        ).fetchone()[0]
+    finally:
+        con.close()
+
+    por_mes = {l["mes"]: l["total"] for l in linhas}
+    referencia = hoje.replace(day=1)
+    chaves = []
+    for _ in range(meses):
+        chaves.append(referencia.strftime("%Y-%m"))
+        referencia = (referencia - timedelta(days=1)).replace(day=1)
+    chaves.reverse()
+
+    mes_atual = hoje.strftime("%Y-%m")
+    return {
+        "sem_data": sem_data,
+        "total": total,
+        "meses": [
+            {
+                "mes": chave,
+                "rotulo": _ROTULO_MES[int(chave[5:7]) - 1],
+                "total": por_mes.get(chave, 0),
+                "em_curso": chave == mes_atual,
+            }
+            for chave in chaves
+        ],
+    }
