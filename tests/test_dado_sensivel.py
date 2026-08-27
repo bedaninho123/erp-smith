@@ -266,11 +266,17 @@ def test_classificacao_da_ia_nao_tem_mais_voto_no_portao(banco, monkeypatch):
 # --------------------------------------------------------------------
 
 def test_consultas_sem_implementacao_real_recusam_em_vez_de_simular(modo_real):
-    """Com o modo real ligado, estas três ainda não sabem consultar de
+    """Com o modo real ligado, estas duas ainda não sabem consultar de
     verdade. Devolver o simulado aqui faria o sistema responder a um
-    atirador de verdade que ele não tem CR, nem arma, nem guia de
-    tráfego -- porque o CPF dele não está na tabela de teste."""
-    for consulta in (consultar_cr, consultar_armas, consultar_documentos_vencimento):
+    atirador de verdade que ele não tem CR nem guia de tráfego -- porque
+    o CPF dele não está na tabela de teste.
+
+    `consultar_armas` estava nesta lista e SAIU em 2026-08-26, quando
+    ganhou modo real via `searchBy`. A garantia dela virou outra, e está
+    em test_habitualidade_clube.py: falha de rede vira exceção, nunca
+    lista vazia -- porque lista vazia ali é a afirmação "consultei, não
+    tem arma"."""
+    for consulta in (consultar_cr, consultar_documentos_vencimento):
         with pytest.raises(ShootingHouseIndisponivel):
             consulta(CPF_DE_TESTE)
 

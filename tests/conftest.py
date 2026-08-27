@@ -38,6 +38,21 @@ os.environ["ERP_CORE_DB"] = str(_PASTA_TEMP / "erp_smith_teste.db")
 os.environ.setdefault("PORTAL_SECRET_KEY", "chave-de-teste-portal")
 os.environ.setdefault("WEBAPP_SECRET_KEY", "chave-de-teste-webapp")
 
+# --- A integração externa fica DESLIGADA na suíte, sempre ---
+# Também antes dos imports: integracoes/config.py lê estas variáveis uma
+# vez, na importação, e `load_dotenv()` não sobrescreve o que já está no
+# ambiente -- então definir aqui vence o .env.
+#
+# Isto não é zelo teórico: no dia em que SHOOTING_HOUSE_ATIVO=Sim entrou
+# no .env de verdade (2026-08-26), cinco testes quebraram de uma vez,
+# porque a suíte passou a enxergar o modo real. O estrago maior seria o
+# que NÃO quebrou: um teste chamando a API do fornecedor com a credencial
+# de produção, consultando CPF de gente real como efeito colateral de
+# rodar pytest.
+os.environ["SHOOTING_HOUSE_ATIVO"] = ""
+os.environ["SHOOTING_HOUSE_USER"] = ""
+os.environ["SHOOTING_HOUSE_PASSWORD"] = ""
+
 import pytest  # noqa: E402
 
 from core.conexao import CORE_DB  # noqa: E402
@@ -133,6 +148,31 @@ def _gmail_desligado_nos_testes(monkeypatch):
     from integracoes import gmail
 
     monkeypatch.setattr(gmail, "TOKEN_PATH", Path("nao-existe-nos-testes.json"))
+
+
+@pytest.fixture(autouse=True)
+def _shooting_house_nunca_sai_pela_rede(monkeypatch):
+    """Nenhum teste chama a API do Shooting House de verdade, nunca.
+
+    As variáveis já são zeradas antes dos imports (topo deste arquivo),
+    o que basta em condições normais. Isto é o segundo cadeado, pelo
+    mesmo motivo do fixture do Gmail: a única coisa separando a suíte de
+    consultar o CPF de uma pessoa real na API de produção seria alguém
+    lembrar. Um teste que tente sair pela rede falha aqui, alto, em vez
+    de bater no fornecedor em silêncio.
+
+    Teste que precisa exercitar o caminho real substitui `_chamar_api` ou
+    `requests.get` por conta própria -- monkeypatch do teste vence este.
+    """
+    from integracoes import shooting_house
+
+    def _nao_sai_pela_rede(*args, **kwargs):
+        raise AssertionError(
+            "Um teste tentou chamar a API do Shooting House de verdade. "
+            "Substitua _chamar_api ou requests.get no próprio teste."
+        )
+
+    monkeypatch.setattr(shooting_house.requests, "get", _nao_sai_pela_rede)
 
 
 @pytest.fixture(autouse=True)

@@ -1417,10 +1417,12 @@ async function abrirCaso(casoId) {
   mostrarView("caso-detalhe");
   $("#caso-cabecalho").innerHTML = `<p class="text-muted">Carregando…</p>`;
 
-  const r = await fetch(`/api/casos/${casoId}`);
-  const d = await r.json();
-  if (!r.ok) {
-    $("#caso-cabecalho").innerHTML = `<div class="alert alert-danger">${escapeHtml(d.erro)}</div>`;
+  const resposta = await buscarJson(`/api/casos/${casoId}`);
+  const d = resposta.dados;
+  if (!resposta.ok) {
+    $("#caso-cabecalho").innerHTML = resposta.falhou
+      ? AVISO_FALHA_DE_REDE
+      : `<div class="alert alert-danger">${escapeHtml(d.erro)}</div>`;
     return;
   }
 
@@ -2076,8 +2078,26 @@ async function abrirFiliado(cpf) {
   mostrarView("filiado-detalhe");
   $("#filiado-ficha").innerHTML = `<p class="text-muted">Consultando o clube…</p>`;
 
-  const r = await fetch(`/api/filiados/${encodeURIComponent(cpf)}/ficha`);
-  const d = await r.json();
+  // Toda falha precisa APAGAR o "Consultando…". Uma tela presa em
+  // carregando para sempre é pior que uma mensagem de erro: ela não diz
+  // o que houve e ainda parece que o sistema travou.
+  //
+  // O caso que apareceu na prática: o painel estava rodando com código
+  // anterior a esta rota, respondeu "não encontrado" em HTML, o
+  // `r.json()` estourou e ninguém tratou. Sessão expirada faz o mesmo,
+  // porque o Flask devolve a página de login em vez de JSON.
+  let r, d;
+  try {
+    r = await fetch(`/api/filiados/${encodeURIComponent(cpf)}/ficha`);
+    d = await r.json();
+  } catch (e) {
+    $("#filiado-ficha").innerHTML = `<div class="alert alert-danger">
+      <b>Não foi possível consultar.</b> O painel não respondeu como esperado.
+      Isso costuma ser uma destas duas coisas: o servidor foi reiniciado ou parado,
+      ou a sua sessão expirou. Recarregue a página (Ctrl+F5) e entre de novo.
+    </div>`;
+    return;
+  }
   if (!r.ok) {
     $("#filiado-ficha").innerHTML = `<div class="alert alert-danger">${escapeHtml(d.erro || "Não foi possível consultar.")}</div>`;
     return;
@@ -2561,10 +2581,12 @@ async function abrirCliente(clienteId) {
   mostrarView("cliente-detalhe");
   $("#cliente-cabecalho").innerHTML = `<p class="text-muted">Carregando…</p>`;
 
-  const r = await fetch(`/api/clientes/${clienteId}`);
-  const d = await r.json();
-  if (!r.ok) {
-    $("#cliente-cabecalho").innerHTML = `<div class="alert alert-danger">${escapeHtml(d.erro)}</div>`;
+  const resposta = await buscarJson(`/api/clientes/${clienteId}`);
+  const d = resposta.dados;
+  if (!resposta.ok) {
+    $("#cliente-cabecalho").innerHTML = resposta.falhou
+      ? AVISO_FALHA_DE_REDE
+      : `<div class="alert alert-danger">${escapeHtml(d.erro)}</div>`;
     return;
   }
 
@@ -3051,6 +3073,29 @@ $("#usr-form-novo").addEventListener("submit", async (e) => {
   $("#usr-form-novo").reset();
   carregarUsuarios();
 });
+
+// Toda falha de rede precisa APAGAR o "Carregando…" e dizer o que houve.
+// Uma tela presa em carregando é pior que uma mensagem de erro: não
+// explica nada e ainda parece que o sistema travou.
+//
+// As duas causas reais: o servidor foi reiniciado ou parado (o painel
+// responde HTML de "não encontrado", e o r.json() estoura), ou a sessão
+// expirou (o Flask devolve a página de login em vez de JSON).
+const AVISO_FALHA_DE_REDE = `<div class="alert alert-danger">
+  <b>Não foi possível carregar.</b> O painel não respondeu como esperado.
+  Costuma ser uma destas duas coisas: o servidor foi reiniciado ou parado,
+  ou a sua sessão expirou. Recarregue a página (Ctrl+F5) e entre de novo.
+</div>`;
+
+// Busca JSON sem deixar a tela pendurada. Devolve {ok, dados, falhou}.
+async function buscarJson(url) {
+  try {
+    const r = await fetch(url);
+    return { ok: r.ok, dados: await r.json(), falhou: false };
+  } catch (e) {
+    return { ok: false, dados: {}, falhou: true };
+  }
+}
 
 function escapeHtml(s) {
   const d = document.createElement("div");
@@ -3660,10 +3705,12 @@ async function abrirConversa(conversaId) {
   mostrarView("conversa-detalhe");
   $("#conversa-conteudo").innerHTML = `<p class="text-muted">Carregando…</p>`;
 
-  const r = await fetch(`/api/conversas/${conversaId}`);
-  const c = await r.json();
-  if (!r.ok) {
-    $("#conversa-conteudo").innerHTML = `<div class="alert alert-danger">${escapeHtml(c.erro || "Falha ao carregar.")}</div>`;
+  const resposta = await buscarJson(`/api/conversas/${conversaId}`);
+  const c = resposta.dados;
+  if (!resposta.ok) {
+    $("#conversa-conteudo").innerHTML = resposta.falhou
+      ? AVISO_FALHA_DE_REDE
+      : `<div class="alert alert-danger">${escapeHtml(c.erro || "Falha ao carregar.")}</div>`;
     return;
   }
 
