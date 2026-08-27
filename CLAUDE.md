@@ -456,6 +456,20 @@ que contrariam o que este arquivo dizia antes:
   `_separar_data_e_hora()` separa em `data_participacao` + `hora_participacao`,
   porque `portal/app.py` ordena com `strptime(..., "%d/%m/%Y")` e quebraria
   a tela inteira na primeira consulta real.
+- **O webhook deles NÃO serve para habitualidade** — confirmado pelo
+  suporte em 2026-08-26: *"o Webhook é utilizado para realizar
+  sincronizações, principalmente relacionadas ao módulo Financeiro"*. Bate
+  com a especificação (os campos são de inscrição em campeonato e
+  pagamento). Ou seja: **não existe aviso automático quando um atirador
+  lança habitualidade no tablet**, e a consulta periódica de
+  `sincronizar_habitualidade.py` é o único caminho, não uma escolha.
+- **O Shooting House registra acesso pela leitora Control iD**
+  (confirmado pelo suporte em 2026-08-26: entrada e depois saída,
+  automaticamente). Mas **a API de Parceiros não expõe leitura disso** —
+  só `POST /registers/entity/access` e `/visit`, que gravam; não há GET
+  nenhum de histórico de acesso. Então o sistema deles sabe quem entrou e
+  o nosso não tem como perguntar. Pendente de confirmação com eles se
+  existe algum endpoint fora da especificação pública.
 - **A credencial ESCREVE**, não só lê: cadastra filiado, **registra evento
   de habitualidade**, registra visita, grava biometria, adiciona crédito,
   paga pedido; e `/registers/shooters/paginate` lista o clube inteiro. O

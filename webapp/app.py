@@ -1588,4 +1588,12 @@ if __name__ == "__main__":
     # Custo de deixar desligado: editar o codigo exige reiniciar o
     # processo na mao (o template .html continua recarregando sozinho,
     # via TEMPLATES_AUTO_RELOAD la no topo do arquivo).
-    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)
+    # A porta continua sendo 5000 por padrão -- é o que está no CLAUDE.md
+    # e o que a pessoa espera digitar no navegador. A variável PORT existe
+    # só para conseguir subir uma segunda instância quando a 5000 já está
+    # ocupada (o painel de verdade rodando, por exemplo), em vez de ter
+    # que derrubar a que está no ar.
+    app.run(
+        host="127.0.0.1", port=int(os.getenv("PORT", "5000")),
+        debug=False, use_reloader=False,
+    )
