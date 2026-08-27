@@ -466,6 +466,107 @@ def test_rota_do_panorama_aceita_busca(painel, dominio):
     assert dados["resumo"]["total"] == 2
 
 
+# --------------------------------------------------------------------
+# A ponte entre as duas populações (cliente do despachante x filiado)
+# --------------------------------------------------------------------
+
+def test_obter_por_cpf_encontra_o_filiado(dominio):
+    motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_A)
+
+    achado = motor_filiados.obter_por_cpf(EMPRESA_A, "529.982.247-25")
+
+    assert achado["nome"] == FILIADO_A["nome"]
+
+
+def test_obter_por_cpf_devolve_none_para_quem_nao_e_filiado(dominio):
+    """Resposta normal, não erro: cliente do despachante que nunca passou
+    pelo clube é caso corriqueiro (transferência de arma, por exemplo)."""
+    assert motor_filiados.obter_por_cpf(EMPRESA_A, "11144477735") is None
+    assert motor_filiados.obter_por_cpf(EMPRESA_A, "abc") is None
+    assert motor_filiados.obter_por_cpf(EMPRESA_A, None) is None
+
+
+def test_obter_por_cpf_nao_atravessa_a_empresa(dominio):
+    motor_filiados.salvar_filiado(EMPRESA_B, FILIADO_A)
+
+    assert motor_filiados.obter_por_cpf(EMPRESA_A, FILIADO_A["cpf"]) is None
+
+
+def test_ficha_do_cliente_mostra_o_lado_do_clube(painel, dominio):
+    """A mesma pessoa nas duas populações: a ficha do despachante passa a
+    mostrar o que o clube sabe dela, sem obrigar a copiar o CPF e
+    procurar na outra tela."""
+    from core.motor_clientes import criar_cliente
+
+    cliente = criar_cliente(EMPRESA_A, nome="Pessoa Dos Dois", cpf="52998224725")
+    filiado_id = motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_A)
+    motor_filiados.registrar_habitualidade(EMPRESA_A, filiado_id, 9, "2026-08-01")
+
+    dados = painel.get(f"/api/clientes/{cliente['cliente_id']}").get_json()
+
+    assert dados["filiado"]["participacoes_12m"] == 9
+    assert dados["filiado"]["matricula"] == FILIADO_A["matricula"]
+
+
+def test_ficha_de_quem_nao_e_filiado_traz_filiado_nulo(painel, dominio):
+    from core.motor_clientes import criar_cliente
+
+    cliente = criar_cliente(EMPRESA_A, nome="So Despachante", cpf="11144477735")
+
+    assert painel.get(f"/api/clientes/{cliente['cliente_id']}").get_json()["filiado"] is None
+
+
+def test_rota_distingue_situacao_ausente_de_situacao_vazia(painel, dominio):
+    """Três estados, não dois. O parâmetro AUSENTE significa "use o
+    padrão (ativos)"; presente e VAZIO significa "todos, de propósito".
+
+    Confundir os dois foi um bug de verdade: a opção "Todos" da tela
+    devolvia só os ativos, sem erro nenhum. Os testes do motor passavam
+    -- era a rota que colapsava os dois casos."""
+    motor_filiados.salvar_filiado(EMPRESA_A, dict(FILIADO_A, nome="Atual"))
+    motor_filiados.salvar_filiado(
+        EMPRESA_A, dict(FILIADO_B, nome="Saiu", status_filiacao="Inativo")
+    )
+
+    ausente = painel.get("/api/filiados/panorama").get_json()
+    vazia = painel.get("/api/filiados/panorama?situacao=").get_json()
+    inativos = painel.get("/api/filiados/panorama?situacao=Inativo").get_json()
+
+    assert [f["nome"] for f in ausente["filiados"]] == ["Atual"]
+    assert sorted(f["nome"] for f in vazia["filiados"]) == ["Atual", "Saiu"]
+    assert [f["nome"] for f in inativos["filiados"]] == ["Saiu"]
+
+
+def test_panorama_marca_quem_tambem_e_cliente(painel, dominio):
+    from core.motor_clientes import criar_cliente
+
+    cliente = criar_cliente(EMPRESA_A, nome="Pessoa Dos Dois", cpf="52998224725")
+    motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_A)   # mesmo CPF
+    motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_B)   # só filiado
+
+    dados = painel.get("/api/filiados/panorama").get_json()
+
+    por_cpf = {f["cpf"]: f for f in dados["filiados"]}
+    assert por_cpf["52998224725"]["cliente_id"] == cliente["cliente_id"]
+    assert por_cpf["11144477735"]["cliente_id"] is None
+    assert dados["total_tambem_clientes"] == 1
+
+
+def test_marcacao_de_cliente_nao_atravessa_a_empresa(painel, dominio):
+    """O cruzamento é feito em código, não por FK -- são bancos
+    diferentes. Se o filtro de empresa escapasse de um dos dois lados, um
+    filiado desta empresa apareceria marcado como cliente da outra."""
+    from core.motor_clientes import criar_cliente
+
+    criar_cliente(EMPRESA_B, nome="Cliente Da Outra", cpf="52998224725")
+    motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_A)
+
+    dados = painel.get("/api/filiados/panorama").get_json()
+
+    assert dados["filiados"][0]["cliente_id"] is None
+    assert dados["total_tambem_clientes"] == 0
+
+
 def test_resumo_conta_sem_dado_e_sem_participacao(dominio):
     sem_dado = motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_A)  # noqa: F841
     zerado = motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_B)

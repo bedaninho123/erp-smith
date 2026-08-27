@@ -51,7 +51,15 @@ AGORA = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 # de cadastro novo poder ser percorrido inteiro. Usar o mesmo aqui faria
 # a demonstração cair sempre em "já existe um cliente com este CPF".
 CLIENTES_FICTICIOS = [
-    ("CLI-000001", "Joana Demonstração", "39053344705", "joana@exemplo.local", "(14) 99999-0001", "Marília"),
+    # Helena tem o MESMO CPF de uma filiada ativa (ver _FILIADOS_TESTE em
+    # integracoes/shooting_house.py): é ela que faz a ligação entre as
+    # duas populações aparecer na demonstração -- some na lista de
+    # Filiados com a etiqueta "cliente", e a ficha dela mostra o bloco
+    # "no clube". Sem alguém nos dois lados, a funcionalidade existe mas
+    # não dá pra ver.
+    ("CLI-000001", "Helena Costa", "10000000006", "helena@exemplo.local", "(14) 99999-0001", "Marília"),
+    # Ricardo é cliente do despachante e NUNCA passou pelo clube -- o
+    # caso corriqueiro de quem só faz transferência de arma.
     ("CLI-000002", "Ricardo Exemplo", "11144477735", "ricardo@exemplo.local", "(14) 99999-0002", "Marília"),
 ]
 

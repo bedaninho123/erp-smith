@@ -927,10 +927,21 @@ def cliente_detalhe(cliente_id):
         doc["tem_arquivo"] = bool(caminho) and Path(caminho).is_file()
         lista_documentos.append(doc)
 
+    # A outra metade da pessoa: se este CPF também é filiado do clube, a
+    # ficha mostra o que o clube sabe dele. Sem isto, o atendente teria
+    # que sair da ficha e procurar o mesmo CPF na tela de Filiados.
+    #
+    # Vem do RETRATO sincronizado, não de consulta ao vivo -- por isso a
+    # tela mostra `sincronizado_em` junto. Pergunta de cliente sobre a
+    # própria habitualidade continua sendo respondida ao vivo, como o
+    # Portal já faz.
+    filiado = motor_filiados.obter_por_cpf(empresa_id, cliente["cpf"])
+
     return jsonify(
         cliente=dict(cliente),
         casos=[dict(r) for r in casos],
         documentos=lista_documentos,
+        filiado=filiado,
     )
 
 
@@ -1118,6 +1129,31 @@ def clientes_buscar_cpf(cpf):
     return jsonify(cliente_id=cliente["cliente_id"], nome=cliente["nome"])
 
 
+def _clientes_por_cpf(empresa_id: str) -> dict:
+    """{cpf: cliente_id} dos clientes do despachante desta empresa.
+
+    Uma consulta só, e não uma por linha: a lista de filiados tem mais de
+    mil pessoas, e o despachante atende um subconjunto pequeno -- trazer o
+    lado pequeno inteiro e cruzar em Python é mais barato que 1500
+    consultas, e evita um IN com mais parâmetros do que o SQLite aceita.
+
+    O cruzamento é feito aqui, no código, porque `core.cliente` e
+    `dominio.filiado` vivem em bancos diferentes e o SQLite não aplica FK
+    entre bancos anexados -- a integridade cross-domínio sempre foi
+    responsabilidade do código neste projeto."""
+    con = conectar(empresa_id)
+    try:
+        return {
+            l["cpf"]: l["cliente_id"]
+            for l in con.execute(
+                "SELECT cliente_id, cpf FROM cliente WHERE empresa_id = ? AND cpf IS NOT NULL",
+                (empresa_id,),
+            )
+        }
+    finally:
+        con.close()
+
+
 def _registrar_consulta_externa(empresa_id: str, cpf: str, encontrado: bool) -> None:
     """Rastro de quem consultou o cadastro de qual CPF no Shooting House.
 
@@ -1167,13 +1203,22 @@ def filiados_panorama():
     de cliente continua sendo respondida por consulta ao vivo.
     """
     empresa_id = empresa_atual()
-    # "situacao" vazia = todas. `todos=1` continua funcionando pra não
-    # quebrar link antigo que alguém tenha guardado.
-    situacao = request.args.get("situacao") or None
-    somente_ativos = request.args.get("todos") != "1"
+    # Três estados, não dois, e confundi-los custou um bug: o parâmetro
+    # AUSENTE significa "não me disseram, use o padrão (ativos)"; presente
+    # e VAZIO significa "todos, de propósito"; presente com valor filtra
+    # por ele. `x or None` colapsava os dois primeiros, e a opção "Todos"
+    # da tela devolvia só os ativos, calada.
+    situacao = request.args.get("situacao")
+    if situacao is None:
+        # `todos=1` continua funcionando pra não quebrar link antigo.
+        somente_ativos = request.args.get("todos") != "1"
+    else:
+        somente_ativos = False
+        situacao = situacao or None
+
     filiados = motor_filiados.listar_panorama(
         empresa_id,
-        somente_ativos=somente_ativos if situacao is None else False,
+        somente_ativos=somente_ativos,
         busca=request.args.get("busca"),
         situacao=situacao,
         faixa=request.args.get("faixa"),
@@ -1181,6 +1226,14 @@ def filiados_panorama():
         participou_ate=request.args.get("participou_ate"),
         ordenar_por=request.args.get("ordenar_por"),
     )
+    # Quem também é cliente do despachante ganha o cliente_id, e a tela
+    # vira link pra ficha. As duas populações são separadas de propósito,
+    # mas quando são a mesma pessoa o sistema tem que mostrar tudo que
+    # sabe dela -- e a ponte é o CPF.
+    clientes = _clientes_por_cpf(empresa_id)
+    for filiado in filiados:
+        filiado["cliente_id"] = clientes.get(filiado["cpf"])
+
     return jsonify(
         # O resumo é do CLUBE inteiro, de propósito -- ele não acompanha
         # a busca. São dois números com perguntas diferentes: "como está
@@ -1190,6 +1243,7 @@ def filiados_panorama():
         resumo=motor_filiados.resumo_do_clube(empresa_id),
         filiados=filiados,
         total_encontrados=len(filiados),
+        total_tambem_clientes=sum(1 for f in filiados if f["cliente_id"]),
         janela_meses=motor_filiados.JANELA_MESES,
     )
 

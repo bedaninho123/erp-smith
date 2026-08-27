@@ -280,6 +280,45 @@ def listar_panorama(
         con.close()
 
 
+def obter_por_cpf(empresa_id: str, cpf: Optional[str]) -> Optional[dict]:
+    """O filiado com este CPF, ou None se a pessoa nunca passou pelo clube.
+
+    É a ponte entre as duas populações: `core.cliente` (quem o despachante
+    atende) e `dominio.filiado` (quem passou pelo clube). Não há FK ligando
+    os dois -- são bancos diferentes -- então a ligação é feita aqui, pelo
+    CPF, que é a única chave que os dois lados têm em comum.
+
+    None é resposta normal, não erro: cliente do despachante que nunca foi
+    filiado do clube é caso corriqueiro (transferência de arma, por
+    exemplo)."""
+    digitos = re.sub(r"\D", "", cpf or "")
+    if len(digitos) != 11:
+        return None
+    con = conectar()
+    try:
+        linha = con.execute(
+            "SELECT * FROM filiado WHERE empresa_id = ? AND cpf = ?",
+            (empresa_id, digitos),
+        ).fetchone()
+        return dict(linha) if linha else None
+    finally:
+        con.close()
+
+
+def cpfs_de_filiados(empresa_id: str) -> set:
+    """Só os CPFs, para marcar em lote quem é filiado sem uma consulta por
+    linha. Usado ao montar a lista de clientes do despachante."""
+    con = conectar()
+    try:
+        return {
+            l[0] for l in con.execute(
+                "SELECT cpf FROM filiado WHERE empresa_id = ?", (empresa_id,)
+            )
+        }
+    finally:
+        con.close()
+
+
 def resumo_do_clube(empresa_id: str) -> dict:
     """Números de cabeçalho da tela. `sincronizado_em` mais antigo entra
     de propósito: é ele que diz o quanto o panorama pode estar velho."""

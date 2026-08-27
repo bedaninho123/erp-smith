@@ -403,7 +403,7 @@
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="clientes">
               <i class="nav-icon fas fa-users" aria-hidden="true"></i>
-              <p>Clientes</p>
+              <p>Clientes Despachante</p>
             </a>
           </li>
           {% endif %}
@@ -434,7 +434,7 @@
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="habitualidade">
               <i class="nav-icon fas fa-bullseye" aria-hidden="true"></i>
-              <p>Habitualidade</p>
+              <p>Filiados</p>
             </a>
           </li>
           {% endif %}
@@ -674,8 +674,8 @@
     <div id="view-habitualidade" class="view">
       <div class="content-header">
         <div class="container-fluid">
-          <h1 class="m-0">Habitualidade</h1>
-          <p class="text-muted mb-0">Panorama do clube: quem está atrasado e há quanto tempo.</p>
+          <h1 class="m-0">Filiados</h1>
+          <p class="text-muted mb-0">Todo mundo que passou pelo clube, com o panorama de habitualidade.</p>
         </div>
       </div>
       <div class="content">
@@ -768,8 +768,8 @@
     <div id="view-clientes" class="view">
       <div class="content-header">
         <div class="container-fluid">
-          <h1 class="m-0">Clientes</h1>
-          <p class="text-muted mb-0">Busque e veja o cadastro completo de cada cliente.</p>
+          <h1 class="m-0">Clientes Despachante</h1>
+          <p class="text-muted mb-0">Quem o despachante atende. Cadastro, casos e documentos de cada um.</p>
         </div>
       </div>
       <div class="content">
@@ -1986,9 +1986,12 @@ async function carregarHabitualidade() {
     $("#habitualidade-de").value ||
     $("#habitualidade-ate").value
   );
-  $("#habitualidade-contagem").textContent = filtrando
-    ? `${d.total_encontrados} filiado(s) com os filtros atuais.`
+  const tambem = d.total_tambem_clientes
+    ? ` ${d.total_tambem_clientes} também é/são cliente(s) do despachante.`
     : "";
+  $("#habitualidade-contagem").textContent = (filtrando
+    ? `${d.total_encontrados} filiado(s) com os filtros atuais.`
+    : `${d.total_encontrados} filiado(s).`) + tambem;
 
   $("#habitualidade-body").innerHTML = linhas.length ? linhas.map(f => {
     // Nunca sincronizado é diferente de zero participações: um é "não
@@ -2002,9 +2005,16 @@ async function carregarHabitualidade() {
     const inativo = f.status_filiacao && f.status_filiacao !== "Ativo"
       ? ` <span class="badge badge-secondary">${escapeHtml(f.status_filiacao)}</span>`
       : "";
+    // A mesma pessoa nas duas populações: aqui ela vira atalho pra ficha
+    // do despachante, em vez de obrigar a copiar o CPF e procurar na
+    // outra tela.
+    const tambemCliente = f.cliente_id
+      ? ` <button class="badge badge-info border-0" data-abrir-cliente="${f.cliente_id}"
+           title="Também é cliente do despachante — abrir ficha">cliente</button>`
+      : "";
     return `
     <tr>
-      <td>${escapeHtml(f.nome)}${inativo}</td>
+      <td>${escapeHtml(f.nome)}${inativo}${tambemCliente}</td>
       <td class="text-monospace">${f.cpf ? cpfFormatado(f.cpf) : '—'}</td>
       <td class="text-monospace">${escapeHtml(f.matricula || '—')}</td>
       <td class="text-right">${participacoes}</td>
@@ -2022,6 +2032,15 @@ async function carregarHabitualidade() {
       : `Nenhum filiado sincronizado. Rode:
          <code>python -m domain.clube_tiro.sincronizar_habitualidade</code>`
   }</td></tr>`;
+
+  // Delegação num lugar só: a tabela é redesenhada a cada filtro, e
+  // pendurar um listener por linha vazaria a cada redesenho.
+  $("#habitualidade-body").querySelectorAll("[data-abrir-cliente]").forEach((botao) => {
+    botao.addEventListener("click", (e) => {
+      e.stopPropagation();
+      abrirCliente(botao.dataset.abrirCliente);
+    });
+  });
 }
 
 // ---------------------------------------------------------------
@@ -2391,6 +2410,37 @@ $("#busca-cliente-lista").addEventListener("input", () => {
   buscaClienteTimeout = setTimeout(carregarClientesLista, 300);
 });
 
+// O lado "clube" da mesma pessoa, dentro da ficha do despachante.
+// `null` = este CPF nunca passou pelo clube, o que é normal: quem só usa
+// transferência de arma nunca foi filiado.
+function blocoFiliado(f) {
+  if (!f) {
+    return `<p class="text-muted mt-3 mb-0">
+      Este CPF não consta como filiado do clube.</p>`;
+  }
+  // "Nunca consultado" precisa ser distinguível de "consultei e deu
+  // zero" -- é a mesma regra da tela de Filiados, e aqui vale ainda
+  // mais, porque daqui alguém fala com o cliente.
+  const semDado = f.participacoes_12m === null || f.participacoes_12m === undefined;
+  const participacoes = semDado
+    ? `<span class="text-muted">ainda não consultado</span>`
+    : `<span class="${f.participacoes_12m === 0 ? 'text-danger' : ''}">${f.participacoes_12m}</span>`;
+  return `
+    <hr>
+    <p class="ficha-id">NO CLUBE</p>
+    <dl class="ficha">
+      <dt>Matrícula</dt><dd class="mono">${escapeHtml(f.matricula || '—')}</dd>
+      <dt>Situação</dt><dd>${escapeHtml(f.status_filiacao || '—')}</dd>
+      <dt>Participações (12 meses)</dt><dd>${participacoes}</dd>
+      <dt>Última participação</dt><dd class="mono">${f.ultima_participacao ? dataBr(f.ultima_participacao) : '—'}</dd>
+      <dt>Retrato de</dt><dd class="mono">${f.sincronizado_em ? dataHoraBr(f.sincronizado_em) : '—'}</dd>
+    </dl>
+    <p class="text-muted mb-0" style="font-size:.85rem">
+      Estes números são um retrato sincronizado, não consulta ao vivo.
+      Para responder ao cliente, consulte na hora.
+    </p>`;
+}
+
 async function abrirCliente(clienteId) {
   mostrarView("cliente-detalhe");
   $("#cliente-cabecalho").innerHTML = `<p class="text-muted">Carregando…</p>`;
@@ -2418,6 +2468,7 @@ async function abrirCliente(clienteId) {
       ${c.ultima_interacao ? `<dt>Última interação</dt><dd class="mono">${dataHoraBr(c.ultima_interacao)}</dd>` : ''}
       ${c.observacoes ? `<dt>Observações</dt><dd>${escapeHtml(c.observacoes)}</dd>` : ''}
     </dl>
+    ${blocoFiliado(d.filiado)}
   `;
 
   $("#cliente-casos-body").innerHTML = d.casos.length ? d.casos.map(caso => `
