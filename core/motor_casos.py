@@ -15,6 +15,17 @@ STATUS_VALIDOS = {
     "Aguardando terceiro", "Suspenso", "Encerrado", "Cancelado",
 }
 
+# Mesmas quatro de core/motor_tarefas.py, de propósito: prioridade de
+# caso e prioridade de tarefa aparecem lado a lado na mesma tela, e duas
+# escalas diferentes ("Média" num lugar, "Normal" no outro) fariam a
+# pessoa traduzir de cabeça. Tupla, não set, para a ordem valer na tela.
+PRIORIDADES_VALIDAS = ("Baixa", "Normal", "Alta", "Urgente")
+
+# Por onde o caso chegou. Inclui os que a IA nunca vai usar -- Presencial
+# e Telefone -- porque o caso aberto à mão costuma ser exatamente esse:
+# o cliente ligou ou apareceu na porta.
+CANAIS_ORIGEM = ("Email", "WhatsApp", "Telefone", "Presencial", "Portal")
+
 
 def _agora_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -66,8 +77,24 @@ def criar_caso(
     empresa_id: str, cliente_id: str, titulo: str, categoria: str,
     tipo_caso: str = "Solicitação", origem: str = "Atendimento",
     canal_origem: str = "Email", criado_por: str = "Motor IA",
-    descricao: Optional[str] = None,
+    descricao: Optional[str] = None, prioridade: str = "Normal",
+    responsavel_id: Optional[str] = None,
 ) -> str:
+    """Abre um caso. Chamado pelo orquestrador quando chega mensagem, e
+    pelo painel quando alguém abre à mão (cliente ligou, apareceu na
+    porta) -- o mesmo caminho para os dois, para não existirem duas
+    formas de um caso nascer com regras diferentes."""
+    titulo = (titulo or "").strip()
+    categoria = (categoria or "").strip()
+    if not titulo:
+        raise ValueError("Informe o título do caso.")
+    if not categoria:
+        raise ValueError("Informe a categoria do caso.")
+    if prioridade not in PRIORIDADES_VALIDAS:
+        raise ValueError(
+            f"Prioridade inválida: {prioridade}. Use uma de {list(PRIORIDADES_VALIDAS)}."
+        )
+
     con = conectar(empresa_id)
     try:
         # O cliente precisa ser desta empresa -- sem esta checagem, um
@@ -80,17 +107,27 @@ def criar_caso(
         if not dono:
             raise ValueError(f"Cliente não encontrado nesta empresa: {cliente_id}")
 
+        # Funcionário de outra empresa nunca pode nascer responsável --
+        # mesma checagem de atualizar_responsavel, pelo mesmo motivo.
+        if responsavel_id:
+            existe = con.execute(
+                "SELECT 1 FROM usuario WHERE usuario_id = ? AND empresa_id = ? AND ativo = 'Sim'",
+                (responsavel_id, empresa_id),
+            ).fetchone()
+            if not existe:
+                raise ValueError(f"Usuário não encontrado ou inativo: {responsavel_id}")
+
         novo_id = _proximo_id(con, "caso", "caso_id", "CAS")
         agora = _agora_iso()
         con.execute(
             "INSERT INTO caso (caso_id, empresa_id, cliente_id, titulo, descricao, "
             "categoria, tipo_caso, origem, canal_origem, status, fase, prioridade, "
-            "criado_em, atualizado_em, criado_por, alterado_por, versao, ativo) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "responsavel_id, criado_em, atualizado_em, criado_por, alterado_por, "
+            "versao, ativo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 novo_id, empresa_id, cliente_id, titulo, descricao, categoria,
-                tipo_caso, origem, canal_origem, "Aberto", "Triagem", "Normal",
-                agora, agora, criado_por, criado_por, 1, "Sim",
+                tipo_caso, origem, canal_origem, "Aberto", "Triagem", prioridade,
+                responsavel_id, agora, agora, criado_por, criado_por, 1, "Sim",
             ),
         )
         _registrar_historico(

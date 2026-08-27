@@ -44,7 +44,10 @@ from core.conexao import conectar
 from core.configuracoes import atualizar_configuracao, obter_configuracoes
 from core.limitador_tentativas import excedeu_limite
 from core import motor_indicadores
-from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
+from core.motor_casos import (
+    CANAIS_ORIGEM, PRIORIDADES_VALIDAS, STATUS_VALIDOS, atualizar_descricao,
+    atualizar_responsavel, atualizar_status, criar_caso,
+)
 from core.motor_notificacoes import destinatario_para_notificar
 from core.motor_processos import atualizar_processo, criar_processo
 from core.motor_usuarios import (
@@ -533,6 +536,87 @@ def casos():
     return jsonify(
         casos=casos, status_disponiveis=status_disponiveis,
         categorias_disponiveis=categorias_disponiveis,
+    )
+
+
+@app.route("/api/casos", methods=["POST"])
+@login_required
+@funcao_required("casos")
+def caso_criar():
+    """Abre um caso à mão -- cliente ligou, apareceu na porta, mandou
+    mensagem por fora. Até aqui todo caso nascia da IA ou da migração, e
+    não havia como o despachante abrir um.
+
+    Usa o MESMO `criar_caso` do orquestrador: duas formas de um caso
+    nascer, com regras diferentes, seria a primeira divergência a
+    aparecer no histórico.
+    """
+    corpo = request.get_json(force=True)
+    cliente_id = (corpo.get("cliente_id") or "").strip()
+    if not cliente_id:
+        return jsonify(erro="Selecione o cliente."), 400
+
+    canal = (corpo.get("canal_origem") or "Email").strip()
+    if canal not in CANAIS_ORIGEM:
+        return jsonify(erro=f"Canal inválido: {canal}."), 400
+
+    try:
+        novo_id = criar_caso(
+            empresa_atual(),
+            cliente_id,
+            titulo=corpo.get("titulo"),
+            categoria=corpo.get("categoria"),
+            descricao=(corpo.get("descricao") or "").strip() or None,
+            prioridade=(corpo.get("prioridade") or "Normal").strip(),
+            canal_origem=canal,
+            responsavel_id=(corpo.get("responsavel_id") or "").strip() or None,
+            origem="Painel",
+            criado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True, caso_id=novo_id)
+
+
+@app.route("/api/casos/novo")
+@login_required
+@funcao_required("casos")
+def caso_novo_opcoes():
+    """O que o formulário de novo caso precisa para desenhar.
+
+    As categorias saem do catálogo de SERVIÇOS da empresa, e não de uma
+    lista fixa: é o mesmo vocabulário que o checklist e os processos já
+    usam. Uma lista à parte aqui divergiria do catálogo na primeira vez
+    que alguém cadastrasse um serviço novo.
+    """
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
+    clientes = [
+        dict(r) for r in con.execute(
+            "SELECT cliente_id, nome, cpf FROM cliente WHERE empresa_id = ? "
+            "AND status = 'Ativo' ORDER BY nome COLLATE NOCASE", (empresa_id,),
+        ).fetchall()
+    ]
+    categorias = [
+        r[0] for r in con.execute(
+            "SELECT DISTINCT categoria FROM servico WHERE empresa_id = ? AND ativo = 'Sim' "
+            "ORDER BY categoria", (empresa_id,),
+        ).fetchall()
+    ]
+    usuarios = [
+        dict(r) for r in con.execute(
+            "SELECT usuario_id, nome FROM usuario WHERE empresa_id = ? AND ativo = 'Sim' "
+            "ORDER BY nome", (empresa_id,),
+        ).fetchall()
+    ]
+    con.close()
+
+    return jsonify(
+        clientes=clientes,
+        categorias=categorias,
+        usuarios=usuarios,
+        prioridades=list(PRIORIDADES_VALIDAS),
+        canais=list(CANAIS_ORIGEM),
     )
 
 

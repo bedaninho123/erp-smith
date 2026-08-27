@@ -805,6 +805,51 @@
               </table>
             </div>
           </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Abrir caso</h3></div>
+            <div class="card-body">
+              <p class="text-muted">Para quando o cliente liga, aparece na porta ou fala por fora do sistema. Caso que chega por e-mail ou WhatsApp o assistente abre sozinho.</p>
+              <div class="row">
+                <div class="col-md-5">
+                  <label for="novo-caso-cliente">Cliente</label>
+                  <select id="novo-caso-cliente" class="form-control"></select>
+                </div>
+                <div class="col-md-7">
+                  <label for="novo-caso-titulo">Título</label>
+                  <input id="novo-caso-titulo" type="text" class="form-control"
+                         placeholder="Ex.: Renovação de CR — venceu em janeiro">
+                </div>
+              </div>
+              <div class="row mt-3">
+                <div class="col-md-3">
+                  <label for="novo-caso-categoria">Categoria</label>
+                  <input id="novo-caso-categoria" type="text" class="form-control"
+                         list="novo-caso-categorias" placeholder="Ex.: Regularização documental">
+                  <datalist id="novo-caso-categorias"></datalist>
+                </div>
+                <div class="col-md-3">
+                  <label for="novo-caso-canal">Como chegou</label>
+                  <select id="novo-caso-canal" class="form-control"></select>
+                </div>
+                <div class="col-md-3">
+                  <label for="novo-caso-prioridade">Prioridade</label>
+                  <select id="novo-caso-prioridade" class="form-control"></select>
+                </div>
+                <div class="col-md-3">
+                  <label for="novo-caso-responsavel">Responsável</label>
+                  <select id="novo-caso-responsavel" class="form-control"><option value="">não atribuído</option></select>
+                </div>
+              </div>
+              <div class="form-group mt-3">
+                <label for="novo-caso-descricao">Descrição</label>
+                <textarea id="novo-caso-descricao" class="form-control"
+                          placeholder="O que o cliente precisa neste caso"></textarea>
+              </div>
+              <button class="btn btn-primary" id="salvar-novo-caso">Abrir caso</button>
+              <span class="text-muted ml-2" id="salvar-novo-caso-status" aria-live="polite"></span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1896,6 +1941,7 @@ function carregarView(viewName) {
   }
   if (viewName === "modalidades") carregarModalidades();
   if (viewName === "habitualidade") carregarHabitualidade();
+  if (viewName === "casos" && !opcoesNovoCasoCarregadas) carregarOpcoesNovoCaso();
   if (viewName === "tarefas") carregarTarefas();
   if (viewName === "auditoria") carregarAuditoria();
 }
@@ -1961,6 +2007,98 @@ async function carregarCasos() {
     tr => `Abrir caso ${tr.dataset.casoId}`,
   );
 }
+
+// --------------------------------------------------------------------
+// Abrir caso à mão
+//
+// Até 2026-08-27 todo caso nascia da IA (mensagem chegou) ou da
+// migração. Faltava o caminho mais óbvio de um despachante: o cliente
+// ligou. A rota usa o MESMO criar_caso do orquestrador -- duas formas de
+// um caso nascer, com regras diferentes, seria a primeira divergência a
+// aparecer no histórico.
+// --------------------------------------------------------------------
+let opcoesNovoCasoCarregadas = false;
+
+async function carregarOpcoesNovoCaso() {
+  const resposta = await buscarJson("/api/casos/novo");
+  if (!resposta.ok) return;
+  const d = resposta.dados;
+
+  $("#novo-caso-cliente").innerHTML = d.clientes.length
+    ? d.clientes.map(c => `<option value="${c.cliente_id}">${escapeHtml(c.nome)}</option>`).join("")
+    : `<option value="">nenhum cliente cadastrado</option>`;
+  $("#novo-caso-categorias").innerHTML = d.categorias
+    .map(c => `<option value="${escapeHtml(c)}">`).join("");
+  $("#novo-caso-canal").innerHTML = d.canais
+    .map(c => `<option value="${c}">${c === "Email" ? "E-mail" : c}</option>`).join("");
+  $("#novo-caso-prioridade").innerHTML = d.prioridades
+    .map(p => `<option value="${p}"${p === "Normal" ? " selected" : ""}>${p}</option>`).join("");
+  $("#novo-caso-responsavel").innerHTML = `<option value="">não atribuído</option>`
+    + d.usuarios.map(u => `<option value="${u.usuario_id}">${escapeHtml(u.nome)}</option>`).join("");
+
+  // Presencial é o padrão do caso aberto à mão: quem digita nesta tela
+  // quase sempre está com o cliente na frente ou no telefone.
+  $("#novo-caso-canal").value = "Presencial";
+  opcoesNovoCasoCarregadas = true;
+}
+
+async function salvarNovoCaso() {
+  const botao = $("#salvar-novo-caso");
+  const statusEl = $("#salvar-novo-caso-status");
+  const clienteId = $("#novo-caso-cliente").value;
+
+  if (!clienteId) {
+    statusEl.textContent = "Cadastre um cliente antes de abrir um caso.";
+    return;
+  }
+  const titulo = $("#novo-caso-titulo").value.trim();
+  if (!titulo) {
+    statusEl.textContent = "Informe o título do caso.";
+    $("#novo-caso-titulo").focus();
+    return;
+  }
+  const categoria = $("#novo-caso-categoria").value.trim();
+  if (!categoria) {
+    statusEl.textContent = "Informe a categoria.";
+    $("#novo-caso-categoria").focus();
+    return;
+  }
+
+  botao.disabled = true;
+  statusEl.textContent = "Abrindo…";
+  try {
+    const r = await fetch("/api/casos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cliente_id: clienteId,
+        titulo,
+        categoria,
+        descricao: $("#novo-caso-descricao").value.trim(),
+        prioridade: $("#novo-caso-prioridade").value,
+        canal_origem: $("#novo-caso-canal").value,
+        responsavel_id: $("#novo-caso-responsavel").value,
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      statusEl.textContent = "";
+      alert("Erro ao abrir o caso: " + (d.erro || "falha desconhecida"));
+      return;
+    }
+    $("#novo-caso-titulo").value = "";
+    $("#novo-caso-categoria").value = "";
+    $("#novo-caso-descricao").value = "";
+    await carregarCasos();
+    // Abre a ficha do caso recém-criado: quem acabou de abrir um caso
+    // quase sempre vai lançar processo ou tarefa nele em seguida.
+    abrirCaso(d.caso_id);
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+$("#salvar-novo-caso").addEventListener("click", salvarNovoCaso);
 
 $("#filtro-status").addEventListener("change", carregarCasos);
 $("#filtro-categoria").addEventListener("change", carregarCasos);
@@ -5644,7 +5782,7 @@ if (podeVer("status_projeto")) carregarStatus();
 if (podeVer("clientes")) carregarClientes();
 if (podeVer("aprovacoes_pendentes")) carregarPendentes();
 if (podeVer("documentos_aprovar")) carregarDocumentosPendentes();
-if (podeVer("casos")) carregarCasos();
+if (podeVer("casos")) { carregarCasos(); carregarOpcoesNovoCaso(); }
 if (podeVer("atendimentos")) carregarConversas();
 // Carrega já na abertura pelo badge de atrasadas no menu -- é o número
 // que precisa aparecer sem ninguém clicar em nada.

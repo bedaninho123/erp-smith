@@ -601,6 +601,36 @@ clientes da MESMA empresa não se enxergam (o filtro de `empresa_id` não
 cobre isso), e o `?inline=1` não virou caminho paralelo sem checagem de
 dono.
 
+### Abrir caso à mão: o caminho que faltava
+
+(2026-08-27.) Todo caso nascia da IA (o orquestrador chama
+`localizar_ou_criar_caso` quando chega mensagem) ou da migração da
+planilha. Faltava o caminho mais óbvio de um despachante: **o cliente
+ligou, ou apareceu na porta.**
+
+A rota `POST /api/casos` usa o **mesmo** `criar_caso` do orquestrador --
+duas formas de um caso nascer, com regras diferentes, seria a primeira
+divergência a aparecer no histórico. O caso aberto à mão se distingue
+por `origem='Painel'` e por `criado_por` ser o nome de quem estava
+logado, não "Motor IA".
+
+Três listas controladas entraram junto, em `core/motor_casos.py`:
+
+- `PRIORIDADES_VALIDAS` -- as **mesmas quatro** de `motor_tarefas`, de
+  propósito: prioridade de caso e de tarefa aparecem lado a lado na
+  mesma tela, e duas escalas fariam a pessoa traduzir de cabeça.
+- `CANAIS_ORIGEM` -- inclui **Presencial e Telefone**, que a IA nunca
+  vai usar e que são justamente os mais comuns no caso aberto à mão.
+  Texto livre ali criaria uma fatia nova no gráfico "por onde o cliente
+  chega" a cada digitação diferente.
+- As **categorias saem do catálogo de serviços** da empresa, não de uma
+  lista fixa: é o mesmo vocabulário do checklist e dos processos, e uma
+  lista à parte divergiria na primeira vez que alguém cadastrasse um
+  serviço novo.
+
+`criar_caso` ganhou `prioridade` e `responsavel_id`, com os padrões
+antigos preservados -- o orquestrador continua chamando sem eles.
+
 ### webapp/ é o painel administrativo real, não uma ferramenta descartável
 
 Flask + Jinja + JS puro (sem build step, sem framework front-end) servido via CDN para o tema AdminLTE 3. Autenticação por sessão simples (`werkzeug.security`, `usuario.senha_hash`) — sem biblioteca de auth adicional. Todas as rotas `/api/*` exigem login (`@login_required`); a senha de um usuário nunca é definida por código, só via `webapp/definir_senha.py` rodado interativamente pelo próprio usuário. A UI inteira é uma SPA de uma página só (`webapp/templates/index.html`) alternando divs `.view` via JS — não há rotas de URL por tela.
