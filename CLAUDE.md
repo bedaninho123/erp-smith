@@ -48,6 +48,11 @@ A suíte automatizada (`pytest`) cobre só o que dói perder: isolamento de dado
 # Portal do Cliente (localhost:5002) -- autoatendimento, login sem senha por link mágico
 .venv\Scripts\python.exe -m portal.app
 
+# Portal de DEMONSTRAÇÃO (localhost:5012) -- mesmo banco fictício do painel
+# demo, e já imprime o link mágico de entrada no console. É o único jeito de
+# ver o Portal sem usar o e-mail de um cliente de verdade.
+.venv\Scripts\python.exe -m portal.rodar_demo
+
 # Verificar a caixa de entrada uma vez (usado pela Tarefa Agendada do Windows)
 .venv\Scripts\python.exe -m atendimento.poller --uma-vez
 # Verificar agora, com janela visível (uso manual) -- dá duplo-clique em:
@@ -82,6 +87,9 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.migrar_log_administrativo     # idempotente, cria a tabela log_administrativo
 .venv\Scripts\python.exe -m core.db.migrar_conversas_crm          # idempotente, liga mensagens antigas a conversas (tela Atendimentos)
 .venv\Scripts\python.exe -m core.db.migrar_encerrado_em           # idempotente, preenche caso.encerrado_em a partir do historico (Dashboard)
+# Permite documento pertencer ao CLIENTE e não a um caso (dossiê). RECONSTRÓI
+# a tabela documento -- ver tests/test_migracao_dossie.py
+.venv\Scripts\python.exe -m core.db.migrar_dossie_cliente
 
 # Conferir se a tabela documento bate com os arquivos em disco (só relata, nunca apaga)
 .venv\Scripts\python.exe -m core.db.auditar_documentos
@@ -534,6 +542,64 @@ embaixo. Banco em uso: `domain.clube_tiro.db.migrar_modalidades`.
 A rota `/api/modalidades` leva `funcao_required("campeonatos", "resultados")`
 e **não** entra no catálogo de permissões como função própria: é dado de
 referência das duas telas que já existem, não uma área nova.
+
+### Dossiê do cliente: documento que é da PESSOA, não de um caso
+
+(2026-08-27.) `documento` nasceu com `CHECK (caso_id IS NOT NULL OR
+processo_id IS NOT NULL)` -- todo arquivo preso a um atendimento. Isso
+está certo para o comprovante que o cliente mandou num caso, e errado
+para o CR dele: o CR é da pessoa, vale anos, atravessa vários casos e
+continua valendo quando todos fecharem.
+
+A coluna `categoria` resolve, com CHECK que não deixa zona cinzenta:
+
+    'Caso'   -> continua exigindo caso ou processo, como antes
+    'Dossiê' -> permanente da pessoa, e caso/processo TÊM que ser NULL
+
+Migração: `core.db.migrar_dossie_cliente` (idempotente). Ela **reconstrói
+a tabela** -- o SQLite não sabe remover um CHECK --, então tem
+`foreign_key_check` antes do commit e `tests/test_migracao_dossie.py`
+confere campo a campo que nada se perdeu. Migração que copia e apaga é a
+operação mais perigosa do projeto: erro ali não dá tela branca, some com
+arquivo de cliente.
+
+**O catálogo de tipos vive no Domínio** (`domain/clube_tiro/documentos_cac.py`
+-- 19 tipos em 5 grupos: CR, CRAF, guia de tráfego, laudos, as quatro
+certidões separadas). `documento.tipo_documento` continua TEXTO livre e o
+Core não sabe o que é um CRAF; a lista é sugestão na tela, como as
+modalidades. Não confundir com `documento_exigido`, que é o checklist de
+um serviço -- lá são frases de exigência, aqui são nomes de documento.
+
+Três decisões que valem mais que a tela:
+
+- **`referencia` responde "de qual arma"** (pedido do usuário: "CRAF de
+  tal arma"). CRAF, guia e nota fiscal existem mais de uma vez por
+  pessoa; sem isso três CRAFs ficam indistinguíveis. Vai em
+  `observacoes`, que já existia. O número de série pode aparecer aí: é
+  legítimo (dossiê do dono, atrás de login) e **nenhum módulo do Motor IA
+  lê esta tabela** -- a regra de não mandar série para o prompt continua
+  valendo onde ela vale.
+- **`situacao_validade` tem quatro estados, e `None` é um deles.**
+  vencido / vencendo / valido / **None = sem data cadastrada**. `None`
+  não é "válido": pintar de verde afirmaria o que ninguém conferiu.
+  Mesma regra do Dashboard.
+- **O cliente NÃO envia documento pelo dossiê.** O dossiê é o que o
+  despachante conferiu e guardou. Envio de cliente continua entrando pelo
+  checklist do caso, que nasce `Aguardando aprovação` e passa por
+  conferência humana. Deixar o cliente escrever direto no dossiê apagaria
+  essa distinção.
+
+No Portal a tela é **Minha conta**: lista, visualiza **dentro da
+plataforma** (`?inline=1` no mesmo endpoint do download -- mesmo arquivo,
+mesma checagem de dono, só muda o cabeçalho de disposição) e tem botão de
+salvar. Três cores para três ações: azul válido, âmbar vencendo, vermelho
+vencido -- os dois últimos eram vermelho no primeiro desenho, e o cliente
+não distinguia "já venceu" de "vai vencer".
+
+`tests/test_dossie_cliente.py` guarda o que não pode falhar: dois
+clientes da MESMA empresa não se enxergam (o filtro de `empresa_id` não
+cobre isso), e o `?inline=1` não virou caminho paralelo sem checagem de
+dono.
 
 ### webapp/ é o painel administrativo real, não uma ferramenta descartável
 

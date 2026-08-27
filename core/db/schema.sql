@@ -178,13 +178,28 @@ CREATE TABLE documento (
     revisado_por_id   TEXT REFERENCES usuario(usuario_id),
     observacoes       TEXT,
     mensagem_id       TEXT REFERENCES mensagem(mensagem_id), -- qual mensagem trouxe este anexo (nullable -- doc migrado/antigo não tem)
-    CHECK (caso_id IS NOT NULL OR processo_id IS NOT NULL)
+    -- 'Caso' | 'Dossiê' (2026-08-27). Um documento de atendimento
+    -- pertence a um caso; o CR, o CRAF e o comprovante de residência
+    -- pertencem à PESSOA -- valem por anos, atravessam vários casos e
+    -- continuam valendo quando todos fecharem. Lista controlada em
+    -- código (core/motor_documentos.py), não CHECK de valor, mesmo
+    -- padrão do status do Caso.
+    categoria         TEXT NOT NULL DEFAULT 'Caso',
+    -- O CHECK cobre os dois e não deixa zona cinzenta: dossiê com caso
+    -- preenchido é recusado, e documento de caso sem caso também.
+    CHECK (
+        (categoria = 'Dossiê' AND caso_id IS NULL AND processo_id IS NULL)
+        OR
+        (categoria = 'Caso' AND (caso_id IS NOT NULL OR processo_id IS NOT NULL))
+    )
 );
 
 CREATE INDEX idx_documento_empresa_id ON documento(empresa_id);
 CREATE INDEX idx_documento_cliente_id ON documento(cliente_id);
 CREATE INDEX idx_documento_caso_id ON documento(caso_id);
 CREATE INDEX idx_documento_processo_id ON documento(processo_id);
+-- A tela do dossiê lê sempre por (empresa, cliente, categoria).
+CREATE INDEX idx_documento_categoria ON documento(empresa_id, cliente_id, categoria);
 
 -- Rastreamento de documento recebido vs. exigido, por processo (2026-07-24).
 -- Marcação sempre manual -- um funcionário confirma visualmente que um

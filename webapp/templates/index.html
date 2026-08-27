@@ -1354,6 +1354,42 @@
             <div class="card-body" id="cliente-cabecalho"></div>
           </div>
           <div class="card">
+            <div class="card-header d-flex align-items-center" style="gap: var(--e3)">
+              <h3 class="card-title">Dossiê do cliente</h3>
+              <span class="text-muted ml-auto" style="font-size:12px" id="dossie-contagem"></span>
+            </div>
+            <div class="card-body" id="dossie-lista"></div>
+            <div class="card-body border-top">
+              <h5>Adicionar documento ao dossiê</h5>
+              <p class="text-muted">Documento permanente da pessoa — CR, CRAF, comprovante de residência, laudos. Não pertence a um caso: fica no cadastro dela e o próprio cliente enxerga no Portal. PDF ou foto, até 15MB.</p>
+              <div class="row">
+                <div class="col-md-5">
+                  <label for="dossie-tipo">Tipo de documento</label>
+                  <input id="dossie-tipo" type="text" class="form-control" list="dossie-tipos-opcoes"
+                         placeholder="Ex.: CR — Certificado de Registro">
+                  <datalist id="dossie-tipos-opcoes"></datalist>
+                </div>
+                <div class="col-md-4">
+                  <label for="dossie-referencia">De qual arma (quando for o caso)</label>
+                  <input id="dossie-referencia" type="text" class="form-control"
+                         placeholder="Ex.: Pistola .380 — TH380">
+                </div>
+                <div class="col-md-3">
+                  <label for="dossie-validade">Vale até</label>
+                  <input id="dossie-validade" type="date" class="form-control">
+                </div>
+              </div>
+              <div class="form-group mt-3">
+                <label for="dossie-arquivo">Arquivo</label>
+                <input id="dossie-arquivo" type="file" class="form-control-file"
+                       accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp">
+              </div>
+              <button class="btn btn-primary" id="salvar-dossie">Guardar no dossiê</button>
+              <span class="text-muted ml-2" id="salvar-dossie-status" aria-live="polite"></span>
+            </div>
+          </div>
+
+          <div class="card">
             <div class="card-header"><h3 class="card-title">Casos deste cliente</h3></div>
             <div class="card-body table-responsive p-0">
               <table class="table table-hover text-nowrap">
@@ -4162,12 +4198,149 @@ function blocoFiliado(f) {
     </p>`;
 }
 
+// ====================================================================
+// DOSSIÊ DO CLIENTE
+//
+// Documento que pertence à PESSOA, não a um caso: CR, CRAF, comprovante
+// de residência, laudos. O mesmo arquivo aparece para o cliente no
+// Portal, então o que se guarda aqui é o que ele vai ver.
+// ====================================================================
+const SELO_VALIDADE = {
+  vencido:  { classe: "badge-danger",  texto: "Vencido" },
+  vencendo: { classe: "badge-warning", texto: "Vencendo" },
+  valido:   { classe: "badge-success", texto: "Válido" },
+};
+
+function seloValidade(documento) {
+  const situacao = documento.situacao_validade;
+  // null NÃO é "válido": é documento sem data cadastrada. Pintar de
+  // verde afirmaria uma coisa que ninguém conferiu.
+  if (!situacao) return `<span class="badge badge-light">sem validade cadastrada</span>`;
+  const selo = SELO_VALIDADE[situacao];
+  return `<span class="badge ${selo.classe}">${selo.texto} — ${dataBr(documento.data_validade)}</span>`;
+}
+
+async function carregarDossie(clienteId) {
+  const resposta = await buscarJson(`/api/clientes/${clienteId}/dossie`);
+  if (!resposta.ok) {
+    $("#dossie-lista").innerHTML = resposta.falhou
+      ? AVISO_FALHA_DE_REDE
+      : `<p class="text-muted mb-0">${escapeHtml((resposta.dados || {}).erro || "Não foi possível carregar.")}</p>`;
+    return;
+  }
+  const d = resposta.dados;
+
+  $("#dossie-tipos-opcoes").innerHTML = d.catalogo
+    .flatMap(g => g.documentos.map(doc => `<option value="${escapeHtml(doc.nome)}">`)).join("");
+
+  const vencidos = d.documentos.filter(x => x.situacao_validade === "vencido").length;
+  const vencendo = d.documentos.filter(x => x.situacao_validade === "vencendo").length;
+  $("#dossie-contagem").textContent = d.documentos.length
+    ? `${d.documentos.length} documento(s)`
+      + (vencidos ? ` — ${vencidos} vencido(s)` : "")
+      + (vencendo ? ` — ${vencendo} vencendo em ${d.dias_alerta} dias` : "")
+    : "";
+
+  $("#dossie-lista").innerHTML = d.documentos.length
+    ? `<table class="table table-hover mb-0">
+        <thead><tr><th>Documento</th><th>Validade</th><th>Guardado em</th><th></th></tr></thead>
+        <tbody>${d.documentos.map(doc => `
+          <tr>
+            <td>
+              <b>${escapeHtml(doc.tipo_documento)}</b>
+              ${doc.observacoes ? `<br><small class="text-muted">${escapeHtml(doc.observacoes)}</small>` : ""}
+              <br><button type="button" class="btn btn-link p-0 btn-ver-documento"
+                    data-documento="${escapeHtml(doc.documento_id)}"
+                    data-nome="${escapeHtml(doc.nome_arquivo || "")}">${escapeHtml(doc.nome_arquivo || "arquivo")}</button>
+            </td>
+            <td>${seloValidade(doc)}</td>
+            <td class="mono">${dataBr(doc.data_envio)}</td>
+            <td class="text-nowrap">
+              <a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo"
+                 class="btn btn-outline-secondary btn-sm" title="Baixar"
+                 aria-label="Baixar ${escapeHtml(doc.nome_arquivo || "o arquivo")}">
+                <i class="fas fa-download" aria-hidden="true"></i>
+              </a>
+              <button class="btn btn-outline-danger btn-sm ml-1 btn-remover-dossie"
+                      data-documento="${escapeHtml(doc.documento_id)}"
+                      data-tipo="${escapeHtml(doc.tipo_documento)}">Remover</button>
+            </td>
+          </tr>`).join("")}</tbody>
+      </table>`
+    : `<p class="text-muted mb-0">Nenhum documento no dossiê ainda.</p>`;
+
+  ligarBotoesVerDocumento($("#dossie-lista"));
+  $("#dossie-lista").querySelectorAll(".btn-remover-dossie").forEach(botao => {
+    botao.addEventListener("click", async () => {
+      if (!confirm(`Remover "${botao.dataset.tipo}" do dossiê? O arquivo é apagado.`)) return;
+      const r = await fetch(`/api/dossie/${encodeURIComponent(botao.dataset.documento)}/remover`,
+                            { method: "POST" });
+      if (!r.ok) {
+        const erro = await r.json();
+        alert("Erro ao remover: " + (erro.erro || "falha desconhecida"));
+        return;
+      }
+      carregarDossie(clienteId);
+    });
+  });
+
+  $("#salvar-dossie").dataset.clienteId = clienteId;
+  $("#salvar-dossie-status").textContent = "";
+}
+
+async function salvarDossie() {
+  const botao = $("#salvar-dossie");
+  const statusEl = $("#salvar-dossie-status");
+  const clienteId = botao.dataset.clienteId;
+  const arquivo = $("#dossie-arquivo").files[0];
+  const tipo = $("#dossie-tipo").value.trim();
+
+  if (!tipo) {
+    statusEl.textContent = "Informe o tipo do documento.";
+    $("#dossie-tipo").focus();
+    return;
+  }
+  if (!arquivo) {
+    statusEl.textContent = "Selecione um arquivo.";
+    return;
+  }
+
+  const dados = new FormData();
+  dados.append("arquivo", arquivo);
+  dados.append("tipo_documento", tipo);
+  dados.append("referencia", $("#dossie-referencia").value.trim());
+  dados.append("data_validade", $("#dossie-validade").value);
+
+  botao.disabled = true;
+  statusEl.textContent = "Guardando…";
+  try {
+    const r = await fetch(`/api/clientes/${clienteId}/dossie`, { method: "POST", body: dados });
+    const resposta = await r.json();
+    if (!r.ok) {
+      statusEl.textContent = "";
+      alert("Erro ao guardar: " + (resposta.erro || "falha desconhecida"));
+      return;
+    }
+    $("#dossie-arquivo").value = "";
+    $("#dossie-tipo").value = "";
+    $("#dossie-referencia").value = "";
+    $("#dossie-validade").value = "";
+    await carregarDossie(clienteId);
+    $("#salvar-dossie-status").textContent = "Guardado.";
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+$("#salvar-dossie").addEventListener("click", salvarDossie);
+
 async function abrirCliente(clienteId) {
   mostrarView("cliente-detalhe");
   $("#cliente-cabecalho").innerHTML = `<p class="text-muted">Carregando…</p>`;
 
   const resposta = await buscarJson(`/api/clientes/${clienteId}`);
   const d = resposta.dados;
+  carregarDossie(clienteId);
   if (!resposta.ok) {
     $("#cliente-cabecalho").innerHTML = resposta.falhou
       ? AVISO_FALHA_DE_REDE

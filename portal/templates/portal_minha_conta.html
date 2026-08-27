@@ -1,0 +1,163 @@
+{% extends "_portal_layout.html" %}
+{% block titulo %}Minha conta{% endblock %}
+{% block estilo_extra %}
+<style>
+  .doc-linha { display: flex; gap: 1rem; align-items: flex-start; padding: 1rem 0; border-bottom: 1px solid var(--line); }
+  .doc-linha:last-child { border-bottom: none; }
+  .doc-corpo { flex: 1; min-width: 0; }
+  .doc-tipo { font-size: .98rem; margin: 0 0 .3rem; }
+  .doc-ref { color: var(--steel); font-size: .82rem; margin: 0 0 .4rem; }
+  .doc-meta { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; font-size: .82rem; color: var(--steel); }
+  .doc-acoes { display: flex; gap: .5rem; flex-shrink: 0; flex-wrap: wrap; }
+
+  /* Botão de ação do documento. Altura fixa para os dois ficarem
+     alinhados mesmo com textos de larguras diferentes. */
+  .doc-botao {
+    height: 34px; padding: 0 .8rem; border-radius: 4px; font-size: .82rem; font-weight: 600;
+    display: inline-flex; align-items: center; gap: .35rem; cursor: pointer;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); text-decoration: none;
+  }
+  .doc-botao:hover { border-color: var(--steel); color: var(--ink); text-decoration: none; }
+  .doc-botao--principal { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .doc-botao--principal:hover { background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
+
+  /* Visualizador: o documento abre POR CIMA do portal, que continua
+     atrás. É o mesmo princípio do painel administrativo -- abrir numa
+     aba nova deixaria a pessoa sem caminho de volta, porque o navegador
+     não oferece "fechar e voltar" numa aba que só mostra um PDF. */
+  .visor { position: fixed; inset: 0; z-index: 2000; background: rgba(10,11,13,.9);
+           display: none; flex-direction: column; }
+  .visor.aberto { display: flex; }
+  .visor-barra { display: flex; align-items: center; gap: .75rem; padding: .7rem 1rem;
+                 background: rgba(0,0,0,.45); color: #fff; }
+  .visor-nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9rem; }
+  .visor-corpo { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .visor-corpo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .visor-corpo iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+  .visor-botao { height: 34px; padding: 0 .8rem; border-radius: 4px; border: 1px solid rgba(255,255,255,.35);
+                 background: transparent; color: #fff; font-size: .82rem; font-weight: 600; cursor: pointer;
+                 display: inline-flex; align-items: center; gap: .35rem; text-decoration: none; }
+  .visor-botao:hover { background: rgba(255,255,255,.12); color: #fff; text-decoration: none; }
+
+  .aviso-validade { display: flex; gap: .6rem; align-items: center; padding: .8rem 1.1rem;
+                    border-radius: 6px; margin-bottom: 1rem; font-size: .88rem; }
+  .aviso-validade--vencido { background: #FDEEF0; border: 1px solid #E8A9B3; color: #8C1728; }
+  .aviso-validade--vencendo { background: #FDF6E6; border: 1px solid #F0D9A0; color: #6B5320; }
+</style>
+{% endblock %}
+{% block conteudo %}
+<h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:0 0 1rem;">Meus documentos</h2>
+
+{% if vencidos %}
+<div class="aviso-validade aviso-validade--vencido">
+  <b>{{ vencidos }} documento(s) com validade vencida.</b>
+  Fale com o despachante para renovar.
+</div>
+{% elif vencendo %}
+<div class="aviso-validade aviso-validade--vencendo">
+  <b>{{ vencendo }} documento(s) vencendo em breve.</b>
+  Vale adiantar a renovação.
+</div>
+{% endif %}
+
+{% if not documentos %}
+<div class="ficha estado-vazio">
+  Nenhum documento guardado ainda. Conforme o despachante organizar seus papéis
+  (CR, CRAF, laudos, certidões), eles aparecem aqui.
+</div>
+{% else %}
+<div class="ficha" style="padding: 0 1.3rem;">
+  {% for d in documentos %}
+  <div class="doc-linha">
+    <div class="doc-corpo">
+      <h3 class="doc-tipo">{{ d.tipo_documento }}</h3>
+      {% if d.observacoes %}<p class="doc-ref">{{ d.observacoes }}</p>{% endif %}
+      <div class="doc-meta">
+        {% if d.situacao_validade == 'vencido' %}
+          <span class="selo selo--signal" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem;">Vencido em {{ d.data_validade_fmt }}</span>
+        {% elif d.situacao_validade == 'vencendo' %}
+          <span class="selo" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem; color:#8A5A00; background:#FDF6E6;">Vence em {{ d.data_validade_fmt }}</span>
+        {% elif d.situacao_validade == 'valido' %}
+          <span class="selo selo--padrao" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem;">Válido até {{ d.data_validade_fmt }}</span>
+        {% endif %}
+        <span class="mono">guardado em {{ d.data_envio_fmt }}</span>
+      </div>
+    </div>
+    <div class="doc-acoes">
+      <button type="button" class="doc-botao doc-botao--principal btn-ver"
+              data-url="{{ url_for('download_documento', documento_id=d.documento_id) }}?inline=1"
+              data-nome="{{ d.nome_arquivo or d.tipo_documento }}"
+              data-imagem="{{ '1' if d.e_imagem else '0' }}"
+              data-baixar="{{ url_for('download_documento', documento_id=d.documento_id) }}">
+        Visualizar
+      </button>
+      <a class="doc-botao" href="{{ url_for('download_documento', documento_id=d.documento_id) }}">
+        Salvar arquivo
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="visor" id="visor" role="dialog" aria-modal="true" aria-label="Visualizador de documento">
+  <div class="visor-barra">
+    <span class="visor-nome" id="visor-nome"></span>
+    <a class="visor-botao" id="visor-baixar" href="#">Salvar arquivo</a>
+    <button type="button" class="visor-botao" id="visor-fechar">Fechar</button>
+  </div>
+  <div class="visor-corpo" id="visor-corpo"></div>
+</div>
+
+<script>
+  (function () {
+    var visor = document.getElementById("visor");
+    var corpo = document.getElementById("visor-corpo");
+    var nome = document.getElementById("visor-nome");
+    var baixar = document.getElementById("visor-baixar");
+    // Guarda quem tinha o foco antes de abrir, para devolver ao fechar --
+    // quem navega por teclado volta ao mesmo lugar da lista.
+    var focoAnterior = null;
+
+    function abrir(botao) {
+      var url = botao.getAttribute("data-url");
+      var titulo = botao.getAttribute("data-nome");
+      corpo.innerHTML = "";
+      var elemento;
+      if (botao.getAttribute("data-imagem") === "1") {
+        elemento = document.createElement("img");
+        elemento.alt = titulo;
+      } else {
+        elemento = document.createElement("iframe");
+        elemento.title = titulo;
+      }
+      elemento.src = url;
+      corpo.appendChild(elemento);
+      nome.textContent = titulo;
+      baixar.setAttribute("href", botao.getAttribute("data-baixar"));
+      focoAnterior = document.activeElement;
+      visor.classList.add("aberto");
+      document.getElementById("visor-fechar").focus();
+    }
+
+    function fechar() {
+      visor.classList.remove("aberto");
+      // Esvaziar não é zelo: sem isso o PDF continua carregado e, na
+      // próxima abertura, o documento ANTERIOR pisca por um instante.
+      corpo.innerHTML = "";
+      if (focoAnterior) focoAnterior.focus();
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll(".btn-ver"), function (botao) {
+      botao.addEventListener("click", function () { abrir(botao); });
+    });
+    document.getElementById("visor-fechar").addEventListener("click", fechar);
+    visor.addEventListener("click", function (e) {
+      if (e.target === visor || e.target === corpo) fechar();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && visor.classList.contains("aberto")) fechar();
+    });
+  })();
+</script>
+{% endblock %}

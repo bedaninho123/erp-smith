@@ -51,7 +51,9 @@ from core.motor_usuarios import (
     FUNCOES_VALIDAS, atualizar_ativo, atualizar_papel, atualizar_permissoes,
     criar_usuario, listar_permissoes, listar_usuarios, tem_permissao,
 )
-from domain.clube_tiro import motor_filiados, motor_indicadores_clube, motor_modalidades
+from domain.clube_tiro import (
+    documentos_cac, motor_filiados, motor_indicadores_clube, motor_modalidades,
+)
 from domain.clube_tiro.motor_campeonatos import (
     atualizar_campeonato, criar_campeonato, listar_campeonatos, remover_campeonato,
 )
@@ -1012,6 +1014,96 @@ def documento_upload(caso_id):
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True, documento_id=documento_id)
+
+
+@app.route("/api/clientes/<cliente_id>/dossie")
+@login_required
+@funcao_required("clientes")
+def dossie_listar(cliente_id):
+    """O dossiê permanente do cliente, mais o catálogo de tipos.
+
+    O catálogo vem junto na mesma resposta porque a tela precisa dos dois
+    para desenhar (lista + formulário), e são dois dados pequenos -- uma
+    segunda chamada só para pegar 19 nomes seria round-trip à toa.
+    """
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
+    dono = con.execute(
+        "SELECT 1 FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+        (cliente_id, empresa_id),
+    ).fetchone()
+    con.close()
+    if not dono:
+        return jsonify(erro=f"Cliente não encontrado: {cliente_id}"), 404
+
+    return jsonify(
+        documentos=motor_documentos.listar_dossie(empresa_id, cliente_id),
+        catalogo=documentos_cac.catalogo(),
+        dias_alerta=documentos_cac.DIAS_ALERTA_VALIDADE,
+    )
+
+
+@app.route("/api/clientes/<cliente_id>/dossie", methods=["POST"])
+@login_required
+@funcao_required("clientes")
+def dossie_enviar(cliente_id):
+    """Sobe um documento permanente para o dossiê da pessoa."""
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        return jsonify(erro="Selecione um arquivo."), 400
+
+    conteudo = arquivo.read()
+    if len(conteudo) > DOCUMENTO_TAMANHO_MAXIMO:
+        return jsonify(erro="Arquivo maior que 15MB."), 400
+
+    try:
+        documento_id = motor_documentos.salvar_no_dossie(
+            empresa_atual(),
+            cliente_id,
+            conteudo,
+            arquivo.filename,
+            tipo_documento=(request.form.get("tipo_documento") or "").strip(),
+            data_validade=(request.form.get("data_validade") or "").strip() or None,
+            referencia=(request.form.get("referencia") or "").strip() or None,
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True, documento_id=documento_id)
+
+
+@app.route("/api/dossie/<documento_id>/remover", methods=["POST"])
+@login_required
+@funcao_required("clientes")
+def dossie_remover(documento_id):
+    """Tira um documento do dossiê -- linha e arquivo.
+
+    Só documento de DOSSIÊ sai por aqui. Documento de caso tem outro
+    caminho e outras consequências (checklist marcado, histórico do
+    processo), e deixar uma rota apagar os dois seria convidar ao
+    engano.
+    """
+    empresa_id = empresa_atual()
+    documento = motor_documentos.obter_documento(empresa_id, documento_id)
+    if not documento or documento["categoria"] != motor_documentos.CATEGORIA_DOSSIE:
+        return jsonify(erro="Documento não encontrado no dossiê."), 404
+
+    con = conectar(empresa_id)
+    con.execute(
+        "DELETE FROM documento WHERE documento_id = ? AND empresa_id = ?",
+        (documento_id, empresa_id),
+    )
+    con.commit()
+    con.close()
+
+    caminho = documento.get("link_arquivo")
+    if caminho and os.path.exists(caminho):
+        try:
+            os.remove(caminho)
+        except OSError:
+            # Arquivo que não sai não desfaz a remoção do banco -- vira
+            # órfão, e core.db.auditar_documentos denuncia depois.
+            traceback.print_exc()
+    return jsonify(ok=True)
 
 
 @app.route("/api/documentos/<documento_id>/arquivo")

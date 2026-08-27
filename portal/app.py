@@ -803,6 +803,46 @@ def upload_documento():
     return redirect(url_for("caso_detalhe", caso_id=caso_id))
 
 
+@app.route("/portal/minha-conta")
+@cliente_login_required
+def minha_conta():
+    """Os documentos permanentes da pessoa, vistos por ela mesma.
+
+    Só a categoria 'Dossiê': documento de caso continua aparecendo dentro
+    do caso, que é onde ele faz sentido. Aqui é o arquivo pessoal -- CR,
+    CRAF, laudos --, o que a pessoa quer achar sem lembrar em qual
+    atendimento ele entrou.
+
+    O cliente NÃO envia documento por esta tela, de propósito: o dossiê é
+    o que o despachante conferiu e guardou. Envio de cliente continua
+    entrando pelo checklist do caso, que nasce 'Aguardando aprovação' e
+    passa por conferência humana (CLAUDE.md). Deixar o cliente escrever
+    direto no dossiê apagaria essa distinção.
+    """
+    cliente_id = session["cliente_id"]
+    empresa_id = empresa_atual()
+    documentos = motor_documentos.listar_dossie(empresa_id, cliente_id)
+
+    for documento in documentos:
+        documento["data_envio_fmt"] = _data_br(documento.get("data_envio"))
+        documento["data_validade_fmt"] = _data_br(documento.get("data_validade"))
+        # A extensão decide como o navegador mostra: imagem vai em <img>,
+        # o resto (PDF) em <iframe> com o leitor do próprio navegador.
+        nome = (documento.get("nome_arquivo") or "").lower()
+        documento["e_imagem"] = nome.endswith(
+            (".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif")
+        )
+
+    return render_template(
+        "portal_minha_conta.html",
+        ativo="minha_conta",
+        cliente_nome=session.get("cliente_nome"),
+        documentos=documentos,
+        vencidos=sum(1 for d in documentos if d["situacao_validade"] == "vencido"),
+        vencendo=sum(1 for d in documentos if d["situacao_validade"] == "vencendo"),
+    )
+
+
 @app.route("/portal/documentos/<documento_id>/arquivo")
 @cliente_login_required
 def download_documento(documento_id):
@@ -824,7 +864,11 @@ def download_documento(documento_id):
     if not caminho.is_file():
         return jsonify(erro="Arquivo não encontrado no disco."), 404
     nome_sugerido = Path(doc["nome_arquivo"] or "").name or caminho.name
-    return send_file(caminho, as_attachment=True, download_name=nome_sugerido)
+    # ?inline=1 mostra dentro da plataforma; sem ele, baixa. É o MESMO
+    # arquivo e a MESMA checagem de posse -- só muda o cabeçalho de
+    # disposição. O painel administrativo usa o mesmo parâmetro.
+    inline = request.args.get("inline") == "1"
+    return send_file(caminho, as_attachment=not inline, download_name=nome_sugerido)
 
 
 if __name__ == "__main__":

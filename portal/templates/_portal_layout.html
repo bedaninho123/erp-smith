@@ -52,6 +52,10 @@
         </svg>
         Resultados
       </a>
+      <a href="{{ url_for('minha_conta') }}" class="{{ 'ativo' if ativo == 'minha_conta' }}">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="3.2"/><path d="M4 16.5c0-3 2.7-4.8 6-4.8s6 1.8 6 4.8"/></svg>
+        Minha conta
+      </a>
       <a href="{{ url_for('habitualidade') }}" class="{{ 'ativo' if ativo == 'habitualidade' }}">
         <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.7"/><circle cx="10" cy="10" r=".6" fill="currentColor" stroke="none"/></svg>
         Habitualidade

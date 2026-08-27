@@ -126,6 +126,7 @@ def _criar_banco_core() -> None:
 
     _criar_tarefas_demo()
     _popular_auditoria_demo()
+    _popular_dossie_demo()
 
 
 def _criar_tarefas_demo() -> None:
@@ -150,6 +151,46 @@ def _criar_tarefas_demo() -> None:
             prioridade=prioridade, responsavel_id="USR-000001",
             criado_por="demonstração",
         )
+
+
+def _popular_dossie_demo() -> None:
+    """Documentos no dossiê da Helena, nas três situações de validade.
+
+    Mesma razão do resto da demonstração: sem dado, a tela abre vazia e
+    não dá pra conferir se o selo de vencido, vencendo e válido está
+    certo -- que é justamente a parte que erra em silêncio.
+    """
+    from datetime import date, timedelta
+
+    from core.motor_documentos import salvar_no_dossie
+
+    hoje = date.today()
+    # PDF mínimo de verdade, para o visualizador ter o que abrir -- um
+    # arquivo de texto com extensão .pdf faria o <iframe> mostrar erro do
+    # navegador em vez do documento, e a conferência não valeria nada.
+    linhas = [
+        b"%PDF-1.4",
+        b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj",
+        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj",
+        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 300]>>endobj",
+        b"trailer<</Root 1 0 R>>",
+        b"%%EOF",
+    ]
+    pdf = b"\n".join(linhas)
+
+    documentos = [
+        ("CR — Certificado de Registro", (hoje + timedelta(days=500)).isoformat(), None),
+        ("CRAF — Certificado de Registro de Arma de Fogo", None,
+         "Pistola .380 TH380 (documento de exemplo)"),
+        ("Comprovante de residência", (hoje + timedelta(days=12)).isoformat(), None),
+        ("Certidão negativa — Justiça Federal", (hoje - timedelta(days=8)).isoformat(), None),
+        ("CPF", None, None),
+    ]
+    for tipo, validade, referencia in documentos:
+        salvar_no_dossie(EMPRESA, "CLI-000001", pdf, f"{tipo}.pdf",
+                         tipo_documento=tipo, data_validade=validade,
+                         referencia=referencia)
+    print(f"  Dossiê de exemplo: {len(documentos)} documentos na Helena")
 
 
 def _popular_auditoria_demo() -> None:

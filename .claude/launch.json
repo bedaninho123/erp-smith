@@ -4,27 +4,48 @@
     {
       "name": "painel-dev",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "webapp.app"],
+      "runtimeArgs": [
+        "-m",
+        "webapp.app"
+      ],
       "port": 5000,
       "autoPort": true
     },
     {
       "name": "webhook-atendimento",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "atendimento.webhook"],
+      "runtimeArgs": [
+        "-m",
+        "atendimento.webhook"
+      ],
       "port": 5001
     },
     {
       "name": "portal-dev",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "portal.app"],
+      "runtimeArgs": [
+        "-m",
+        "portal.app"
+      ],
       "port": 5002
     },
     {
       "name": "painel-demo",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "webapp.rodar_demo"],
+      "runtimeArgs": [
+        "-m",
+        "webapp.rodar_demo"
+      ],
       "port": 5010
+    },
+    {
+      "name": "portal-demo",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "portal.rodar_demo"
+      ],
+      "port": 5012
     }
   ]
 }
