@@ -692,6 +692,21 @@
           </div>
 
           <div class="card">
+            <div class="card-body">
+              <label for="busca-habitualidade">Buscar por nome, CPF ou matrícula</label>
+              <input id="busca-habitualidade" type="text" class="form-control"
+                     placeholder="Ex.: Maria, 123.456.789-00, F101">
+              <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" id="habitualidade-incluir-inativos">
+                <label class="form-check-label" for="habitualidade-incluir-inativos">
+                  Incluir filiados inativos na busca
+                </label>
+              </div>
+              <small class="text-muted" id="habitualidade-contagem"></small>
+            </div>
+          </div>
+
+          <div class="card">
             <div class="card-body table-responsive p-0">
               <table class="table table-hover text-nowrap">
                 <thead><tr>
@@ -1836,8 +1851,23 @@ $("#cancelar-edicao-resultado").addEventListener("click", resetFormularioResulta
 // ---------------------------------------------------------------
 // Panorama de habitualidade do clube
 // ---------------------------------------------------------------
+let buscaHabitualidadeTimeout;
+
+$("#busca-habitualidade").addEventListener("input", () => {
+  clearTimeout(buscaHabitualidadeTimeout);
+  buscaHabitualidadeTimeout = setTimeout(carregarHabitualidade, 300);
+});
+$("#habitualidade-incluir-inativos").addEventListener("change", carregarHabitualidade);
+
 async function carregarHabitualidade() {
-  const r = await fetch("/api/filiados/panorama");
+  const params = new URLSearchParams();
+  const busca = $("#busca-habitualidade").value.trim();
+  if (busca) params.set("busca", busca);
+  // Sem isto, procurar um ex-filiado devolveria "nada encontrado" -- e a
+  // tela esconde 547 pessoas por padrão, então o silêncio enganaria.
+  if ($("#habitualidade-incluir-inativos").checked) params.set("todos", "1");
+
+  const r = await fetch("/api/filiados/panorama?" + params.toString());
   const d = await r.json();
   const resumo = d.resumo || {};
 
@@ -1866,6 +1896,12 @@ async function carregarHabitualidade() {
     cartao("Ainda não consultados", resumo.sem_dado, "text-warning");
 
   const linhas = d.filiados || [];
+  // Só aparece quando há busca: sem filtro, a contagem repetiria o
+  // cartão "Filiados ativos" logo acima.
+  $("#habitualidade-contagem").textContent = busca
+    ? `${d.total_encontrados} encontrado(s) para "${busca}".`
+    : "";
+
   $("#habitualidade-body").innerHTML = linhas.length ? linhas.map(f => {
     // Nunca sincronizado é diferente de zero participações: um é "não
     // sei", o outro é "sei que não teve". Cores e textos diferentes.
@@ -1873,19 +1909,31 @@ async function carregarHabitualidade() {
     const participacoes = semDado
       ? `<span class="text-muted">não consultado</span>`
       : `<span class="${f.participacoes_12m === 0 ? 'text-danger' : ''}">${f.participacoes_12m}</span>`;
+    // Com inativos na lista, sem marcação não dá pra saber quem é quem
+    // -- e "0 participações" de um ex-filiado não quer dizer nada.
+    const inativo = f.status_filiacao && f.status_filiacao !== "Ativo"
+      ? ` <span class="badge badge-secondary">${escapeHtml(f.status_filiacao)}</span>`
+      : "";
     return `
     <tr>
-      <td>${escapeHtml(f.nome)}</td>
+      <td>${escapeHtml(f.nome)}${inativo}</td>
       <td class="text-monospace">${f.cpf ? cpfFormatado(f.cpf) : '—'}</td>
       <td class="text-monospace">${escapeHtml(f.matricula || '—')}</td>
       <td class="text-right">${participacoes}</td>
       <td class="text-monospace">${f.ultima_participacao ? dataBr(f.ultima_participacao) : '—'}</td>
       <td class="text-monospace text-muted">${f.sincronizado_em ? dataHoraBr(f.sincronizado_em) : '—'}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="6" class="text-muted">
-      Nenhum filiado sincronizado. Rode:
-      <code>python -m domain.clube_tiro.sincronizar_habitualidade</code>
-    </td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="text-muted">${
+    // Duas situações bem diferentes, e mandar rodar a sincronização
+    // quando o problema é a busca só confundiria.
+    busca
+      ? `Nenhum filiado encontrado para "${escapeHtml(busca)}".` +
+        ($("#habitualidade-incluir-inativos").checked
+          ? ""
+          : " Se for um ex-filiado, marque \"incluir inativos\".")
+      : `Nenhum filiado sincronizado. Rode:
+         <code>python -m domain.clube_tiro.sincronizar_habitualidade</code>`
+  }</td></tr>`;
 }
 
 // ---------------------------------------------------------------

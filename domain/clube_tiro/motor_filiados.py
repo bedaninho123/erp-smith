@@ -10,6 +10,7 @@ a consulta ao vivo (o Portal já faz isso). Ver o comentário da tabela
 Como o banco de Domínio é anexado, ele não passa pelas views do Core que
 se filtram sozinhas: **todo WHERE aqui leva empresa_id escrito à mão.**
 """
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -163,10 +164,15 @@ def contar_participacoes(habitualidade: dict, hoje=None) -> tuple[int, Optional[
     return len(dentro), max(datas).strftime("%Y-%m-%d")
 
 
-def listar_panorama(empresa_id: str, somente_ativos: bool = True) -> list[dict]:
+def listar_panorama(
+    empresa_id: str, somente_ativos: bool = True, busca: Optional[str] = None
+) -> list[dict]:
     """O panorama do clube, ordenado por quem precisa de atenção primeiro:
     nunca sincronizado, depois menos participações, depois quem está há
-    mais tempo sem aparecer."""
+    mais tempo sem aparecer.
+
+    `busca` casa com nome, CPF ou matrícula ao mesmo tempo -- mesmo padrão
+    da tela de Clientes, uma caixa só em vez de um campo por coluna."""
     con = conectar()
     try:
         sql = (
@@ -177,6 +183,25 @@ def listar_panorama(empresa_id: str, somente_ativos: bool = True) -> list[dict]:
         parametros = [empresa_id]
         if somente_ativos:
             sql += " AND status_filiacao = 'Ativo'"
+
+        busca = (busca or "").strip()
+        if busca:
+            # Parênteses obrigatórios: sem eles o OR se espalharia por
+            # cima do filtro de empresa, e a busca passaria a varrer o
+            # banco inteiro (mesma armadilha já documentada em
+            # webapp/app.py::clientes_lista).
+            sql += " AND (nome LIKE ? OR cpf LIKE ? OR matricula LIKE ?)"
+            curinga = f"%{busca}%"
+            # O CPF é guardado só com dígitos. Sem isto, digitar
+            # "123.456.789-00" -- que é como a própria tela mostra --
+            # não acharia ninguém.
+            digitos = re.sub(r"\D", "", busca)
+            # Sem dígito nenhum na busca, usar o texto cru é seguro: ele
+            # não casa com uma coluna que só tem número. Trocar por "%%"
+            # aqui faria toda busca por nome devolver o clube inteiro.
+            cpf_curinga = f"%{digitos}%" if digitos else curinga
+            parametros += [curinga, cpf_curinga, curinga]
+
         sql += (
             " ORDER BY participacoes_12m IS NULL DESC, participacoes_12m ASC, "
             "ultima_participacao ASC"

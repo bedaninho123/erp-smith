@@ -1168,9 +1168,18 @@ def filiados_panorama():
     """
     empresa_id = empresa_atual()
     somente_ativos = request.args.get("todos") != "1"
+    filiados = motor_filiados.listar_panorama(
+        empresa_id, somente_ativos, busca=request.args.get("busca")
+    )
     return jsonify(
+        # O resumo é do CLUBE inteiro, de propósito -- ele não acompanha
+        # a busca. São dois números com perguntas diferentes: "como está
+        # o clube" e "achei quem eu procurava". Fazer os cartões
+        # encolherem a cada letra digitada tiraria a única referência
+        # estável da tela.
         resumo=motor_filiados.resumo_do_clube(empresa_id),
-        filiados=motor_filiados.listar_panorama(empresa_id, somente_ativos),
+        filiados=filiados,
+        total_encontrados=len(filiados),
         janela_meses=motor_filiados.JANELA_MESES,
     )
 

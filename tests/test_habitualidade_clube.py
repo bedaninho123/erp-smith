@@ -315,6 +315,79 @@ def test_cadastro_nao_grava_bairro_no_campo_cidade(monkeypatch):
     assert "Centro" not in str(cadastro.values())
 
 
+# --------------------------------------------------------------------
+# Busca do panorama
+# --------------------------------------------------------------------
+
+@pytest.fixture
+def dois_filiados(dominio):
+    motor_filiados.salvar_filiado(EMPRESA_A, dict(FILIADO_A, nome="Ana Atiradora"))
+    motor_filiados.salvar_filiado(EMPRESA_A, dict(FILIADO_B, nome="Bruno Bala"))
+    return dominio
+
+
+def _nomes(empresa_id, **kwargs):
+    return [f["nome"] for f in motor_filiados.listar_panorama(empresa_id, **kwargs)]
+
+
+def test_busca_por_nome(dois_filiados):
+    assert _nomes(EMPRESA_A, busca="bruno") == ["Bruno Bala"]
+
+
+def test_busca_por_matricula(dois_filiados):
+    assert _nomes(EMPRESA_A, busca="F101") == ["Ana Atiradora"]
+
+
+@pytest.mark.parametrize("digitado", ["52998224725", "529.982.247-25", "529982"])
+def test_busca_por_cpf_com_ou_sem_pontuacao(dois_filiados, digitado):
+    """O CPF é guardado só com dígitos, mas a tela MOSTRA pontuado. Sem
+    limpar a pontuação, copiar o número da própria tela e colar na busca
+    não acharia ninguém."""
+    assert _nomes(EMPRESA_A, busca=digitado) == ["Ana Atiradora"]
+
+
+def test_busca_por_nome_nao_devolve_o_clube_inteiro(dois_filiados):
+    """A armadilha do filtro de CPF: reduzir "Ana" a dígitos dá string
+    vazia, e um LIKE '%%' casaria com todo mundo -- a busca devolveria o
+    clube inteiro parecendo que funcionou."""
+    assert _nomes(EMPRESA_A, busca="Ana") == ["Ana Atiradora"]
+
+
+def test_busca_sem_resultado_devolve_vazio(dois_filiados):
+    assert _nomes(EMPRESA_A, busca="ninguem com esse nome") == []
+
+
+def test_busca_nao_atravessa_a_empresa(dois_filiados):
+    """O banco de Domínio é anexado e não passa pelas views do Core: o
+    filtro de empresa é escrito à mão, e o OR da busca poderia passar por
+    cima dele se faltassem os parênteses."""
+    motor_filiados.salvar_filiado(EMPRESA_B, dict(FILIADO_A, nome="Ana Da Outra"))
+
+    assert _nomes(EMPRESA_A, busca="Ana") == ["Ana Atiradora"]
+
+
+def test_busca_respeita_o_filtro_de_inativos(dominio):
+    motor_filiados.salvar_filiado(
+        EMPRESA_A, dict(FILIADO_A, nome="Ex Filiado", status_filiacao="Inativo")
+    )
+
+    assert _nomes(EMPRESA_A, busca="Ex") == []
+    assert _nomes(EMPRESA_A, busca="Ex", somente_ativos=False) == ["Ex Filiado"]
+
+
+def test_rota_do_panorama_aceita_busca(painel, dominio):
+    motor_filiados.salvar_filiado(EMPRESA_A, dict(FILIADO_A, nome="Ana Atiradora"))
+    motor_filiados.salvar_filiado(EMPRESA_A, dict(FILIADO_B, nome="Bruno Bala"))
+
+    resposta = painel.get("/api/filiados/panorama?busca=bruno")
+
+    dados = resposta.get_json()
+    assert [f["nome"] for f in dados["filiados"]] == ["Bruno Bala"]
+    assert dados["total_encontrados"] == 1
+    # O resumo é do clube, não da busca -- são perguntas diferentes.
+    assert dados["resumo"]["total"] == 2
+
+
 def test_resumo_conta_sem_dado_e_sem_participacao(dominio):
     sem_dado = motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_A)  # noqa: F841
     zerado = motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_B)
