@@ -20,7 +20,7 @@ import secrets
 import sqlite3
 import subprocess
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 
@@ -299,6 +299,91 @@ def index():
         usuario_papel=session.get("papel"),
         funcoes_ativas=funcoes_ativas,
     )
+
+
+def _pode(funcao: str) -> bool:
+    """Gestor sempre pode; Atendente depende do catálogo. Mesma decisão
+    de funcao_required, mas usável DENTRO de uma rota -- a tela inicial
+    junta blocos de várias telas, e cada bloco tem que sumir sozinho pra
+    quem não tem aquela função."""
+    if session.get("papel") == "Gestor":
+        return True
+    return tem_permissao(empresa_atual(), session.get("usuario_id"), funcao)
+
+
+@app.route("/api/inicio")
+@login_required
+@funcao_required(
+    "casos", "tarefas", "atendimentos", "aprovacoes_pendentes", "documentos_aprovar",
+)
+def inicio():
+    """Tela inicial: o que precisa de atenção hoje.
+
+    O decorator aceita as cinco funções porque a tela é um resumo de
+    cinco telas -- quem tem qualquer uma delas tem o que ver aqui. Mas
+    ele passar não basta: como funcao_required libera se QUALQUER função
+    bater, cada bloco abaixo é conferido de novo com _pode(). Sem isso,
+    um Atendente com só "casos" ligado receberia a fila de aprovações
+    pendentes de brinde.
+    """
+    empresa_id = empresa_atual()
+    resumo: dict = {}
+
+    if _pode("tarefas"):
+        resumo["tarefas"] = motor_tarefas.contar_tarefas(empresa_id)
+        # Só as cinco primeiras: a tela inicial é um lugar de decidir
+        # pra onde ir, não de trabalhar. A lista inteira mora em Tarefas.
+        resumo["tarefas"]["proximas"] = motor_tarefas.listar_tarefas(
+            empresa_id, somente_abertas=True,
+        )[:5]
+
+    if _pode("aprovacoes_pendentes"):
+        resumo["aprovacoes_pendentes"] = len(motor_mensagens.listar_pendentes(empresa_id))
+
+    if _pode("documentos_aprovar"):
+        resumo["documentos_a_conferir"] = len(motor_checklist.listar_pendentes(empresa_id))
+
+    if _pode("atendimentos"):
+        resumo["conversas_abertas"] = len(
+            motor_conversas.listar_conversas(empresa_id, status=motor_conversas.STATUS_ABERTA)
+        )
+
+    if _pode("casos"):
+        con = conectar(empresa_id)
+        # "Parado" é caso vivo sem nenhuma atualização há 7 dias. A tela
+        # de Casos promete mostrar "o que está parado" desde sempre, mas
+        # ordenada por data ela mostra o que é RECENTE -- o que está
+        # parado fica no fim da lista, que é onde ninguém olha.
+        # Em UTC, como todo criado_em/atualizado_em do projeto -- comparar
+        # com hora local aqui deslocaria a régua em 3 horas.
+        limite_parado = (
+            datetime.now(timezone.utc) - timedelta(days=7)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        parados = [
+            dict(r) for r in con.execute(
+                "SELECT c.caso_id, c.titulo, c.status, c.atualizado_em, "
+                "cl.nome AS cliente_nome FROM caso c "
+                "JOIN cliente cl ON cl.cliente_id = c.cliente_id AND cl.empresa_id = c.empresa_id "
+                "WHERE c.empresa_id = ? AND c.ativo = 'Sim' "
+                "AND c.status NOT IN ('Encerrado', 'Cancelado') AND c.atualizado_em < ? "
+                "ORDER BY c.atualizado_em",
+                (empresa_id, limite_parado),
+            ).fetchall()
+        ]
+        abertos = con.execute(
+            "SELECT COUNT(*) FROM caso WHERE empresa_id = ? AND ativo = 'Sim' "
+            "AND status NOT IN ('Encerrado', 'Cancelado')",
+            (empresa_id,),
+        ).fetchone()[0]
+        con.close()
+        resumo["casos"] = {
+            "abertos": abertos,
+            "parados": len(parados),
+            "lista_parados": parados[:5],
+            "dias_parado": 7,
+        }
+
+    return jsonify(resumo)
 
 
 @app.route("/api/status")

@@ -240,6 +240,19 @@
      segundo toque (zoom). Some o atraso em celular. */
   button, a, .btn, input, select, textarea, tr.cursor-pointer { touch-action: manipulation; }
 
+  /* Atalho da tela inicial: o cartão de número inteiro é o botão.
+     Fica fora da regra das duas alturas pelo mesmo motivo da
+     .miniatura -- é um bloco que embrulha conteúdo, não um controle de
+     linha; forçar 38px nele esmagaria o número. Precisa ser <button> de
+     verdade (e não uma div com onclick) pra alcançar quem navega por
+     teclado, e por isso reseta a aparência nativa do botão. */
+  .atalho {
+    display: block; width: 100%; text-align: left;
+    border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer;
+  }
+  .atalho:focus-visible { outline: 3px solid var(--blue-deep); outline-offset: 2px; }
+  .atalho .inner h3 { margin-bottom: var(--e1); }
+
   .view { display: none; }
   .view.active { display: block; }
   .resposta-box { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 0.75rem 1rem; white-space: pre-wrap; font-size: 0.88rem; }
@@ -379,6 +392,15 @@
     <div class="sidebar">
       <nav class="mt-2">
         <ul class="nav nav-pills nav-sidebar flex-column" role="menu">
+          <!-- Início não tem guarda de função: é resumo do que a pessoa
+               já pode ver, e cada bloco some sozinho pra quem não tem
+               aquela função (webapp/app.py::inicio). -->
+          <li class="nav-item">
+            <a href="#" class="nav-link active" data-view="inicio">
+              <i class="nav-icon fas fa-home" aria-hidden="true"></i>
+              <p>Início</p>
+            </a>
+          </li>
           <li class="nav-header">ATENDIMENTO</li>
           {% if usuario_papel == 'Gestor' or 'atendimentos' in funcoes_ativas %}
           <li class="nav-item">
@@ -393,7 +415,7 @@
           {% endif %}
           {% if usuario_papel == 'Gestor' or 'casos' in funcoes_ativas %}
           <li class="nav-item">
-            <a href="#" class="nav-link active" data-view="casos">
+            <a href="#" class="nav-link" data-view="casos">
               <i class="nav-icon fas fa-folder-open" aria-hidden="true"></i>
               <p>Casos</p>
             </a>
@@ -507,7 +529,40 @@
 
   <div class="content-wrapper">
 
-    <div id="view-casos" class="view active">
+    <div id="view-inicio" class="view active">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0" id="inicio-saudacao">Início</h1>
+          <p class="text-muted mb-0">O que precisa da sua atenção hoje. Clique em qualquer número para ir direto ao trabalho.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <div class="row" id="inicio-fila"></div>
+
+          <div class="row">
+            <div class="col-lg-6">
+              <div class="card" id="inicio-card-tarefas" style="display:none">
+                <div class="card-header"><h3 class="card-title">Próximas tarefas</h3></div>
+                <div class="card-body p-0">
+                  <ul class="list-group list-group-flush" id="inicio-tarefas"></ul>
+                </div>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="card" id="inicio-card-parados" style="display:none">
+                <div class="card-header"><h3 class="card-title" id="inicio-parados-titulo">Casos parados</h3></div>
+                <div class="card-body p-0">
+                  <ul class="list-group list-group-flush" id="inicio-parados"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-casos" class="view">
       <div class="content-header">
         <div class="container-fluid">
           <h1 class="m-0">Casos</h1>
@@ -1492,6 +1547,9 @@ let casoDocumentosAtuais = [];
 // impedir que o Gestor mude o próprio acesso na tela de Usuários.
 const USUARIO_PAPEL = {{ usuario_papel | tojson }};
 const USUARIO_ATUAL_ID = {{ usuario_id | tojson }};
+// Só para a saudação da tela inicial -- o nome já aparece no cabeçalho,
+// mas quem abre o painel de manhã abre na tela inicial, não no cabeçalho.
+const USUARIO_NOME = {{ usuario_nome | tojson }};
 // Gestor não é filtrado por função (sempre acesso total) -- a lista só
 // importa pra decidir o que o Atendente vê. Usada nas pré-cargas
 // incondicionais do fim do script, pra não disparar 403 à toa.
@@ -1549,6 +1607,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 function carregarView(viewName) {
+  if (viewName === "inicio") carregarInicio();
   if (viewName === "pendentes") carregarPendentes();
   if (viewName === "documentos") carregarDocumentosPendentes();
   if (viewName === "clientes") carregarClientesLista();
@@ -1575,14 +1634,11 @@ document.querySelectorAll("[data-view]").forEach(btn => {
   });
 });
 
-// "Casos" é a aba marcada como ativa direto na marcação (é o padrão pra
-// quem tem a função) -- mas se ela não estiver entre as funções do
-// Atendente, o item já saiu do menu (guarda acima) e a tela abriria em
-// branco, sem nenhuma aba realmente ativa. Troca pra primeira que sobrou.
-if (USUARIO_PAPEL !== "Gestor" && !FUNCOES_ATIVAS.includes("casos")) {
-  const primeira = document.querySelector("[data-view]");
-  if (primeira) ativarView(primeira);
-}
+// Antes (até 2026-08-27) a tela inicial era "Casos", e havia aqui um
+// remendo: quem não tinha a função "casos" abria o painel numa tela em
+// branco, sem nenhuma aba ativa, e o código trocava pra primeira que
+// tivesse sobrado. Com a tela Início -- que não depende de função
+// nenhuma e é o primeiro item do menu -- o problema deixou de existir.
 
 const badgesStatus = {
   "Aberto": "badge-info", "Em triagem": "badge-secondary", "Em andamento": "badge-info",
@@ -1816,6 +1872,147 @@ async function salvarCasoEdicao() {
 }
 
 $("#salvar-caso").addEventListener("click", salvarCasoEdicao);
+
+// ====================================================================
+// TELA INICIAL
+//
+// Resumo do que já existe em outras telas -- nenhum dado novo, nenhuma
+// contagem reimplementada aqui (as duas vêm prontas do backend, que por
+// sua vez usa as mesmas funções das telas de destino). O valor da tela
+// é o caminho: cada número leva ao lugar onde aquele trabalho é feito,
+// já com o filtro certo aplicado.
+// ====================================================================
+
+function irPara(nomeView, ajustes) {
+  const botao = document.querySelector(`[data-view="${nomeView}"]`);
+  if (!botao) return;  // função desligada pra este usuário: o item nem existe
+  // Os filtros são ajustados ANTES de ativar a view, porque ativarView
+  // dispara o carregamento -- ajustar depois faria a tela carregar duas
+  // vezes e piscar o conteúdo errado no meio.
+  if (ajustes) {
+    for (const [seletor, valor] of Object.entries(ajustes)) {
+      const campo = $(seletor);
+      if (campo) campo.value = valor;
+    }
+  }
+  ativarView(botao);
+  window.scrollTo(0, 0);
+}
+
+// Cor semântica só quando o número pede ação. Zero em vermelho treina o
+// olho a ignorar vermelho -- e é justamente o vermelho que precisa
+// funcionar no dia em que houver 6 tarefas atrasadas.
+function tileAtalho({ numero, label, cor, icone, view, ajustes }) {
+  const classeCor = numero > 0 ? cor : "secondary";
+  return `
+    <div class="col-lg-3 col-sm-6">
+      <button type="button" class="small-box bg-${classeCor} atalho"
+              data-ir="${view}" data-ajustes='${JSON.stringify(ajustes || {})}'>
+        <div class="inner"><h3>${numero}</h3><p>${escapeHtml(label)}</p></div>
+        <div class="icon"><i class="fas ${icone}" aria-hidden="true"></i></div>
+      </button>
+    </div>
+  `;
+}
+
+async function carregarInicio() {
+  const primeiroNome = (USUARIO_NOME || "").trim().split(" ")[0];
+  $("#inicio-saudacao").textContent = primeiroNome ? `Olá, ${primeiroNome}` : "Início";
+
+  const resposta = await buscarJson("/api/inicio");
+  if (!resposta.ok) {
+    $("#inicio-fila").innerHTML = `<div class="col-12">${AVISO_FALHA_DE_REDE}</div>`;
+    return;
+  }
+  const d = resposta.dados;
+
+  let tiles = "";
+  if (d.tarefas) {
+    tiles += tileAtalho({
+      numero: d.tarefas.atrasadas, label: "Tarefas atrasadas", cor: "danger",
+      icone: "fa-calendar-times", view: "tarefas",
+      ajustes: { "#tarefas-vencimento": "atrasadas", "#tarefas-status": "abertas" },
+    });
+    tiles += tileAtalho({
+      numero: d.tarefas.hoje, label: "Vencem hoje", cor: "warning",
+      icone: "fa-calendar-day", view: "tarefas",
+      ajustes: { "#tarefas-vencimento": "hoje", "#tarefas-status": "abertas" },
+    });
+  }
+  if (d.aprovacoes_pendentes !== undefined) {
+    tiles += tileAtalho({
+      numero: d.aprovacoes_pendentes, label: "Respostas a aprovar", cor: "danger",
+      icone: "fa-inbox", view: "pendentes",
+    });
+  }
+  if (d.documentos_a_conferir !== undefined) {
+    tiles += tileAtalho({
+      numero: d.documentos_a_conferir, label: "Documentos a conferir", cor: "warning",
+      icone: "fa-file-signature", view: "documentos",
+    });
+  }
+  if (d.conversas_abertas !== undefined) {
+    tiles += tileAtalho({
+      numero: d.conversas_abertas, label: "Conversas abertas", cor: "info",
+      icone: "fa-comments", view: "atendimentos",
+    });
+  }
+  if (d.casos) {
+    tiles += tileAtalho({
+      numero: d.casos.parados, label: `Casos parados há ${d.casos.dias_parado}+ dias`,
+      cor: "danger", icone: "fa-hourglass-half", view: "casos",
+    });
+    tiles += tileAtalho({
+      numero: d.casos.abertos, label: "Casos em aberto", cor: "info",
+      icone: "fa-folder-open", view: "casos",
+    });
+  }
+  $("#inicio-fila").innerHTML = tiles || `
+    <div class="col-12"><div class="alert alert-info mb-0">
+      Nenhuma das áreas do painel está liberada para o seu acesso. Fale com o gestor.
+    </div></div>`;
+
+  $("#inicio-fila").querySelectorAll(".atalho").forEach(botao => {
+    botao.addEventListener("click", () => {
+      irPara(botao.dataset.ir, JSON.parse(botao.dataset.ajustes));
+    });
+  });
+
+  if (d.tarefas) {
+    $("#inicio-card-tarefas").style.display = "";
+    $("#inicio-tarefas").innerHTML = d.tarefas.proximas.length
+      ? d.tarefas.proximas.map(t => `
+        <li class="list-group-item">
+          <div class="d-flex justify-content-between align-items-start" style="gap:var(--e3)">
+            <div>
+              <b>${escapeHtml(t.tipo)}</b>
+              <br><small class="text-muted">${escapeHtml(t.cliente_nome)} — ${escapeHtml(t.caso_titulo)}</small>
+            </div>
+            <div class="text-right text-nowrap">${prazoTarefaHtml(t)}</div>
+          </div>
+        </li>`).join("")
+      : `<li class="list-group-item text-muted">Nenhuma tarefa em aberto. Nada esperando por você aqui.</li>`;
+  }
+
+  if (d.casos) {
+    $("#inicio-card-parados").style.display = "";
+    $("#inicio-parados-titulo").textContent = `Casos parados há ${d.casos.dias_parado}+ dias`;
+    $("#inicio-parados").innerHTML = d.casos.lista_parados.length
+      ? d.casos.lista_parados.map(c => `
+        <li class="list-group-item">
+          <button type="button" class="btn btn-link p-0 btn-abrir-caso-parado" data-caso="${escapeHtml(c.caso_id)}">
+            ${escapeHtml(c.titulo)}
+          </button>
+          <br><small class="text-muted">${escapeHtml(c.cliente_nome)} — ${escapeHtml(c.status)},
+            sem novidade desde <span class="mono">${dataBr(c.atualizado_em)}</span></small>
+        </li>`).join("")
+      : `<li class="list-group-item text-muted">Nenhum caso parado. Todos tiveram movimento na última semana.</li>`;
+
+    $("#inicio-parados").querySelectorAll(".btn-abrir-caso-parado").forEach(botao => {
+      botao.addEventListener("click", () => abrirCaso(botao.dataset.caso));
+    });
+  }
+}
 
 // ====================================================================
 // TAREFAS E PRAZOS
@@ -4523,6 +4720,9 @@ $("#busca-conversa").addEventListener("input", () => {
 // não tratada, já que r.json() de um erro não é a lista que a função
 // espera) só de abrir o painel, mesmo sem clicar em nada.
 const podeVer = (funcao) => USUARIO_PAPEL === "Gestor" || FUNCOES_ATIVAS.includes(funcao);
+// Início é a tela que abre -- carrega sempre, sem guarda de função (o
+// backend é quem decide quais blocos essa pessoa recebe).
+carregarInicio();
 if (podeVer("status_projeto")) carregarStatus();
 if (podeVer("clientes")) carregarClientes();
 if (podeVer("aprovacoes_pendentes")) carregarPendentes();

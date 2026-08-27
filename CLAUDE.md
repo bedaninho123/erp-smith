@@ -36,6 +36,12 @@ A suíte automatizada (`pytest`) cobre só o que dói perder: isolamento de dado
 # Definir/redefinir a senha de um usuário do painel (interativo, nunca digitar a senha em outro lugar)
 .venv\Scripts\python.exe -m webapp.definir_senha
 
+# Painel de DEMONSTRAÇÃO (localhost:5010) -- banco temporário de gente fictícia,
+# apagado ao fechar. Use este para conferir tela nova ou mostrar o sistema a
+# alguém sem abrir nome, CPF e documento de cliente de verdade. Login e senha
+# aparecem no console.
+.venv\Scripts\python.exe -m webapp.rodar_demo
+
 # Webhook de atendimento (localhost:5001) -- endpoint POST /webhook/mensagem
 .venv\Scripts\python.exe -m atendimento.webhook
 
@@ -252,6 +258,92 @@ O Auditor (`motor_ia/auditor.py`) tem duas camadas: uma checagem determinística
 
 `core/motor_casos.py::atualizar_status()` / `atualizar_responsavel()` validam (status contra lista controlada, usuário ativo) e sempre gravam em `historico`. O webapp (`webapp/app.py`) só chama essas funções — não faz `UPDATE` direto na tabela `caso`.
 
+### Tarefas: trabalho com dono e data, diferente de `proxima_acao`
+
+(2026-08-27.) A tabela `tarefas` existia no schema desde o Core mínimo e
+**nunca foi usada** — só o script de dado de teste escrevia nela, e só
+`motor_ia/montador_contexto.py` lia. Prazo de despachante não morava em
+lugar nenhum. `core/motor_tarefas.py` é o motor que faltava; a tela
+"Tarefas e Prazos" e o bloco dentro da ficha do Caso são as duas
+superfícies (a mesma tarefa aparece nos dois).
+
+Não confundir com `processo.proxima_acao`: aquilo é o **estado** de um
+processo perante o órgão ("aguardando comprovante"). Tarefa é trabalho
+com dono e data, que alguém marca como feito. Um processo parado pode
+ter três tarefas; uma tarefa pode não ter processo nenhum.
+
+Regras que vivem no motor, e por isso nenhuma tela pode reimplementar:
+
+- **Toda tarefa pertence a um caso** (`caso_id`/`cliente_id` são NOT
+  NULL), e o `cliente_id` é lido do caso, nunca de quem chamou.
+- **`data_conclusao` é consequência do status**: concluir carimba,
+  reabrir apaga. Tarefa reaberta com "concluída em" de antes seria data
+  que já não significa nada.
+- **"Atrasada" só vale para tarefa em aberto** — trabalho feito ontem
+  com prazo de anteontem não é pendência.
+- **Hoje é calculado em Python** (`hoje_local()`), nunca com
+  `date('now')` do SQLite, que é UTC: às 21h de Brasília toda tarefa do
+  dia apareceria atrasada, justamente no fim do expediente.
+- **Prazo é um DIA** (`AAAA-MM-DD`). As linhas migradas da planilha
+  guardam ISO completo, e `'...T00:00:00Z' > '2026-08-27'` na comparação
+  de texto — daí o `SUBSTR(prazo, 1, 10)` em todo filtro de data.
+- **Contagem e lista saem da mesma função** (`contar_tarefas` chama
+  `listar_tarefas`): duas implementações da regra de atraso divergem, e
+  aí a tela mostra 3 atrasadas numa lista com 2 linhas.
+
+O histórico do Caso registra criação, status, responsável e prazo — não
+edição de descrição, que viraria log de digitação. Sempre com
+`tipo_evento='outro'`: os outros quatro valores do CHECK falam do Caso, e
+um `mudanca_status` ali seria lido como status **do Caso**.
+
+`tarefas` entrou no catálogo de `FUNCOES_VALIDAS`. As rotas de
+criar/editar/concluir levam `funcao_required("tarefas", "casos")` porque
+a tarefa é alcançável das duas telas.
+
+### Tela inicial: resumo com caminho, não painel de números
+
+(2026-08-27.) O painel abria direto na lista de Casos e não havia lugar
+que respondesse "o que precisa da minha atenção hoje?". `/api/inicio`
+junta o que já existe em outras telas — **nenhuma contagem nova é
+implementada ali**, cada bloco chama a mesma função da tela de destino.
+
+O valor da tela é o caminho: cada número é um botão que leva à tela onde
+aquele trabalho é feito, já com o filtro aplicado (atrasadas → Tarefas
+filtrado por atrasadas). Número que não leva a lugar nenhum é decoração.
+
+Dois cuidados que não são óbvios: (a) cor semântica só quando o número
+pede ação — zero em vermelho treina o olho a ignorar vermelho, e é o
+vermelho que precisa funcionar no dia em que houver 6 atrasadas; (b) a
+rota tem `funcao_required` com as cinco funções, mas isso **libera se
+qualquer uma bater** — então cada bloco é conferido de novo com `_pode()`
+dentro da rota. Sem isso, um Atendente com só "casos" receberia a fila de
+aprovações pendentes de brinde. Coberto por `tests/test_tela_inicial.py`.
+
+"Caso parado" é caso vivo sem atualização há 7 dias. A tela de Casos
+promete mostrar "o que está parado" desde sempre, mas ordenada por data
+ela mostra o que é **recente** — o parado fica no fim, que é onde ninguém
+olha.
+
+### Auditoria: o registro passou a ser lido por gente
+
+(2026-08-27.) O `log_administrativo` existia desde a auditoria de riscos
+de 2026-07-30, e a única forma de ler era `SELECT` na mão — ou seja, na
+prática ninguém lia. A tela "Auditoria" (Gestor, `@gestor_required`,
+**fora** do catálogo de permissões como Configurações) é só leitura: não
+existe rota de escrita, porque registro que a própria pessoa auditada
+pode alterar não audita nada.
+
+O que a tela acrescenta a listar linhas: avisa quantos pedidos de dado
+sensível foram **recusados** nos últimos 7 dias e explica o que isso
+significa (um recusado isolado é cliente digitando o CPF errado; vários
+seguidos no mesmo cliente é alguém tentando adivinhar CPF de outra
+pessoa — ver o portão de identidade). Esse era o sinal mais importante do
+registro, e era justamente o que ninguém via.
+
+`USR-000003` e `CLI-000012` são traduzidos para nome de gente na
+exibição, com o ID ao lado: o log guarda ID de propósito (nome muda, ID
+não), mas tela de auditoria que exige decorar identificador não é lida.
+
 ### webapp/ é o painel administrativo real, não uma ferramenta descartável
 
 Flask + Jinja + JS puro (sem build step, sem framework front-end) servido via CDN para o tema AdminLTE 3. Autenticação por sessão simples (`werkzeug.security`, `usuario.senha_hash`) — sem biblioteca de auth adicional. Todas as rotas `/api/*` exigem login (`@login_required`); a senha de um usuário nunca é definida por código, só via `webapp/definir_senha.py` rodado interativamente pelo próprio usuário. A UI inteira é uma SPA de uma página só (`webapp/templates/index.html`) alternando divs `.view` via JS — não há rotas de URL por tela.
@@ -292,9 +384,12 @@ Banco já em uso, com `usuario.papel` fora desses dois valores: rodar
 (2026-07-30) Gestor continua com acesso total e intocável — o catálogo
 abaixo só tem efeito pra quem é Atendente. Catálogo em
 `core/motor_usuarios.FUNCOES_VALIDAS`, mapeado 1:1 com as seções do menu
-(`atendimentos`, `casos`, `clientes`, `aprovacoes_pendentes`,
+(`atendimentos`, `casos`, `tarefas`, `clientes`, `aprovacoes_pendentes`,
 `documentos_aprovar`, `campeonatos`, `resultados`, `testar_pipeline`,
-`status_projeto` — `atendimentos` entrou em 2026-08-21 com a tela de CRM).
+`status_projeto` — `atendimentos` entrou em 2026-08-21 com a tela de CRM,
+`tarefas` em 2026-08-27). A tela **Início** fica de fora do catálogo de
+propósito: ela é resumo do que a pessoa já pode ver, e cada bloco some
+sozinho para quem não tem aquela função.
 Remoção (checklist/campeonato/resultado) e a área administrativa
 (Configurações, gestão de usuário e de permissão) não entram no catálogo
 — seguem travadas só pro Gestor, sem toggle, de propósito.
