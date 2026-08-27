@@ -32,6 +32,9 @@ import time
 from datetime import datetime
 
 from domain.clube_tiro import motor_filiados
+from domain.clube_tiro.sincronizar_modalidades import (
+    sincronizar as sincronizar_modalidades,
+)
 from integracoes.shooting_house import (
     ShootingHouseIndisponivel,
     consultar_habitualidade,
@@ -93,11 +96,15 @@ def sincronizar_habitualidades(empresa_id: str, limite: int) -> dict:
 
 def sincronizar(empresa_id: str, limite: int = LIMITE_PADRAO, somente_lista: bool = False) -> dict:
     lista = sincronizar_lista(empresa_id)
-    if lista["erro"]:
-        return {"lista": lista, "habitualidade": None}
-    if somente_lista:
-        return {"lista": lista, "habitualidade": None}
-    return {"lista": lista, "habitualidade": sincronizar_habitualidades(empresa_id, limite)}
+    # O catálogo de modalidades pega carona: é UMA chamada, sem CPF
+    # nenhum envolvido, e assim ele fica fresco sem precisar de uma
+    # segunda Tarefa Agendada. Falha dele não derruba a rodada -- a
+    # função devolve o erro em vez de levantar.
+    modalidades = sincronizar_modalidades(empresa_id)
+    if lista["erro"] or somente_lista:
+        return {"lista": lista, "habitualidade": None, "modalidades": modalidades}
+    return {"lista": lista, "modalidades": modalidades,
+            "habitualidade": sincronizar_habitualidades(empresa_id, limite)}
 
 
 def main() -> int:
@@ -124,6 +131,14 @@ def main() -> int:
         print(f"FALHA ao listar filiados: {lista['erro']}")
         return 1
     print(f"  Filiados na lista: {lista['total']}")
+
+    mod = saida.get("modalidades") or {}
+    if mod.get("erro"):
+        print(f"  Modalidades: falhou -- {mod['erro']}")
+    else:
+        print(f"  Modalidades: {mod.get('novas', 0)} nova(s), "
+              f"{mod.get('atualizadas', 0)} atualizada(s), "
+              f"{mod.get('desativadas', 0)} desativada(s)")
 
     hab = saida["habitualidade"]
     if hab is None:

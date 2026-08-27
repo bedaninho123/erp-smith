@@ -592,6 +592,55 @@ _FILIADOS_TESTE = [
 ]
 
 
+# Catálogo de modalidades de teste. Poucas e reconhecíveis de propósito:
+# quem abrir a tela no modo simulado precisa perceber na hora que está
+# vendo dado de exemplo, não as 300 modalidades do clube.
+_MODALIDADES_TESTE = [
+    {"grupo_id": 1, "grupo": "Tiro ao Prato (exemplo)",
+     "modalidades": [{"id": 1, "nome": "Trap Americano"}, {"id": 2, "nome": "Skeet"}]},
+    {"grupo_id": 4, "grupo": "Tiro de Precisão (exemplo)",
+     "modalidades": [{"id": 30, "nome": "Saque Rápido"}, {"id": 31, "nome": "Duelo 20s"}]},
+]
+
+
+def listar_modalidades() -> list[dict]:
+    """GET /championship/modalities/groups -- o catálogo de modalidades
+    do clube, agrupado.
+
+    É o ÚNICO endpoint de campeonato que responde com dado para esta
+    credencial (2026-08-27): `/championship/stage` devolve lista vazia, e
+    sem id de etapa não há como chamar os resultados por prova. Ver
+    CLAUDE.md, "Financeiro do clube".
+
+    Catálogo puro -- nome de modalidade não é dado de pessoa nenhuma, ao
+    contrário de tudo o mais que este módulo lê.
+    """
+    if not shooting_house_ativo():
+        return _MODALIDADES_TESTE
+
+    dados = _chamar_api("/championship/modalities/groups", {})
+    grupos = []
+    for item in dados if isinstance(dados, list) else []:
+        modalidades = [
+            {"id": m.get("id"), "nome": (m.get("name") or "").strip()}
+            for m in (item.get("modalities") or [])
+            if m.get("id") is not None and (m.get("name") or "").strip()
+        ]
+        if not modalidades:
+            # Grupo sem modalidade não vira linha: seria um item de menu
+            # que não leva a lugar nenhum.
+            continue
+        grupos.append({
+            "grupo_id": item.get("id"),
+            # O clube tem um grupo com nome vazio (id 1000, onde ficam as
+            # modalidades criadas por eles). Sem este rótulo a tela
+            # mostraria um cabeçalho em branco com 35 itens embaixo.
+            "grupo": (item.get("name") or "").strip() or "Sem grupo",
+            "modalidades": modalidades,
+        })
+    return grupos
+
+
 def _dentro(bloco: dict, *caminho):
     """Desce por um caminho de chaves, devolvendo None em qualquer buraco.
 

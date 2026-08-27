@@ -541,6 +541,14 @@
             </a>
           </li>
           {% endif %}
+          {% if usuario_papel == 'Gestor' or 'campeonatos' in funcoes_ativas or 'resultados' in funcoes_ativas %}
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="modalidades">
+              <i class="nav-icon fas fa-crosshairs" aria-hidden="true"></i>
+              <p>Modalidades</p>
+            </a>
+          </li>
+          {% endif %}
           {% if usuario_papel == 'Gestor' or 'resultados' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="resultados">
@@ -1368,6 +1376,28 @@
       </div>
     </div>
 
+    <div id="view-modalidades" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Modalidades</h1>
+          <p class="text-muted mb-0" id="modalidades-nota">Carregando…</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <div class="card">
+            <div class="card-body">
+              <label for="busca-modalidade">Buscar modalidade ou grupo</label>
+              <input id="busca-modalidade" type="text" class="form-control"
+                     placeholder="Ex.: saque rápido, IPSC, carabina">
+              <small class="text-muted d-block mt-2" id="modalidades-contagem"></small>
+            </div>
+          </div>
+          <div id="modalidades-lista"></div>
+        </div>
+      </div>
+    </div>
+
     <div id="view-campeonatos" class="view">
       <div class="content-header">
         <div class="container-fluid">
@@ -1485,7 +1515,14 @@
                 </div>
                 <div class="col-md-5">
                   <label for="resultado-modalidade">Modalidade/categoria (opcional)</label>
-                  <input id="resultado-modalidade" type="text" class="form-control" placeholder="Ex.: Tiro Prático -- Categoria A">
+                  <input id="resultado-modalidade" type="text" class="form-control"
+                         list="modalidades-opcoes" placeholder="Ex.: Saque Rápido, Trap Americano">
+                  <!-- Sugestão, não obrigação: é <datalist>, então o
+                       catálogo do clube aparece pronto para escolher e
+                       quem precisar digitar algo fora dele continua
+                       podendo. Resultado já cadastrado com modalidade
+                       escrita à mão segue valendo. -->
+                  <datalist id="modalidades-opcoes"></datalist>
                 </div>
               </div>
               <div class="row mt-2">
@@ -1815,7 +1852,13 @@ function carregarView(viewName) {
   if (viewName === "clientes") carregarClientesLista();
   if (viewName === "config") { carregarConfiguracoes(); carregarUsuarios(); }
   if (viewName === "campeonatos") carregarCampeonatos();
-  if (viewName === "resultados") carregarResultadosCampeonatosLista();
+  if (viewName === "resultados") {
+    carregarResultadosCampeonatosLista();
+    // As sugestões de modalidade vêm da mesma rota do catálogo.
+    // Carregadas uma vez só: o catálogo não muda no meio da sessão.
+    if (!modalidadesCarregadas) carregarModalidades();
+  }
+  if (viewName === "modalidades") carregarModalidades();
   if (viewName === "habitualidade") carregarHabitualidade();
   if (viewName === "tarefas") carregarTarefas();
   if (viewName === "auditoria") carregarAuditoria();
@@ -3218,6 +3261,68 @@ async function removerCampeonato(campeonatoId, nome) {
 // Declaração de função em JS é içada, então a última sempre vencia e
 // esta era código morto -- editar ela não mudaria nada na tela, o que é
 // a pior espécie de armadilha. Ficou só a de baixo.)
+
+// ====================================================================
+// MODALIDADES -- catálogo do clube, espelhado do Shooting House
+//
+// Único endpoint de campeonato que responde com dado para a credencial
+// do clube: `/championship/stage` devolve vazio, então etapa e resultado
+// por prova continuam fora do alcance (CLAUDE.md, "Financeiro do clube").
+// ====================================================================
+let modalidadesCarregadas = false;
+
+async function carregarModalidades() {
+  const busca = $("#busca-modalidade").value.trim();
+  const params = new URLSearchParams();
+  if (busca) params.set("busca", busca);
+
+  const resposta = await buscarJson("/api/modalidades?" + params.toString());
+  if (!resposta.ok) {
+    if (resposta.dados && resposta.dados.erro) return;
+    $("#modalidades-lista").innerHTML = AVISO_FALHA_DE_REDE;
+    return;
+  }
+  const d = resposta.dados;
+
+  $("#modalidades-nota").textContent = d.sincronizado_em
+    ? `${d.total} modalidades espelhadas do Shooting House em ${dataHoraBr(d.sincronizado_em)}.`
+    : "Catálogo ainda não sincronizado.";
+  $("#modalidades-contagem").textContent = busca
+    ? `${d.mostrando} de ${d.total} modalidades com "${busca}".`
+    : `${d.total} modalidades em ${d.grupos.length} grupos.`;
+
+  $("#modalidades-lista").innerHTML = d.grupos.length
+    ? d.grupos.map(g => `
+      <div class="card">
+        <div class="card-header d-flex align-items-center" style="gap: var(--e3)">
+          <h3 class="card-title">${escapeHtml(g.grupo)}</h3>
+          <span class="text-muted ml-auto" style="font-size:12px">${g.modalidades.length}</span>
+        </div>
+        <div class="card-body d-flex flex-wrap" style="gap: var(--e2)">
+          ${g.modalidades.map(m => `<span class="badge badge-light" style="font-size:12px; font-weight:400; text-transform:none; letter-spacing:0; padding:4px 10px">${escapeHtml(m.nome)}</span>`).join("")}
+        </div>
+      </div>`).join("")
+    : `<div class="card"><div class="card-body text-muted">
+        ${busca
+          ? "Nenhuma modalidade com esse texto."
+          : `Catálogo vazio. Rode <span class="mono">domain.clube_tiro.sincronizar_modalidades</span> para espelhar do Shooting House.`}
+      </div></div>`;
+
+  // A mesma resposta alimenta as sugestões do formulário de Resultados,
+  // sem uma segunda chamada: o catálogo é um só.
+  if (!busca) {
+    const nomes = [...new Set(d.grupos.flatMap(g => g.modalidades.map(m => m.nome)))].sort();
+    const lista = $("#modalidades-opcoes");
+    if (lista) lista.innerHTML = nomes.map(n => `<option value="${escapeHtml(n)}">`).join("");
+    modalidadesCarregadas = true;
+  }
+}
+
+let debounceModalidade;
+$("#busca-modalidade").addEventListener("input", () => {
+  clearTimeout(debounceModalidade);
+  debounceModalidade = setTimeout(carregarModalidades, 300);
+});
 
 async function carregarCampeonatos() {
   const anoSelect = $("#campeonato-filtro-ano");

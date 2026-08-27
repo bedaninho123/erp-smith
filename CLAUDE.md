@@ -91,6 +91,10 @@ atendimento\remover_tarefa_agendada.bat
 # Instalar/remover a Tarefa Agendada do Windows que roda o backup todo dia às 3h
 core\db\instalar_tarefa_backup.bat
 core\db\remover_tarefa_backup.bat
+# Catálogo de modalidades do clube (uma chamada, sem CPF nenhum). Também
+# roda de carona na sincronização de filiados abaixo
+.venv\Scripts\python.exe -m domain.clube_tiro.sincronizar_modalidades
+
 # Panorama de habitualidade do clube: espelha a lista de filiados e conta
 # participações. --limite controla quantos CPFs por rodada (padrão 150)
 .venv\Scripts\python.exe -m domain.clube_tiro.sincronizar_habitualidade
@@ -106,6 +110,8 @@ domain\clube_tiro\remover_tarefa_habitualidade.bat
 # Situação de anuidade, CR e data real de filiação: idempotente. Depois de
 # rodar, preencher com `sincronizar_habitualidade --somente-lista` (~84s)
 .venv\Scripts\python.exe -m domain.clube_tiro.db.migrar_financeiro_filiado
+# Tabela do catálogo de modalidades: idempotente
+.venv\Scripts\python.exe -m domain.clube_tiro.db.migrar_modalidades
 
 .venv\Scripts\python.exe -m domain.clube_tiro.db.criar_banco --recriar
 .venv\Scripts\python.exe -m domain.clube_tiro.db.popular_conhecimento
@@ -487,6 +493,39 @@ lido na documentação):
 
 As três viraram pergunta para o suporte do Shooting House — ver
 [[project-decisoes-abertas-erp-smith]].
+
+### Modalidades: o pedaço de campeonato que a API deixa trazer
+
+(2026-08-27.) `GET /championship/modalities/groups` é o **único** endpoint
+de campeonato que responde com dado para a credencial do clube: 13 grupos,
+204 modalidades. `/championship/stage` devolve lista vazia, e sem id de
+etapa não há como chamar `rankingCategoryResults` — então etapa, prova e
+resultado continuam fora do alcance (ver a seção anterior).
+
+Espelhado em `dominio.modalidade` por `motor_modalidades.py`, com tela
+própria (Modalidades, sob CLUBE). Três decisões:
+
+- **`resultado_campeonato.modalidade` continua TEXTO, não virou FK.** Os
+  resultados já cadastrados têm modalidade digitada à mão, e uma FK os
+  quebraria. O catálogo entra como `<datalist>` no formulário: sugestão,
+  não obrigação — quem precisar de algo fora dele continua digitando.
+- **Modalidade que sai do catálogo vira `ativo='Não'`, nunca DELETE.**
+  Pode haver resultado antigo mencionando ela, e apagar deixaria a tela
+  sem como explicar de onde veio aquele texto. Mesma escolha de
+  `sincronizar_lista`, que também não apaga filiado.
+- **A sincronização pega carona na rodada de filiados.** É uma chamada,
+  sem CPF nenhum envolvido — a leitura mais barata e inofensiva da
+  integração inteira. Assim o catálogo fica fresco sem uma segunda Tarefa
+  Agendada, e falha dele não derruba a rodada.
+
+O grupo de id 1000 vem com **nome vazio** (é onde ficam as modalidades
+criadas pelo próprio clube, 36 delas) e recebe o rótulo "Sem grupo" na
+leitura — sem isso a tela mostraria um cabeçalho em branco com 36 itens
+embaixo. Banco em uso: `domain.clube_tiro.db.migrar_modalidades`.
+
+A rota `/api/modalidades` leva `funcao_required("campeonatos", "resultados")`
+e **não** entra no catálogo de permissões como função própria: é dado de
+referência das duas telas que já existem, não uma área nova.
 
 ### webapp/ é o painel administrativo real, não uma ferramenta descartável
 

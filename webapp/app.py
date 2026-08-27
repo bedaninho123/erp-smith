@@ -51,7 +51,7 @@ from core.motor_usuarios import (
     FUNCOES_VALIDAS, atualizar_ativo, atualizar_papel, atualizar_permissoes,
     criar_usuario, listar_permissoes, listar_usuarios, tem_permissao,
 )
-from domain.clube_tiro import motor_filiados, motor_indicadores_clube
+from domain.clube_tiro import motor_filiados, motor_indicadores_clube, motor_modalidades
 from domain.clube_tiro.motor_campeonatos import (
     atualizar_campeonato, criar_campeonato, listar_campeonatos, remover_campeonato,
 )
@@ -1371,6 +1371,26 @@ def auditoria():
         tipos=motor_log_administrativo.tipos_registrados(empresa_id),
         acessos_negados_7d=motor_log_administrativo.contar_acessos_negados(empresa_id, dias=7),
         limite=limite,
+    )
+
+
+@app.route("/api/modalidades")
+@login_required
+@funcao_required("campeonatos", "resultados")
+def modalidades():
+    """Catálogo de modalidades do clube, espelhado do Shooting House.
+
+    Duas funções no decorator porque a tela de Resultados também usa esta
+    rota (é dela que sai a lista de sugestões de modalidade) -- mesma
+    situação já documentada em funcao_required para /api/campeonatos.
+
+    Não entra no catálogo de permissões como função própria: é dado de
+    referência das duas telas que já existem, não uma área nova.
+    """
+    return jsonify(
+        motor_modalidades.agrupado(
+            empresa_atual(), busca=(request.args.get("busca") or "").strip() or None
+        )
     )
 
 

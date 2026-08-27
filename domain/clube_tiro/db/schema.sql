@@ -120,6 +120,40 @@ CREATE INDEX idx_resultado_empresa_id ON resultado_campeonato(empresa_id);
 CREATE INDEX idx_resultado_campeonato ON resultado_campeonato(campeonato_id);
 CREATE INDEX idx_resultado_cliente ON resultado_campeonato(cliente_id);
 
+-- Catálogo de modalidades do clube -- ESPELHO de
+-- GET /championship/modalities/groups (2026-08-27).
+--
+-- Por que existe: é o ÚNICO endpoint de campeonato que responde com dado
+-- para a credencial do clube. `/championship/stage` devolve lista vazia,
+-- e sem id de etapa não há como puxar resultado por prova. Então o que dá
+-- para trazer hoje é o vocabulário: 13 grupos, ~204 modalidades.
+--
+-- Serve para `resultado_campeonato.modalidade` deixar de ser texto
+-- digitado à mão. Note que aquele campo continua TEXTO, não vira FK: os
+-- resultados já cadastrados têm modalidade escrita por pessoa, e uma FK
+-- os quebraria. A tabela alimenta a lista de sugestões da tela; quem
+-- quiser digitar algo fora do catálogo continua podendo.
+--
+-- COM empresa_id: o catálogo vem da conta do clube no Shooting House, e
+-- o grupo 1000 (modalidades criadas pelo próprio clube) prova que ele
+-- não é igual para todo mundo. Mesmo critério de campeonato.
+CREATE TABLE modalidade (
+    modalidade_id     TEXT PRIMARY KEY,            -- MOD-000001
+    empresa_id        TEXT NOT NULL,                 -- cross-db → core.empresa
+    grupo_id_sh       INTEGER,                       -- id do grupo no Shooting House
+    grupo             TEXT NOT NULL,                 -- 'Sem grupo' quando vem vazio
+    modalidade_id_sh  INTEGER NOT NULL,
+    nome              TEXT NOT NULL,
+    -- Modalidade que sai do catálogo do clube vira 'Não' em vez de ser
+    -- apagada: pode haver resultado antigo que a menciona, e apagar
+    -- deixaria a tela sem como explicar de onde veio aquele texto.
+    ativo             TEXT NOT NULL DEFAULT 'Sim',
+    sincronizado_em   TEXT NOT NULL,                 -- ISO 8601
+    UNIQUE (empresa_id, grupo_id_sh, modalidade_id_sh)
+);
+
+CREATE INDEX idx_modalidade_empresa_id ON modalidade(empresa_id);
+
 -- Filiado do clube -- ESPELHO da lista do Shooting House, não cadastro
 -- próprio (2026-08-25). Diferente de core.cliente em natureza, e a
 -- distinção é deliberada:
