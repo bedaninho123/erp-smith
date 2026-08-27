@@ -66,6 +66,70 @@ def test_log_de_uma_empresa_nao_aparece_na_outra(banco):
     assert len(log_b) == 1
 
 
+# --------------------------------------------------------------------
+# Tela Auditoria (2026-08-27): o registro passou a ser lido por gente
+# --------------------------------------------------------------------
+
+def test_atendente_nao_ve_a_auditoria(banco, painel_atendente):
+    """Área administrativa, como Configurações -- fica fora do catálogo
+    de permissões de propósito. Um Atendente poder ver (e ainda mais
+    ganhar/perder essa visão num toggle) esvaziaria o sentido do
+    registro, já que é o comportamento dele que está sendo registrado."""
+    assert painel_atendente.get("/api/auditoria").status_code == 403
+
+
+def test_gestor_le_a_auditoria_com_nome_de_gente(banco, painel):
+    atualizar_papel("EMP-000001", "USR-000003", "Gestor", alterado_por="Felipe")
+
+    dados = painel.get("/api/auditoria").get_json()
+
+    registro = next(r for r in dados["registros"] if r["tipo_evento"] == "papel_alterado")
+    assert registro["alvo"] == "USR-000003"
+    # O ID continua sendo o dado; o nome é tradução de exibição.
+    assert registro["alvo_nome"] == "Atendente Teste"
+    assert "papel_alterado" in dados["tipos"]
+
+
+def test_auditoria_nao_mostra_registro_de_outra_empresa(banco, painel):
+    atualizar_ativo("EMP-000002", "USR-000002", "Não", alterado_por="Gestor da Outra")
+
+    dados = painel.get("/api/auditoria").get_json()
+
+    assert dados["registros"] == []
+
+
+def test_busca_nao_atravessa_a_empresa(banco, painel):
+    """A busca monta um OR de três colunas. Sem parênteses em volta desse
+    OR ele passaria por cima do filtro de empresa -- mesmo erro que já
+    aconteceu uma vez na busca de clientes."""
+    atualizar_ativo("EMP-000002", "USR-000002", "Não", alterado_por="Gestor da Outra")
+    atualizar_papel("EMP-000001", "USR-000003", "Gestor", alterado_por="Felipe")
+
+    corpo = painel.get("/api/auditoria?busca=Gestor da Outra").get_data(as_text=True)
+
+    assert "Gestor da Outra" not in corpo
+
+
+def test_conta_so_os_acessos_negados_e_so_dessa_empresa(banco):
+    from core.conexao import conectar
+    from core.motor_log_administrativo import contar_acessos_negados, registrar
+
+    def _acesso(empresa_id: str, resultado: str) -> None:
+        con = conectar(empresa_id)
+        registrar(con, empresa_id, "ACESSO_DADO_SENSIVEL", "CLI-000001",
+                  "CONSULTA_HABITUALIDADE por Email", None, resultado, "sistema/atendimento")
+        con.commit()
+        con.close()
+
+    _acesso("EMP-000001", "negado: CPF não confere")
+    _acesso("EMP-000001", "negado: CPF não confere")
+    _acesso("EMP-000001", "liberado")
+    _acesso("EMP-000002", "negado: CPF não confere")
+
+    assert contar_acessos_negados("EMP-000001", dias=7) == 2
+    assert contar_acessos_negados("EMP-000002", dias=7) == 1
+
+
 def _criar_configuracao_de_teste(empresa_id: str) -> str:
     # tests/conftest.py não semeia a tabela configuracoes -- este teste
     # cria a própria linha, isolado dos outros.

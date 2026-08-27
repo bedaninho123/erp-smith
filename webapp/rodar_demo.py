@@ -111,10 +111,21 @@ def _criar_banco_core() -> None:
              "Triagem", "Normal", "USR-000001", AGORA, AGORA, "demonstração",
              "demonstração", 1, "Sim"),
         )
+    # A configuração mais sensível do sistema -- é o freio que faz a IA
+    # parar de enviar sozinha. Está aqui porque a tela de Auditoria
+    # precisa de algo real pra mostrar, e "quem desligou a revisão
+    # humana" é a pergunta que motivou o log administrativo existir.
+    con.execute(
+        "INSERT INTO configuracoes (config_id, empresa_id, chave, valor, categoria, "
+        "descricao, ativo) VALUES (?,?,?,?,?,?,?)",
+        ("CFG-000001", EMPRESA, "revisao_humana_ativa", "Sim", "atendimento",
+         "Enquanto 'Sim', toda resposta escrita pela IA espera aprovação humana.", "Sim"),
+    )
     con.commit()
     con.close()
 
     _criar_tarefas_demo()
+    _popular_auditoria_demo()
 
 
 def _criar_tarefas_demo() -> None:
@@ -139,6 +150,42 @@ def _criar_tarefas_demo() -> None:
             prioridade=prioridade, responsavel_id="USR-000001",
             criado_por="demonstração",
         )
+
+
+def _popular_auditoria_demo() -> None:
+    """Alguns eventos administrativos, para a tela de Auditoria mostrar
+    o que ela existe pra mostrar.
+
+    Os três acessos NEGADOS ao mesmo cliente são de propósito: é
+    exatamente esse desenho -- vários recusados seguidos na mesma pessoa
+    -- que a tela precisa deixar visível, porque é o sinal de alguém
+    tentando adivinhar o CPF de outra pessoa. Sem eles, o aviso do topo
+    nunca aparece e ninguém sabe que ele existe.
+    """
+    from core.conexao import conectar
+    from core.motor_log_administrativo import registrar
+
+    eventos = [
+        ("configuracao_alterada", "CFG-000001", "Configuração 'revisao_humana_ativa' alterada",
+         "Sim (Sim)", "Não (Sim)", "Gestor de Demonstração"),
+        ("configuracao_alterada", "CFG-000001", "Configuração 'revisao_humana_ativa' alterada",
+         "Não (Sim)", "Sim (Sim)", "Gestor de Demonstração"),
+        ("ACESSO_DADO_SENSIVEL", "CLI-000001", "CONSULTA_HABITUALIDADE por Email",
+         None, "liberado", "sistema/atendimento"),
+        ("ACESSO_DADO_SENSIVEL", "CLI-000001", "CONSULTA_CR por Email",
+         None, "negado: não foi possível confirmar a identidade", "sistema/atendimento"),
+        ("ACESSO_DADO_SENSIVEL", "CLI-000001", "CONSULTA_CR por Email",
+         None, "negado: não foi possível confirmar a identidade", "sistema/atendimento"),
+        ("ACESSO_DADO_SENSIVEL", "CLI-000001", "CONSULTA_HABITUALIDADE por WhatsApp",
+         None, "negado: não foi possível confirmar a identidade", "sistema/atendimento"),
+    ]
+    con = conectar(EMPRESA)
+    try:
+        for tipo, alvo, descricao, anterior, novo, autor in eventos:
+            registrar(con, EMPRESA, tipo, alvo, descricao, anterior, novo, autor)
+        con.commit()
+    finally:
+        con.close()
 
 
 def _criar_banco_dominio() -> None:

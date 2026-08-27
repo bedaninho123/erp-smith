@@ -476,6 +476,14 @@
             </a>
           </li>
           {% endif %}
+          {% if usuario_papel == 'Gestor' %}
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="auditoria">
+              <i class="nav-icon fas fa-user-shield" aria-hidden="true"></i>
+              <p>Auditoria</p>
+            </a>
+          </li>
+          {% endif %}
           {% if usuario_papel == 'Gestor' or 'status_projeto' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="status">
@@ -718,6 +726,56 @@
             <div class="card-header"><h3 class="card-title">Histórico</h3></div>
             <div class="card-body p-0">
               <ul class="list-group list-group-flush" id="caso-historico"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-auditoria" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Auditoria</h1>
+          <p class="text-muted mb-0">Quem mudou o quê, e quando. Registro só de leitura — nada aqui pode ser editado ou apagado, nem por você.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <div class="alert" id="auditoria-alerta" style="display:none"></div>
+
+          <div class="card">
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-4">
+                  <label for="auditoria-tipo">Tipo de evento</label>
+                  <select id="auditoria-tipo" class="form-control"><option value="">Todos</option></select>
+                </div>
+                <div class="col-md-5">
+                  <label for="auditoria-busca">Buscar por pessoa, alvo ou descrição</label>
+                  <input id="auditoria-busca" type="text" class="form-control"
+                         placeholder="Ex.: Ana, revisao_humana_ativa, CLI-000004">
+                </div>
+                <div class="col-md-3">
+                  <label for="auditoria-limite">Quantos registros</label>
+                  <select id="auditoria-limite" class="form-control">
+                    <option value="200">Últimos 200</option>
+                    <option value="500">Últimos 500</option>
+                    <option value="1000">Últimos 1000</option>
+                  </select>
+                </div>
+              </div>
+              <small class="text-muted d-block mt-2" id="auditoria-contagem"></small>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover">
+                <thead><tr>
+                  <th>Quando</th><th>Evento</th><th>Quem fez</th><th>Alvo</th><th>O que mudou</th>
+                </tr></thead>
+                <tbody id="auditoria-body"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1499,6 +1557,7 @@ function carregarView(viewName) {
   if (viewName === "resultados") carregarResultadosCampeonatosLista();
   if (viewName === "habitualidade") carregarHabitualidade();
   if (viewName === "tarefas") carregarTarefas();
+  if (viewName === "auditoria") carregarAuditoria();
 }
 
 function ativarView(btn) {
@@ -2083,6 +2142,99 @@ async function salvarTarefaDoCaso() {
 }
 
 $("#salvar-caso-tarefa").addEventListener("click", salvarTarefaDoCaso);
+
+// ====================================================================
+// AUDITORIA (só Gestor)
+//
+// Os tipos de evento vêm do banco com o nome que o código gravou --
+// mistura de snake_case e MAIÚSCULA, porque foram escritos em momentos
+// diferentes. Renomear no banco quebraria o registro histórico (é
+// append-only de propósito), então a tradução acontece aqui, na leitura.
+// ====================================================================
+const ROTULOS_EVENTO = {
+  "papel_alterado": "Papel de usuário",
+  "ativo_alterado": "Acesso ligado/desligado",
+  "permissao_alterada": "Permissão",
+  "configuracao_alterada": "Configuração",
+  "ACESSO_DADO_SENSIVEL": "Acesso a dado sensível",
+  "CONSULTA_CADASTRO_EXTERNO": "Consulta ao Shooting House",
+};
+
+function rotuloEvento(tipo) {
+  return ROTULOS_EVENTO[tipo] || tipo;
+}
+
+function ehAcessoNegado(r) {
+  return r.tipo_evento === "ACESSO_DADO_SENSIVEL" && (r.valor_novo || "").startsWith("negado");
+}
+
+async function carregarAuditoria() {
+  const params = new URLSearchParams();
+  const tipo = $("#auditoria-tipo").value;
+  const busca = $("#auditoria-busca").value.trim();
+  if (tipo) params.set("tipo_evento", tipo);
+  if (busca) params.set("busca", busca);
+  params.set("limite", $("#auditoria-limite").value);
+
+  const resposta = await buscarJson("/api/auditoria?" + params.toString());
+  if (!resposta.ok) {
+    $("#auditoria-body").innerHTML = `<tr><td colspan="5">${AVISO_FALHA_DE_REDE}</td></tr>`;
+    return;
+  }
+  const d = resposta.dados;
+
+  if (!$("#auditoria-tipo").dataset.carregado) {
+    $("#auditoria-tipo").innerHTML = `<option value="">Todos</option>`
+      + d.tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(rotuloEvento(t))}</option>`).join("");
+    $("#auditoria-tipo").dataset.carregado = "1";
+  }
+
+  // O aviso só aparece quando há o que avisar. Um alerta permanente no
+  // topo de uma tela vira parte do papel de parede em uma semana.
+  const alerta = $("#auditoria-alerta");
+  if (d.acessos_negados_7d > 0) {
+    alerta.style.display = "";
+    alerta.className = "alert alert-warning";
+    alerta.innerHTML = `<b>${d.acessos_negados_7d} pedido(s) de dado sensível recusado(s) nos últimos 7 dias.</b>
+      Um recusado isolado costuma ser cliente digitando o CPF errado. Vários seguidos, no mesmo cliente,
+      é o sinal de alguém tentando adivinhar CPF de outra pessoa — filtre por
+      <i>Acesso a dado sensível</i> e veja se se repetem.`;
+  } else {
+    alerta.style.display = "none";
+  }
+
+  $("#auditoria-contagem").textContent = d.registros.length >= d.limite
+    ? `Mostrando os ${d.limite} mais recentes — pode haver mais.`
+    : `${d.registros.length} registro(s).`;
+
+  $("#auditoria-body").innerHTML = d.registros.length ? d.registros.map(r => `
+    <tr${ehAcessoNegado(r) ? ' class="table-danger"' : ""}>
+      <td class="mono text-nowrap">${dataHoraBr(r.criado_em)}</td>
+      <td>${escapeHtml(rotuloEvento(r.tipo_evento))}</td>
+      <td>${escapeHtml(r.criado_por_nome || r.criado_por)}</td>
+      <td>
+        ${escapeHtml(r.alvo_nome || r.alvo || "—")}
+        ${r.alvo_nome ? `<br><small class="mono text-muted">${escapeHtml(r.alvo)}</small>` : ""}
+      </td>
+      <td>
+        ${escapeHtml(r.descricao || "")}
+        ${r.valor_anterior || r.valor_novo
+          ? `<br><small class="text-muted">${escapeHtml(r.valor_anterior || "(vazio)")} → ${escapeHtml(r.valor_novo || "(vazio)")}</small>`
+          : ""}
+      </td>
+    </tr>
+  `).join("") : `<tr><td colspan="5" class="text-muted">Nenhum registro com esses filtros.</td></tr>`;
+}
+
+$("#auditoria-tipo").addEventListener("change", carregarAuditoria);
+$("#auditoria-limite").addEventListener("change", carregarAuditoria);
+
+// Mesmo debounce das outras buscas: sem ele, cada tecla vira consulta.
+let debounceAuditoria;
+$("#auditoria-busca").addEventListener("input", () => {
+  clearTimeout(debounceAuditoria);
+  debounceAuditoria = setTimeout(carregarAuditoria, 300);
+});
 
 function resetFormularioProcesso(casoId) {
   $("#processo-form-titulo").textContent = "Adicionar processo";

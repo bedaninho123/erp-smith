@@ -1178,6 +1178,62 @@ def usuarios_permissoes_atualizar(usuario_id):
     return jsonify(ok=True)
 
 
+@app.route("/api/auditoria")
+@login_required
+@gestor_required
+def auditoria():
+    """Tela Auditoria: só leitura, só Gestor.
+
+    @gestor_required e não @funcao_required: é área administrativa, como
+    Configurações e gestão de usuário -- não entra no catálogo de
+    permissões de propósito (CLAUDE.md). Um Atendente poder ver, e ainda
+    mais poder ganhar/perder essa visão por um toggle, esvaziaria o
+    sentido do registro.
+    """
+    empresa_id = empresa_atual()
+    limite = min(int(request.args.get("limite") or 200), 1000)
+
+    registros = motor_log_administrativo.listar(
+        empresa_id,
+        limite=limite,
+        tipo_evento=request.args.get("tipo_evento") or None,
+        busca=(request.args.get("busca") or "").strip() or None,
+    )
+
+    # Nome de gente no lugar de USR-000003 e CLI-000012. O log guarda o
+    # ID de propósito (nome muda, ID não), mas uma tela de auditoria que
+    # exige decorar identificador não vai ser lida por ninguém. A
+    # tradução é só de exibição -- o ID continua ali, ao lado.
+    con = conectar(empresa_id)
+    nomes = {
+        r["usuario_id"]: r["nome"] for r in con.execute(
+            "SELECT usuario_id, nome FROM usuario WHERE empresa_id = ?", (empresa_id,)
+        ).fetchall()
+    }
+    nomes.update({
+        r["cliente_id"]: r["nome"] for r in con.execute(
+            "SELECT cliente_id, nome FROM cliente WHERE empresa_id = ?", (empresa_id,)
+        ).fetchall()
+    })
+    chaves_config = {
+        r["config_id"]: r["chave"] for r in con.execute(
+            "SELECT config_id, chave FROM configuracoes WHERE empresa_id = ?", (empresa_id,)
+        ).fetchall()
+    }
+    con.close()
+
+    for registro in registros:
+        registro["alvo_nome"] = nomes.get(registro["alvo"]) or chaves_config.get(registro["alvo"])
+        registro["criado_por_nome"] = nomes.get(registro["criado_por"])
+
+    return jsonify(
+        registros=registros,
+        tipos=motor_log_administrativo.tipos_registrados(empresa_id),
+        acessos_negados_7d=motor_log_administrativo.contar_acessos_negados(empresa_id, dias=7),
+        limite=limite,
+    )
+
+
 @app.route("/api/campeonatos")
 @login_required
 @funcao_required("campeonatos", "resultados")
