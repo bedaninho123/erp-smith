@@ -494,12 +494,17 @@ que contrariam o que este arquivo dizia antes:
   Core deixou de ser elegância arquitetural e virou exigência regulatória.
 
 **2. `ShootingHouseIndisponivel`: "não sei" nunca vira "não tem".**
-Com o modo real ligado, `consultar_cr`, `consultar_armas` e
+Com o modo real ligado, `consultar_cr` e
 `consultar_documentos_vencimento` **levantam a exceção em vez de cair no
-simulado** — elas ainda não têm implementação real (os endpoints pedem
-`idatirador`, e a conversão CPF → idatirador não existe). Sem isso, um
+simulado** — essas duas ainda não têm implementação real. Sem isso, um
 atirador de verdade perguntando "meu CR está em dia?" receberia "não
 temos registro do seu CR", porque o CPF dele não está na tabela de teste.
+
+(`consultar_armas` **ganhou modo real em 2026-08-26** e saiu dessa lista:
+o `searchBy` resolve o CPF → `idatirador`, o mesmo parâmetro que a busca
+de cadastro usa. A regra continua valendo para ela em outra forma —
+lista vazia é a afirmação "consultei, não tem arma", então falha de rede
+vira exceção e nunca lista vazia.)
 `motor_ia/consultor.py::_buscar_externo` registra a falha em
 `dados["fontes_indisponiveis"]` e **não preenche a chave** (`"armas": []`
 seria a afirmação "consultei, não tem nenhuma"); o Auditor tem um segundo
@@ -641,7 +646,7 @@ apaga o retrato anterior dele.
 
 - **Bug corrigido antes de acontecer:** o branch real de `consultar_habitualidade()` só fazia `resposta.json()` cru. A resposta real de `GET /registers/habitualities/{cpf}` é colunar — `habitualidades[grupo_arma][id_arma]` com arrays paralelos por índice —, bem diferente do formato simples (`{"eventos": [...]}`) que `portal/app.py` e `motor_ia/consultor.py` já esperam desde sempre (porque só o dado simulado existia até agora). Sem correção, a integração quebraria no primeiro CPF real consultado. `_normalizar_habitualidade_real()` faz essa conversão — estrutura inferida da documentação, **nunca testada contra uma resposta de verdade**; conferir os nomes de campo (`_CAMPOS_EVENTO_HABITUALIDADE_REAL`) assim que a credencial existir.
 - **CR tem mais dado do que o código assumia.** O comentário antigo dizia "endpoint real ainda não documentado" — mas `GET /registers/shooters/{shooterId}` tem `documents.cr.expirationDate`. Guardado agora em `data_expiracao_bruta`, separado de `proxima_confirmacao`, porque não está confirmado que esse campo bruto da API corresponde à regra de negócio já validada (Decreto nº 11.615/2023: CR não vence). Nenhuma lógica lê esse campo ainda.
-- **`consultar_armas()` e `consultar_documentos_vencimento()` (guia de tráfego, SIMAF)** — capacidade nova, dado que a API do Shooting House expõe e o projeto não modelava. Os dois endpoints reais (`/registers/shooters/weapon/{shooterId}` e `/registers/shooters/documentos-por-data-vencimento`) pedem `shooterId` interno ou filtram por intervalo de data — nenhum aceita CPF direto. A resolução CPF → `idatirador` ainda não existe, então as duas funções sempre devolvem dado simulado, mesmo com credencial configurada (mesmo padrão de `consultar_cr`).
+- **`consultar_armas()` e `consultar_documentos_vencimento()` (guia de tráfego, SIMAF)** — capacidade nova, dado que a API do Shooting House expõe e o projeto não modelava. **Correção de 2026-08-26:** este parágrafo dizia que os dois endpoints só aceitam `shooterId` interno e que por isso as duas funções seriam sempre simuladas. Isso valia para `documentos-por-data-vencimento` (que filtra por intervalo de data e devolve o clube inteiro), mas **não** para armas: `/registers/shooters/weapon/{id}` aceita `?searchBy=`, e `consultar_armas` passou a ter modo real por ali. `consultar_documentos_vencimento` segue simulada.
 
   Ligadas ao Planejador/Consultor/Redator em seguida, no mesmo dia: `SHOOTING_HOUSE_ARMAS` entra como fonte extra de `CONSULTA_HABITUALIDADE` (o prompt do Classificador já tratava "pergunta sobre arma registrada" como parte dessa intenção, então não precisou de categoria nova); `SHOOTING_HOUSE_DOCUMENTOS_VENCIMENTO` ganhou intenção própria, `CONSULTA_DOCUMENTOS_VENCIMENTO` (diferente de `CONSULTA_DOCUMENTOS`, que é sobre exigência de serviço novo, não status de documento já existente). Testado de ponta a ponta com a OpenAI de verdade (`motor_ia/demo_pipeline.py`) — as duas intenções classificaram certo e o Auditor aprovou.
 
