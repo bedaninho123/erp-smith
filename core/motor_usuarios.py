@@ -27,6 +27,7 @@ PAPEIS_VALIDOS = ("Gestor", "Atendente")
 FUNCOES_VALIDAS = {
     "atendimentos": "Atendimentos (CRM)",
     "casos": "Casos",
+    "tarefas": "Tarefas e Prazos",
     "clientes": "Clientes",
     "aprovacoes_pendentes": "Aprovações Pendentes",
     "documentos_aprovar": "Documentos a Aprovar",
@@ -184,7 +185,7 @@ def tem_permissao(empresa_id: str, usuario_id: str, funcao: str) -> bool:
 
 
 def listar_permissoes(empresa_id: str, usuario_id: str) -> list[dict]:
-    """As 8 funções do catálogo, com o estado de cada uma -- 'Sim' por
+    """Todas as funções do catálogo, com o estado de cada uma -- 'Sim' por
     padrão quando não há linha, para a tela de Usuários sempre ter algo
     concreto pra mostrar em cada toggle."""
     con = conectar(empresa_id)

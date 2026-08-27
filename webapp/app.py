@@ -37,6 +37,7 @@ from core import (
     motor_documentos,
     motor_log_administrativo,
     motor_mensagens,
+    motor_tarefas,
 )
 from core.motor_identidade import mascarar_cpf
 from core.conexao import conectar
@@ -512,13 +513,22 @@ def caso_detalhe(caso_id):
     ).fetchall()
 
     con.close()
+
+    # Fora da conexão de cima de propósito: listar_tarefas abre a própria
+    # (é ela que sabe calcular atraso com a data local, ver o motor).
+    tarefas = motor_tarefas.listar_tarefas(empresa_id, caso_id=caso_id)
+
     return jsonify(
         caso=dict(caso),
         processos=processos_list,
         documentos=[dict(r) for r in documentos],
         historico=[dict(r) for r in historico],
         mensagens=[dict(r) for r in mensagens],
+        tarefas=tarefas,
         status_validos=sorted(STATUS_VALIDOS),
+        tarefa_status_validos=list(motor_tarefas.STATUS_VALIDOS),
+        tarefa_prioridades=list(motor_tarefas.PRIORIDADES_VALIDAS),
+        tarefa_tipos_sugeridos=list(motor_tarefas.TIPOS_SUGERIDOS),
         usuarios=[dict(r) for r in usuarios],
         servicos=[dict(r) for r in servicos],
     )
@@ -638,6 +648,126 @@ def processo_atualizar(processo_id):
         return jsonify(erro=str(e)), 400
     if status_antigo != novo_status:
         _notificar_cliente_mudanca_status(empresa_id, caso_id)
+    return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------------
+# Tarefas e prazos
+#
+# A criação/edição/conclusão aceita as duas funções porque a tarefa é
+# alcançável de dois lugares: da tela Tarefas e de dentro da ficha do
+# Caso. Travar só em "tarefas" tiraria o bloco de tarefas da ficha do
+# Caso de quem tem só a função de casos ligada -- mesma situação já
+# documentada em funcao_required (campeonatos x resultados).
+# ---------------------------------------------------------------------
+
+@app.route("/api/tarefas")
+@login_required
+@funcao_required("tarefas")
+def tarefas_lista():
+    empresa_id = empresa_atual()
+    tarefas = motor_tarefas.listar_tarefas(
+        empresa_id,
+        status=request.args.get("status") or None,
+        responsavel_id=request.args.get("responsavel_id") or None,
+        vencimento=request.args.get("vencimento") or None,
+        somente_abertas=request.args.get("somente_abertas") == "1",
+    )
+
+    con = conectar(empresa_id)
+    # Só caso ainda vivo alimenta o seletor de "nova tarefa": abrir
+    # tarefa em caso encerrado é quase sempre engano, e a lista fica
+    # utilizável (o piloto já tem centenas de casos fechados).
+    casos_abertos = [
+        dict(r) for r in con.execute(
+            "SELECT c.caso_id, c.titulo, cl.nome AS cliente_nome FROM caso c "
+            "JOIN cliente cl ON cl.cliente_id = c.cliente_id AND cl.empresa_id = c.empresa_id "
+            "WHERE c.empresa_id = ? AND c.ativo = 'Sim' "
+            "AND c.status NOT IN ('Encerrado', 'Cancelado') "
+            "ORDER BY c.atualizado_em DESC",
+            (empresa_id,),
+        ).fetchall()
+    ]
+    usuarios = [
+        dict(r) for r in con.execute(
+            "SELECT usuario_id, nome FROM usuario WHERE ativo = 'Sim' AND empresa_id = ? "
+            "ORDER BY nome", (empresa_id,),
+        ).fetchall()
+    ]
+    con.close()
+
+    return jsonify(
+        tarefas=tarefas,
+        contagem=motor_tarefas.contar_tarefas(empresa_id),
+        casos_abertos=casos_abertos,
+        usuarios=usuarios,
+        status_validos=list(motor_tarefas.STATUS_VALIDOS),
+        prioridades_validas=list(motor_tarefas.PRIORIDADES_VALIDAS),
+        tipos_sugeridos=list(motor_tarefas.TIPOS_SUGERIDOS),
+        hoje=motor_tarefas.hoje_local(),
+    )
+
+
+@app.route("/api/tarefas", methods=["POST"])
+@login_required
+@funcao_required("tarefas", "casos")
+def tarefa_criar():
+    corpo = request.get_json(force=True)
+    caso_id = (corpo.get("caso_id") or "").strip()
+    if not caso_id:
+        return jsonify(erro="Selecione o caso da tarefa."), 400
+    try:
+        novo_id = motor_tarefas.criar_tarefa(
+            empresa_atual(),
+            caso_id,
+            tipo=(corpo.get("tipo") or "").strip(),
+            descricao=(corpo.get("descricao") or "").strip() or None,
+            responsavel_id=(corpo.get("responsavel_id") or "").strip() or None,
+            prazo=(corpo.get("prazo") or "").strip() or None,
+            prioridade=(corpo.get("prioridade") or "Normal").strip(),
+            processo_id=(corpo.get("processo_id") or "").strip() or None,
+            observacoes=(corpo.get("observacoes") or "").strip() or None,
+            criado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True, tarefa_id=novo_id)
+
+
+@app.route("/api/tarefas/<tarefa_id>", methods=["POST"])
+@login_required
+@funcao_required("tarefas", "casos")
+def tarefa_atualizar(tarefa_id):
+    corpo = request.get_json(force=True)
+    try:
+        motor_tarefas.atualizar_tarefa(
+            empresa_atual(),
+            tarefa_id,
+            tipo=(corpo.get("tipo") or "").strip(),
+            descricao=(corpo.get("descricao") or "").strip() or None,
+            responsavel_id=(corpo.get("responsavel_id") or "").strip() or None,
+            prazo=(corpo.get("prazo") or "").strip() or None,
+            prioridade=(corpo.get("prioridade") or "Normal").strip(),
+            status=(corpo.get("status") or "").strip(),
+            observacoes=(corpo.get("observacoes") or "").strip() or None,
+            alterado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
+
+
+@app.route("/api/tarefas/<tarefa_id>/concluir", methods=["POST"])
+@login_required
+@funcao_required("tarefas", "casos")
+def tarefa_concluir(tarefa_id):
+    try:
+        motor_tarefas.concluir_tarefa(
+            empresa_atual(), tarefa_id,
+            alterado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
     return jsonify(ok=True)
 
 

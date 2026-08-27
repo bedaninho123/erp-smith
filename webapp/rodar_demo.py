@@ -19,7 +19,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -92,8 +92,53 @@ def _criar_banco_core() -> None:
             "cidade, status, atendimento_ia, data_cadastro) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (cliente_id, EMPRESA, nome, cpf, email, telefone, cidade, "Ativo", "Sim", AGORA),
         )
+    # Um caso por cliente, e tarefas em três situações de prazo. Mesma
+    # razão do _popular_habitualidade(): sem caso nenhum, as telas de
+    # Casos e de Tarefas abrem vazias e não dá pra ver se funcionam --
+    # e é justamente o prazo atrasado (vermelho) que precisa ser
+    # conferido com o olho, não só com teste.
+    for caso_id, cliente_id, titulo in [
+        ("CAS-000001", "CLI-000001", "Transferência de arma — Helena"),
+        ("CAS-000002", "CLI-000002", "Renovação de CR — Ricardo"),
+    ]:
+        con.execute(
+            "INSERT INTO caso (caso_id, empresa_id, cliente_id, titulo, descricao, "
+            "categoria, tipo_caso, origem, canal_origem, status, fase, prioridade, "
+            "responsavel_id, criado_em, atualizado_em, criado_por, alterado_por, "
+            "versao, ativo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (caso_id, EMPRESA, cliente_id, titulo, "Caso de demonstração.",
+             "Transferência", "Solicitação", "Atendimento", "Email", "Em andamento",
+             "Triagem", "Normal", "USR-000001", AGORA, AGORA, "demonstração",
+             "demonstração", 1, "Sim"),
+        )
     con.commit()
     con.close()
+
+    _criar_tarefas_demo()
+
+
+def _criar_tarefas_demo() -> None:
+    """Pelo motor, não por INSERT: é ele que decide cliente_id, status
+    inicial e o registro no histórico do caso. Um INSERT à mão aqui
+    mostraria uma tela que o sistema de verdade não produz."""
+    from core.motor_tarefas import criar_tarefa
+
+    hoje = datetime.now(timezone.utc).date()
+    for caso_id, tipo, descricao, dias, prioridade in [
+        ("CAS-000001", "Cobrar documento",
+         "Solicitar comprovante de residência atualizado.", -4, "Alta"),
+        ("CAS-000001", "Consultar andamento",
+         "Verificar protocolo no órgão responsável.", 0, "Normal"),
+        ("CAS-000002", "Ligar para o cliente",
+         "Confirmar a data da renovação com o Ricardo.", 6, "Normal"),
+        ("CAS-000002", "Conferir documento", None, None, "Baixa"),
+    ]:
+        criar_tarefa(
+            EMPRESA, caso_id, tipo=tipo, descricao=descricao,
+            prazo=(hoje + timedelta(days=dias)).isoformat() if dias is not None else None,
+            prioridade=prioridade, responsavel_id="USR-000001",
+            criado_por="demonstração",
+        )
 
 
 def _criar_banco_dominio() -> None:

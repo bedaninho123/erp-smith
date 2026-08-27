@@ -399,6 +399,19 @@
             </a>
           </li>
           {% endif %}
+          {% if usuario_papel == 'Gestor' or 'tarefas' in funcoes_ativas %}
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="tarefas">
+              <i class="nav-icon fas fa-calendar-check" aria-hidden="true"></i>
+              <p>
+                Tarefas e Prazos
+                <!-- Vermelho, e só conta ATRASADA: um número que aparece
+                     todo dia por qualquer motivo deixa de ser lido. -->
+                <span class="right badge badge-danger" id="badge-tarefas" style="display:none"></span>
+              </p>
+            </a>
+          </li>
+          {% endif %}
           {% if usuario_papel == 'Gestor' or 'clientes' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="clientes">
@@ -563,6 +576,46 @@
           </div>
 
           <div class="card">
+            <div class="card-header"><h3 class="card-title">Tarefas</h3></div>
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover">
+                <thead><tr><th>Prazo</th><th>Tarefa</th><th>Responsável</th><th>Prioridade</th><th>Situação</th><th></th></tr></thead>
+                <tbody id="caso-tarefas-body"></tbody>
+              </table>
+            </div>
+            <div class="card-body border-top">
+              <h5>Nova tarefa neste caso</h5>
+              <div class="row">
+                <div class="col-md-4">
+                  <label for="caso-tarefa-tipo">Tipo</label>
+                  <input id="caso-tarefa-tipo" type="text" class="form-control" list="caso-tarefa-tipos-opcoes"
+                         placeholder="Ex.: Cobrar documento">
+                  <datalist id="caso-tarefa-tipos-opcoes"></datalist>
+                </div>
+                <div class="col-md-3">
+                  <label for="caso-tarefa-prazo">Prazo</label>
+                  <input id="caso-tarefa-prazo" type="date" class="form-control">
+                </div>
+                <div class="col-md-2">
+                  <label for="caso-tarefa-prioridade">Prioridade</label>
+                  <select id="caso-tarefa-prioridade" class="form-control"></select>
+                </div>
+                <div class="col-md-3">
+                  <label for="caso-tarefa-responsavel">Responsável</label>
+                  <select id="caso-tarefa-responsavel" class="form-control"><option value="">não atribuído</option></select>
+                </div>
+              </div>
+              <div class="form-group mt-3">
+                <label for="caso-tarefa-descricao">Descrição</label>
+                <input id="caso-tarefa-descricao" type="text" class="form-control"
+                       placeholder="O que precisa ser feito">
+              </div>
+              <button class="btn btn-primary" id="salvar-caso-tarefa">Adicionar tarefa</button>
+              <span class="text-muted ml-2" id="salvar-caso-tarefa-status" aria-live="polite"></span>
+            </div>
+          </div>
+
+          <div class="card">
             <div class="card-header"><h3 class="card-title">Processos</h3></div>
             <div class="card-body table-responsive p-0">
               <table class="table table-hover text-nowrap">
@@ -665,6 +718,116 @@
             <div class="card-header"><h3 class="card-title">Histórico</h3></div>
             <div class="card-body p-0">
               <ul class="list-group list-group-flush" id="caso-historico"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-tarefas" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Tarefas e Prazos</h1>
+          <p class="text-muted mb-0">O que precisa ser feito, por quem e até quando. Toda tarefa nasce dentro de um caso.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <div class="card">
+            <div class="card-body">
+              <div class="row" id="tarefas-resumo"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-4">
+                  <label for="tarefas-vencimento">Prazo</label>
+                  <select id="tarefas-vencimento" class="form-control">
+                    <option value="">Todos os prazos</option>
+                    <option value="atrasadas">Atrasadas</option>
+                    <option value="hoje">Vencem hoje</option>
+                    <option value="semana">Próximos 7 dias</option>
+                    <option value="sem_prazo">Sem prazo definido</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label for="tarefas-status">Situação</label>
+                  <select id="tarefas-status" class="form-control">
+                    <!-- Padrão é "em aberto", não "todas": a tela existe pra
+                         mostrar o que falta fazer. Concluída some da fila,
+                         mas continua alcançável trocando o filtro. -->
+                    <option value="abertas">Em aberto</option>
+                    <option value="">Todas</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label for="tarefas-responsavel">Responsável</label>
+                  <select id="tarefas-responsavel" class="form-control"><option value="">Qualquer um</option></select>
+                </div>
+              </div>
+              <small class="text-muted d-block mt-2" id="tarefas-contagem"></small>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body table-responsive p-0">
+              <table class="table table-hover">
+                <thead><tr>
+                  <th>Prazo</th><th>Tarefa</th><th>Cliente / Caso</th>
+                  <th>Responsável</th><th>Prioridade</th><th>Situação</th><th></th>
+                </tr></thead>
+                <tbody id="tarefas-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title" id="tarefa-form-titulo">Nova tarefa</h3></div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6">
+                  <label for="tarefa-caso">Caso</label>
+                  <select id="tarefa-caso" class="form-control"></select>
+                </div>
+                <div class="col-md-6">
+                  <label for="tarefa-tipo">Tipo</label>
+                  <input id="tarefa-tipo" type="text" class="form-control" list="tarefa-tipos-opcoes"
+                         placeholder="Ex.: Cobrar documento">
+                  <datalist id="tarefa-tipos-opcoes"></datalist>
+                </div>
+              </div>
+              <div class="row mt-3">
+                <div class="col-md-3">
+                  <label for="tarefa-prazo">Prazo</label>
+                  <input id="tarefa-prazo" type="date" class="form-control">
+                </div>
+                <div class="col-md-3">
+                  <label for="tarefa-prioridade">Prioridade</label>
+                  <select id="tarefa-prioridade" class="form-control"></select>
+                </div>
+                <div class="col-md-3">
+                  <label for="tarefa-responsavel">Responsável</label>
+                  <select id="tarefa-responsavel" class="form-control"><option value="">não atribuído</option></select>
+                </div>
+                <div class="col-md-3" id="tarefa-status-campo" style="display:none">
+                  <label for="tarefa-status">Situação</label>
+                  <select id="tarefa-status" class="form-control"></select>
+                </div>
+              </div>
+              <div class="form-group mt-3">
+                <label for="tarefa-descricao">Descrição</label>
+                <input id="tarefa-descricao" type="text" class="form-control"
+                       placeholder="Ex.: Solicitar comprovante de residência atualizado">
+              </div>
+              <div class="form-group">
+                <label for="tarefa-observacoes">Observações</label>
+                <textarea id="tarefa-observacoes" class="form-control"></textarea>
+              </div>
+              <button class="btn btn-primary" id="salvar-tarefa">Criar tarefa</button>
+              <button class="btn btn-outline-secondary ml-2" id="cancelar-edicao-tarefa" style="display:none">Cancelar edição</button>
+              <span class="text-muted ml-2" id="salvar-tarefa-status" aria-live="polite"></span>
             </div>
           </div>
         </div>
@@ -1335,6 +1498,7 @@ function carregarView(viewName) {
   if (viewName === "campeonatos") carregarCampeonatos();
   if (viewName === "resultados") carregarResultadosCampeonatosLista();
   if (viewName === "habitualidade") carregarHabitualidade();
+  if (viewName === "tarefas") carregarTarefas();
 }
 
 function ativarView(btn) {
@@ -1482,6 +1646,8 @@ async function abrirCaso(casoId) {
   $("#processo-responsavel").innerHTML = `<option value="">não atribuído</option>` + d.usuarios.map(u => `<option value="${u.usuario_id}">${escapeHtml(u.nome)}</option>`).join("");
   resetFormularioProcesso(casoId);
 
+  renderTarefasDoCaso(casoId, d);
+
   $("#caso-documentos-body").innerHTML = d.documentos.length ? d.documentos.map(doc => `
     <tr>
       <td>${escapeHtml(doc.tipo_documento)}</td>
@@ -1520,7 +1686,7 @@ async function abrirCaso(casoId) {
   $("#caso-historico").innerHTML = d.historico.length ? d.historico.map(h => `
     <li class="list-group-item">
       ${escapeHtml(h.descricao || h.tipo_evento)}
-      <br><small class="text-muted">${h.criado_em} — ${escapeHtml(h.criado_por)}</small>
+      <br><small class="text-muted">${dataHoraBr(h.criado_em)} — ${escapeHtml(h.criado_por)}</small>
     </li>
   `).join("") : `<li class="list-group-item text-muted">Nenhum evento registrado.</li>`;
 
@@ -1591,6 +1757,332 @@ async function salvarCasoEdicao() {
 }
 
 $("#salvar-caso").addEventListener("click", salvarCasoEdicao);
+
+// ====================================================================
+// TAREFAS E PRAZOS
+//
+// A mesma tarefa aparece em dois lugares: na tela Tarefas (fila do
+// escritório inteiro) e dentro da ficha do Caso (o que falta naquele
+// atendimento). As funções de desenho abaixo são compartilhadas pelos
+// dois de propósito -- "atrasada" precisa ter a mesma cara nos dois
+// lugares, senão a mesma tarefa parece duas coisas diferentes.
+// ====================================================================
+const badgesTarefaStatus = {
+  "Pendente": "badge-warning", "Em andamento": "badge-info",
+  "Concluída": "badge-success", "Cancelada": "badge-secondary",
+};
+
+const badgesPrioridade = {
+  "Baixa": "badge-light", "Normal": "badge-light",
+  "Alta": "badge-warning", "Urgente": "badge-danger",
+};
+
+// Quem já foi concluída ou cancelada não recebe botão de ação nem
+// destaque de prazo -- é registro, não fila.
+const TAREFA_EM_ABERTO = ["Pendente", "Em andamento"];
+
+function prazoTarefaHtml(t) {
+  if (!t.prazo) return `<span class="text-muted">sem prazo</span>`;
+  const data = `<span class="mono">${dataBr(t.prazo)}</span>`;
+  if (t.atrasada) return `${data} <span class="badge badge-danger ml-1">Atrasada</span>`;
+  if (t.vence_hoje) return `${data} <span class="badge badge-warning ml-1">Hoje</span>`;
+  return data;
+}
+
+function botoesTarefaHtml(t) {
+  const concluir = TAREFA_EM_ABERTO.includes(t.status)
+    ? `<button class="btn btn-outline-success btn-sm btn-concluir-tarefa ml-1"
+               aria-label="Concluir tarefa ${escapeHtml(t.tipo)}">Concluir</button>`
+    : "";
+  return `<button class="btn btn-outline-secondary btn-sm btn-editar-tarefa">Editar</button>${concluir}`;
+}
+
+function tarefaDataset(t) {
+  return `data-tarefa='${JSON.stringify(t).replace(/'/g, "&#39;")}'`;
+}
+
+async function concluirTarefa(tarefaId, aoTerminar) {
+  const r = await fetch(`/api/tarefas/${encodeURIComponent(tarefaId)}/concluir`, { method: "POST" });
+  if (!r.ok) {
+    const d = await r.json();
+    alert("Erro ao concluir: " + (d.erro || "falha desconhecida"));
+    return;
+  }
+  aoTerminar();
+}
+
+// --------------------------------------------------------------------
+// Tela Tarefas
+// --------------------------------------------------------------------
+let tarefasSelecaoCarregada = false;
+
+async function carregarTarefas() {
+  const vencimento = $("#tarefas-vencimento").value;
+  const situacao = $("#tarefas-status").value;
+  const responsavel = $("#tarefas-responsavel").value;
+
+  const params = new URLSearchParams();
+  if (vencimento) params.set("vencimento", vencimento);
+  if (situacao === "abertas") params.set("somente_abertas", "1");
+  if (responsavel) params.set("responsavel_id", responsavel);
+
+  const resposta = await buscarJson("/api/tarefas?" + params.toString());
+  if (!resposta.ok) {
+    // 403 (Atendente sem a função) não é erro de tela: some do caminho
+    // em silêncio, como as outras pré-cargas fazem.
+    if (resposta.dados && resposta.dados.erro) return;
+    $("#tarefas-body").innerHTML = `<tr><td colspan="7">${AVISO_FALHA_DE_REDE}</td></tr>`;
+    return;
+  }
+  const d = resposta.dados;
+
+  // O contador do menu conta ATRASADAS do escritório inteiro, sempre --
+  // não do filtro em tela. Um badge que muda quando a pessoa mexe num
+  // filtro não estaria respondendo "o que está pegando fogo?".
+  const badge = $("#badge-tarefas");
+  badge.style.display = d.contagem.atrasadas ? "inline-block" : "none";
+  badge.textContent = d.contagem.atrasadas;
+
+  $("#tarefas-resumo").innerHTML =
+    smallBox("danger", d.contagem.atrasadas, "Atrasadas") +
+    smallBox("warning", d.contagem.hoje, "Vencem hoje") +
+    smallBox("info", d.contagem.abertas, "Em aberto");
+
+  // Selects e datalist são preenchidos uma vez só: recarregar a cada
+  // filtro apagaria o que a pessoa escolheu no formulário de baixo.
+  if (!tarefasSelecaoCarregada) {
+    $("#tarefas-responsavel").innerHTML = `<option value="">Qualquer um</option>`
+      + d.usuarios.map(u => `<option value="${u.usuario_id}">${escapeHtml(u.nome)}</option>`).join("");
+    $("#tarefa-responsavel").innerHTML = `<option value="">não atribuído</option>`
+      + d.usuarios.map(u => `<option value="${u.usuario_id}">${escapeHtml(u.nome)}</option>`).join("");
+    $("#tarefa-caso").innerHTML = d.casos_abertos.length
+      ? d.casos_abertos.map(c =>
+          `<option value="${c.caso_id}">${escapeHtml(c.cliente_nome)} — ${escapeHtml(c.titulo)} (${idCurto(c.caso_id)})</option>`).join("")
+      : `<option value="">nenhum caso em aberto</option>`;
+    $("#tarefa-prioridade").innerHTML = d.prioridades_validas.map(p =>
+      `<option value="${p}"${p === "Normal" ? " selected" : ""}>${p}</option>`).join("");
+    $("#tarefa-status").innerHTML = d.status_validos.map(s => `<option value="${s}">${s}</option>`).join("");
+    $("#tarefa-tipos-opcoes").innerHTML = d.tipos_sugeridos.map(t => `<option value="${escapeHtml(t)}">`).join("");
+    tarefasSelecaoCarregada = true;
+  }
+
+  $("#tarefas-contagem").textContent = d.tarefas.length === 1
+    ? "1 tarefa nesta lista."
+    : `${d.tarefas.length} tarefas nesta lista.`;
+
+  $("#tarefas-body").innerHTML = d.tarefas.length ? d.tarefas.map(t => `
+    <tr class="linha-tarefa" ${tarefaDataset(t)}>
+      <td>${prazoTarefaHtml(t)}</td>
+      <td>
+        <b>${escapeHtml(t.tipo)}</b>
+        ${t.descricao ? `<br><small class="text-muted">${escapeHtml(t.descricao)}</small>` : ""}
+      </td>
+      <td>
+        ${escapeHtml(t.cliente_nome)}
+        <br><small class="text-muted">${escapeHtml(t.caso_titulo)} <span class="mono">${idCurto(t.caso_id)}</span></small>
+      </td>
+      <td>${escapeHtml(t.responsavel_nome || "não atribuído")}</td>
+      <td><span class="badge ${badgesPrioridade[t.prioridade] || "badge-light"}">${escapeHtml(t.prioridade)}</span></td>
+      <td><span class="badge ${badgesTarefaStatus[t.status] || "badge-secondary"}">${escapeHtml(t.status)}</span></td>
+      <td class="text-nowrap">${botoesTarefaHtml(t)}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="7" class="text-muted">Nenhuma tarefa com esses filtros.</td></tr>`;
+
+  $("#tarefas-body").querySelectorAll(".btn-editar-tarefa").forEach(botao => {
+    botao.addEventListener("click", (ev) => {
+      editarTarefa(JSON.parse(ev.target.closest(".linha-tarefa").dataset.tarefa));
+    });
+  });
+  $("#tarefas-body").querySelectorAll(".btn-concluir-tarefa").forEach(botao => {
+    botao.addEventListener("click", (ev) => {
+      const t = JSON.parse(ev.target.closest(".linha-tarefa").dataset.tarefa);
+      concluirTarefa(t.tarefa_id, carregarTarefas);
+    });
+  });
+}
+
+function resetFormularioTarefa() {
+  $("#tarefa-form-titulo").textContent = "Nova tarefa";
+  $("#salvar-tarefa").textContent = "Criar tarefa";
+  delete $("#salvar-tarefa").dataset.tarefaId;
+  $("#tarefa-caso").disabled = false;
+  $("#tarefa-caso").selectedIndex = 0;
+  $("#tarefa-tipo").value = "";
+  $("#tarefa-prazo").value = "";
+  $("#tarefa-prioridade").value = "Normal";
+  $("#tarefa-responsavel").value = "";
+  $("#tarefa-descricao").value = "";
+  $("#tarefa-observacoes").value = "";
+  // Situação só aparece na edição: tarefa nova nasce sempre Pendente
+  // (é o motor que decide isso), então o campo em branco só ofereceria
+  // uma escolha que não existe.
+  $("#tarefa-status-campo").style.display = "none";
+  $("#cancelar-edicao-tarefa").style.display = "none";
+  $("#salvar-tarefa-status").textContent = "";
+}
+
+function editarTarefa(t) {
+  $("#tarefa-form-titulo").textContent = `Editar tarefa ${idCurto(t.tarefa_id)}`;
+  $("#salvar-tarefa").textContent = "Salvar tarefa";
+  $("#salvar-tarefa").dataset.tarefaId = t.tarefa_id;
+  // O caso de uma tarefa não muda pela tela: mover tarefa entre casos
+  // reescreveria o histórico dos dois. Se foi aberta no caso errado,
+  // cancela e cria de novo -- fica o rastro do que aconteceu.
+  $("#tarefa-caso").value = t.caso_id;
+  $("#tarefa-caso").disabled = true;
+  $("#tarefa-tipo").value = t.tipo || "";
+  $("#tarefa-prazo").value = t.prazo || "";
+  $("#tarefa-prioridade").value = t.prioridade || "Normal";
+  $("#tarefa-responsavel").value = t.responsavel_id || "";
+  $("#tarefa-status").value = t.status;
+  $("#tarefa-descricao").value = t.descricao || "";
+  $("#tarefa-observacoes").value = t.observacoes || "";
+  $("#tarefa-status-campo").style.display = "";
+  $("#cancelar-edicao-tarefa").style.display = "";
+  $("#salvar-tarefa-status").textContent = "";
+  $("#tarefa-tipo").focus();
+}
+
+async function salvarTarefa() {
+  const botao = $("#salvar-tarefa");
+  const statusEl = $("#salvar-tarefa-status");
+  const tarefaId = botao.dataset.tarefaId;
+
+  const corpo = {
+    tipo: $("#tarefa-tipo").value.trim(),
+    descricao: $("#tarefa-descricao").value.trim(),
+    prazo: $("#tarefa-prazo").value,
+    prioridade: $("#tarefa-prioridade").value,
+    responsavel_id: $("#tarefa-responsavel").value,
+    observacoes: $("#tarefa-observacoes").value.trim(),
+  };
+  if (tarefaId) {
+    corpo.status = $("#tarefa-status").value;
+  } else {
+    corpo.caso_id = $("#tarefa-caso").value;
+    if (!corpo.caso_id) {
+      statusEl.textContent = "Não há caso em aberto para receber a tarefa.";
+      return;
+    }
+  }
+  if (!corpo.tipo) {
+    statusEl.textContent = "Informe o tipo da tarefa.";
+    $("#tarefa-tipo").focus();
+    return;
+  }
+
+  botao.disabled = true;
+  statusEl.textContent = "Salvando…";
+  try {
+    const url = tarefaId ? `/api/tarefas/${encodeURIComponent(tarefaId)}` : "/api/tarefas";
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      statusEl.textContent = "";
+      alert("Erro ao salvar: " + (d.erro || "falha desconhecida"));
+      return;
+    }
+    resetFormularioTarefa();
+    await carregarTarefas();
+    $("#salvar-tarefa-status").textContent = "Salvo.";
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+$("#salvar-tarefa").addEventListener("click", salvarTarefa);
+$("#cancelar-edicao-tarefa").addEventListener("click", resetFormularioTarefa);
+$("#tarefas-vencimento").addEventListener("change", carregarTarefas);
+$("#tarefas-status").addEventListener("change", carregarTarefas);
+$("#tarefas-responsavel").addEventListener("change", carregarTarefas);
+
+// --------------------------------------------------------------------
+// Tarefas dentro da ficha do Caso
+// --------------------------------------------------------------------
+function renderTarefasDoCaso(casoId, d) {
+  $("#caso-tarefas-body").innerHTML = d.tarefas.length ? d.tarefas.map(t => `
+    <tr class="linha-tarefa-caso" ${tarefaDataset(t)}>
+      <td>${prazoTarefaHtml(t)}</td>
+      <td>
+        <b>${escapeHtml(t.tipo)}</b>
+        ${t.descricao ? `<br><small class="text-muted">${escapeHtml(t.descricao)}</small>` : ""}
+      </td>
+      <td>${escapeHtml(t.responsavel_nome || "não atribuído")}</td>
+      <td><span class="badge ${badgesPrioridade[t.prioridade] || "badge-light"}">${escapeHtml(t.prioridade)}</span></td>
+      <td><span class="badge ${badgesTarefaStatus[t.status] || "badge-secondary"}">${escapeHtml(t.status)}</span></td>
+      <td class="text-nowrap">
+        ${TAREFA_EM_ABERTO.includes(t.status)
+          ? `<button class="btn btn-outline-success btn-sm btn-concluir-tarefa-caso">Concluir</button>` : ""}
+      </td>
+    </tr>
+  `).join("") : `<tr><td colspan="6" class="text-muted">Nenhuma tarefa neste caso.</td></tr>`;
+
+  $("#caso-tarefas-body").querySelectorAll(".btn-concluir-tarefa-caso").forEach(botao => {
+    botao.addEventListener("click", (ev) => {
+      const t = JSON.parse(ev.target.closest(".linha-tarefa-caso").dataset.tarefa);
+      // Recarrega a ficha inteira: concluir mexe no histórico do caso,
+      // que está logo abaixo na mesma tela.
+      concluirTarefa(t.tarefa_id, () => abrirCaso(casoId));
+    });
+  });
+
+  $("#caso-tarefa-prioridade").innerHTML = d.tarefa_prioridades.map(p =>
+    `<option value="${p}"${p === "Normal" ? " selected" : ""}>${p}</option>`).join("");
+  $("#caso-tarefa-responsavel").innerHTML = `<option value="">não atribuído</option>`
+    + d.usuarios.map(u => `<option value="${u.usuario_id}">${escapeHtml(u.nome)}</option>`).join("");
+  $("#caso-tarefa-tipos-opcoes").innerHTML = d.tarefa_tipos_sugeridos.map(t =>
+    `<option value="${escapeHtml(t)}">`).join("");
+  $("#caso-tarefa-tipo").value = "";
+  $("#caso-tarefa-prazo").value = "";
+  $("#caso-tarefa-descricao").value = "";
+  $("#salvar-caso-tarefa-status").textContent = "";
+  $("#salvar-caso-tarefa").dataset.casoId = casoId;
+}
+
+async function salvarTarefaDoCaso() {
+  const botao = $("#salvar-caso-tarefa");
+  const statusEl = $("#salvar-caso-tarefa-status");
+  const casoId = botao.dataset.casoId;
+  const tipo = $("#caso-tarefa-tipo").value.trim();
+  if (!tipo) {
+    statusEl.textContent = "Informe o tipo da tarefa.";
+    $("#caso-tarefa-tipo").focus();
+    return;
+  }
+
+  botao.disabled = true;
+  statusEl.textContent = "Salvando…";
+  try {
+    const r = await fetch("/api/tarefas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        caso_id: casoId,
+        tipo,
+        descricao: $("#caso-tarefa-descricao").value.trim(),
+        prazo: $("#caso-tarefa-prazo").value,
+        prioridade: $("#caso-tarefa-prioridade").value,
+        responsavel_id: $("#caso-tarefa-responsavel").value,
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      statusEl.textContent = "";
+      alert("Erro ao salvar: " + (d.erro || "falha desconhecida"));
+      return;
+    }
+    await abrirCaso(casoId);
+    $("#salvar-caso-tarefa-status").textContent = "Tarefa criada.";
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+$("#salvar-caso-tarefa").addEventListener("click", salvarTarefaDoCaso);
 
 function resetFormularioProcesso(casoId) {
   $("#processo-form-titulo").textContent = "Adicionar processo";
@@ -3885,6 +4377,9 @@ if (podeVer("aprovacoes_pendentes")) carregarPendentes();
 if (podeVer("documentos_aprovar")) carregarDocumentosPendentes();
 if (podeVer("casos")) carregarCasos();
 if (podeVer("atendimentos")) carregarConversas();
+// Carrega já na abertura pelo badge de atrasadas no menu -- é o número
+// que precisa aparecer sem ninguém clicar em nada.
+if (podeVer("tarefas")) carregarTarefas();
 </script>
 </body>
 </html>

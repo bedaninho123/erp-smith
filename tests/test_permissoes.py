@@ -94,7 +94,7 @@ def test_gestor_le_e_atualiza_permissoes_pela_rota(painel):
     # uma função que some sem querer é acesso perdido em silêncio, uma
     # que aparece sem querer é acesso concedido em silêncio.
     assert {p["funcao"] for p in listagem} == {
-        "atendimentos", "casos", "clientes", "aprovacoes_pendentes",
+        "atendimentos", "casos", "tarefas", "clientes", "aprovacoes_pendentes",
         "documentos_aprovar", "campeonatos", "resultados", "habitualidade",
         "testar_pipeline", "status_projeto",
     }
