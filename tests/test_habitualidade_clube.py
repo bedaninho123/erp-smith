@@ -180,15 +180,13 @@ def test_limite_da_fila_e_respeitado(dominio):
     assert len(motor_filiados.proximos_a_sincronizar(EMPRESA_A, limite=1)) == 1
 
 
-def test_panorama_ordena_por_quem_precisa_de_atencao(dominio):
-    em_dia = motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_A)
-    motor_filiados.registrar_habitualidade(EMPRESA_A, em_dia, 12, "2026-08-20")
-    atrasado = motor_filiados.salvar_filiado(EMPRESA_A, FILIADO_B)
-    motor_filiados.registrar_habitualidade(EMPRESA_A, atrasado, 1, "2026-02-01")
-
-    panorama = motor_filiados.listar_panorama(EMPRESA_A)
-
-    assert panorama[0]["filiado_id"] == atrasado
+# (Havia aqui um teste afirmando que a ordem PADRÃO era "quem precisa de
+# atenção". Em 2026-08-26 o usuário pediu que a tela abrisse com os mais
+# atualizados no topo, então o padrão virou "recentes" e a ordenação
+# antiga continua disponível como opção. As duas estão cobertas por
+# test_ordem_padrao_e_participacao_mais_recente e
+# test_ordem_por_quem_precisa_de_atencao_inverte -- manter o teste antigo
+# aqui deixaria dois testes afirmando padrões opostos.)
 
 
 def test_paginacao_que_nao_anda_para_em_vez_de_martelar_a_api(monkeypatch):
@@ -364,6 +362,86 @@ def test_busca_nao_atravessa_a_empresa(dois_filiados):
     motor_filiados.salvar_filiado(EMPRESA_B, dict(FILIADO_A, nome="Ana Da Outra"))
 
     assert _nomes(EMPRESA_A, busca="Ana") == ["Ana Atiradora"]
+
+
+@pytest.fixture
+def tres_com_datas(dominio):
+    """Três filiados com históricos diferentes -- o suficiente para
+    exercitar faixa, período e ordenação."""
+    recente = motor_filiados.salvar_filiado(EMPRESA_A, dict(FILIADO_A, nome="Recente"))
+    motor_filiados.registrar_habitualidade(EMPRESA_A, recente, 22, "2026-08-20")
+
+    antigo = motor_filiados.salvar_filiado(EMPRESA_A, dict(FILIADO_B, nome="Antigo"))
+    motor_filiados.registrar_habitualidade(EMPRESA_A, antigo, 5, "2026-02-10")
+
+    nunca = motor_filiados.salvar_filiado(
+        EMPRESA_A, dict(FILIADO_A, cpf="39053344705", nome="Nunca")
+    )
+    motor_filiados.registrar_habitualidade(EMPRESA_A, nunca, 0, None)
+    return dominio
+
+
+def test_ordem_padrao_e_participacao_mais_recente(tres_com_datas):
+    """Pedido do usuário: "sempre deixar com os mais atualizados". Quem
+    nunca participou vai pro fim, não pro começo."""
+    assert _nomes(EMPRESA_A) == ["Recente", "Antigo", "Nunca"]
+
+
+def test_ordem_por_quem_precisa_de_atencao_inverte(tres_com_datas):
+    """A ordenação original da tela continua disponível -- é a que serve
+    pra cobrar quem está atrasado."""
+    assert _nomes(EMPRESA_A, ordenar_por="atencao") == ["Nunca", "Antigo", "Recente"]
+
+
+def test_ordenacao_desconhecida_cai_no_padrao_em_vez_de_quebrar(tres_com_datas):
+    """ORDER BY não aceita parâmetro do SQLite, então o valor entra por
+    interpolação. Aceitar o que o navegador manda seria injeção de SQL;
+    a lista controlada é o que impede."""
+    assert _nomes(EMPRESA_A, ordenar_por="; DROP TABLE filiado") == _nomes(EMPRESA_A)
+
+
+@pytest.mark.parametrize(
+    "faixa, esperado",
+    [
+        ("sem_nenhuma", ["Nunca"]),
+        ("1_a_7", ["Antigo"]),
+        ("20_ou_mais", ["Recente"]),
+        ("nao_consultado", []),
+        ("faixa_inventada", ["Recente", "Antigo", "Nunca"]),
+    ],
+)
+def test_filtro_por_faixa_de_participacoes(tres_com_datas, faixa, esperado):
+    assert _nomes(EMPRESA_A, faixa=faixa) == esperado
+
+
+def test_filtro_por_periodo_da_ultima_participacao(tres_com_datas):
+    assert _nomes(EMPRESA_A, participou_de="2026-06-01") == ["Recente"]
+    assert _nomes(EMPRESA_A, participou_ate="2026-06-01") == ["Antigo"]
+    assert _nomes(
+        EMPRESA_A, participou_de="2026-01-01", participou_ate="2026-12-31"
+    ) == ["Recente", "Antigo"]
+
+
+def test_quem_nunca_participou_some_do_filtro_por_periodo(tres_com_datas):
+    """E está certo: ele não participou DENTRO do período pedido. Quem
+    procura essa gente usa a faixa "nenhuma participação"."""
+    assert "Nunca" not in _nomes(EMPRESA_A, participou_de="2020-01-01")
+
+
+def test_filtro_por_situacao(dominio):
+    motor_filiados.salvar_filiado(EMPRESA_A, dict(FILIADO_A, nome="Atual"))
+    motor_filiados.salvar_filiado(
+        EMPRESA_A, dict(FILIADO_B, nome="Saiu", status_filiacao="Inativo")
+    )
+
+    assert _nomes(EMPRESA_A, situacao="Ativo") == ["Atual"]
+    assert _nomes(EMPRESA_A, situacao="Inativo") == ["Saiu"]
+    assert sorted(_nomes(EMPRESA_A, situacao="")) == ["Atual", "Saiu"]
+
+
+def test_filtros_se_combinam(tres_com_datas):
+    assert _nomes(EMPRESA_A, busca="Recente", faixa="20_ou_mais") == ["Recente"]
+    assert _nomes(EMPRESA_A, busca="Recente", faixa="1_a_7") == []
 
 
 def test_busca_respeita_o_filtro_de_inativos(dominio):

@@ -1167,9 +1167,19 @@ def filiados_panorama():
     de cliente continua sendo respondida por consulta ao vivo.
     """
     empresa_id = empresa_atual()
+    # "situacao" vazia = todas. `todos=1` continua funcionando pra não
+    # quebrar link antigo que alguém tenha guardado.
+    situacao = request.args.get("situacao") or None
     somente_ativos = request.args.get("todos") != "1"
     filiados = motor_filiados.listar_panorama(
-        empresa_id, somente_ativos, busca=request.args.get("busca")
+        empresa_id,
+        somente_ativos=somente_ativos if situacao is None else False,
+        busca=request.args.get("busca"),
+        situacao=situacao,
+        faixa=request.args.get("faixa"),
+        participou_de=request.args.get("participou_de"),
+        participou_ate=request.args.get("participou_ate"),
+        ordenar_por=request.args.get("ordenar_por"),
     )
     return jsonify(
         # O resumo é do CLUBE inteiro, de propósito -- ele não acompanha

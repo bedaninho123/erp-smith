@@ -693,16 +693,59 @@
 
           <div class="card">
             <div class="card-body">
-              <label for="busca-habitualidade">Buscar por nome, CPF ou matrícula</label>
-              <input id="busca-habitualidade" type="text" class="form-control"
-                     placeholder="Ex.: Maria, 123.456.789-00, F101">
-              <div class="form-check mt-2">
-                <input class="form-check-input" type="checkbox" id="habitualidade-incluir-inativos">
-                <label class="form-check-label" for="habitualidade-incluir-inativos">
-                  Incluir filiados inativos na busca
-                </label>
+              <div class="row">
+                <div class="col-md-5">
+                  <label for="busca-habitualidade">Buscar por nome, CPF ou matrícula</label>
+                  <input id="busca-habitualidade" type="text" class="form-control"
+                         placeholder="Ex.: Maria, 123.456.789-00, F101">
+                </div>
+                <div class="col-md-3">
+                  <label for="habitualidade-situacao">Situação no clube</label>
+                  <select id="habitualidade-situacao" class="form-control">
+                    <option value="Ativo">Ativos</option>
+                    <option value="Inativo">Inativos</option>
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label for="habitualidade-faixa">Participações (12 meses)</label>
+                  <select id="habitualidade-faixa" class="form-control">
+                    <option value="">Qualquer quantidade</option>
+                    <option value="sem_nenhuma">Nenhuma participação</option>
+                    <option value="1_a_7">1 a 7</option>
+                    <option value="8_a_11">8 a 11</option>
+                    <option value="12_a_19">12 a 19</option>
+                    <option value="20_ou_mais">20 ou mais</option>
+                    <option value="nao_consultado">Ainda não consultados</option>
+                  </select>
+                </div>
               </div>
-              <small class="text-muted" id="habitualidade-contagem"></small>
+              <div class="row mt-2">
+                <div class="col-md-3">
+                  <label for="habitualidade-de">Última participação — de</label>
+                  <input id="habitualidade-de" type="date" class="form-control">
+                </div>
+                <div class="col-md-3">
+                  <label for="habitualidade-ate">até</label>
+                  <input id="habitualidade-ate" type="date" class="form-control">
+                </div>
+                <div class="col-md-4">
+                  <label for="habitualidade-ordem">Ordenar por</label>
+                  <select id="habitualidade-ordem" class="form-control">
+                    <option value="recentes">Participação mais recente</option>
+                    <option value="antigos">Participação mais antiga</option>
+                    <option value="atencao">Quem precisa de atenção</option>
+                    <option value="mais_participacoes">Mais participações</option>
+                    <option value="nome">Nome</option>
+                    <option value="retrato_antigo">Retrato mais antigo</option>
+                  </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                  <button class="btn btn-outline-secondary btn-block"
+                          id="habitualidade-limpar" type="button">Limpar</button>
+                </div>
+              </div>
+              <small class="text-muted d-block mt-2" id="habitualidade-contagem"></small>
             </div>
           </div>
 
@@ -1851,24 +1894,62 @@ $("#cancelar-edicao-resultado").addEventListener("click", resetFormularioResulta
 // ---------------------------------------------------------------
 // Panorama de habitualidade do clube
 // ---------------------------------------------------------------
+// Os campos que compõem o filtro. Um lugar só, pra "limpar" e "montar a
+// consulta" não saírem de sincronia quando um campo novo for acrescentado.
+const FILTROS_HABITUALIDADE = {
+  busca: "#busca-habitualidade",
+  situacao: "#habitualidade-situacao",
+  faixa: "#habitualidade-faixa",
+  participou_de: "#habitualidade-de",
+  participou_ate: "#habitualidade-ate",
+  ordenar_por: "#habitualidade-ordem",
+};
+
 let buscaHabitualidadeTimeout;
 
+// Só a caixa de texto tem espera: em <select> e <input type=date> a
+// escolha já é o gesto final, e adiar meio segundo pareceria travamento.
 $("#busca-habitualidade").addEventListener("input", () => {
   clearTimeout(buscaHabitualidadeTimeout);
   buscaHabitualidadeTimeout = setTimeout(carregarHabitualidade, 300);
 });
-$("#habitualidade-incluir-inativos").addEventListener("change", carregarHabitualidade);
+["situacao", "faixa", "participou_de", "participou_ate", "ordenar_por"].forEach(
+  (campo) => $(FILTROS_HABITUALIDADE[campo]).addEventListener("change", carregarHabitualidade)
+);
+
+$("#habitualidade-limpar").addEventListener("click", () => {
+  $("#busca-habitualidade").value = "";
+  $("#habitualidade-situacao").value = "Ativo";
+  $("#habitualidade-faixa").value = "";
+  $("#habitualidade-de").value = "";
+  $("#habitualidade-ate").value = "";
+  $("#habitualidade-ordem").value = "recentes";
+  carregarHabitualidade();
+});
+
+// Contador de requisições: duas buscas podem estar no ar ao mesmo tempo
+// (digitar rápido, ou trocar um filtro logo depois de outro), e nada
+// garante que voltem na ordem em que saíram. Sem isto, uma resposta
+// velha chegando por último sobrescreve a nova e a tela mostra o
+// resultado do filtro anterior -- aconteceu na verificação desta tela.
+let requisicaoHabitualidade = 0;
 
 async function carregarHabitualidade() {
+  const minhaVez = ++requisicaoHabitualidade;
   const params = new URLSearchParams();
+  for (const [nome, seletor] of Object.entries(FILTROS_HABITUALIDADE)) {
+    const valor = $(seletor).value.trim();
+    // "situacao" vazia é significativa (= todos), então vai mesmo vazia;
+    // os outros campos vazios são simplesmente ausência de filtro.
+    if (valor || nome === "situacao") params.set(nome, valor);
+  }
   const busca = $("#busca-habitualidade").value.trim();
-  if (busca) params.set("busca", busca);
-  // Sem isto, procurar um ex-filiado devolveria "nada encontrado" -- e a
-  // tela esconde 547 pessoas por padrão, então o silêncio enganaria.
-  if ($("#habitualidade-incluir-inativos").checked) params.set("todos", "1");
 
   const r = await fetch("/api/filiados/panorama?" + params.toString());
   const d = await r.json();
+  // Chegou atrasada: outra busca começou depois desta. Descartar é o
+  // certo -- quem está na tela é o filtro mais novo.
+  if (minhaVez !== requisicaoHabitualidade) return;
   const resumo = d.resumo || {};
 
   // O aviso vem antes de qualquer número, de propósito: quem lê a tela
@@ -1896,10 +1977,17 @@ async function carregarHabitualidade() {
     cartao("Ainda não consultados", resumo.sem_dado, "text-warning");
 
   const linhas = d.filiados || [];
-  // Só aparece quando há busca: sem filtro, a contagem repetiria o
-  // cartão "Filiados ativos" logo acima.
-  $("#habitualidade-contagem").textContent = busca
-    ? `${d.total_encontrados} encontrado(s) para "${busca}".`
+  // Algum filtro fora do padrão? Só então a contagem aparece -- sem
+  // filtro ela repetiria o cartão "Filiados ativos" logo acima.
+  const filtrando = Boolean(
+    busca ||
+    $("#habitualidade-situacao").value !== "Ativo" ||
+    $("#habitualidade-faixa").value ||
+    $("#habitualidade-de").value ||
+    $("#habitualidade-ate").value
+  );
+  $("#habitualidade-contagem").textContent = filtrando
+    ? `${d.total_encontrados} filiado(s) com os filtros atuais.`
     : "";
 
   $("#habitualidade-body").innerHTML = linhas.length ? linhas.map(f => {
@@ -1925,12 +2013,12 @@ async function carregarHabitualidade() {
     </tr>`;
   }).join("") : `<tr><td colspan="6" class="text-muted">${
     // Duas situações bem diferentes, e mandar rodar a sincronização
-    // quando o problema é a busca só confundiria.
-    busca
-      ? `Nenhum filiado encontrado para "${escapeHtml(busca)}".` +
-        ($("#habitualidade-incluir-inativos").checked
-          ? ""
-          : " Se for um ex-filiado, marque \"incluir inativos\".")
+    // quando o problema é o filtro só confundiria.
+    filtrando
+      ? "Nenhum filiado com os filtros atuais." +
+        ($("#habitualidade-situacao").value === "Ativo"
+          ? " Se procura um ex-filiado, mude a situação para Inativos ou Todos."
+          : "")
       : `Nenhum filiado sincronizado. Rode:
          <code>python -m domain.clube_tiro.sincronizar_habitualidade</code>`
   }</td></tr>`;

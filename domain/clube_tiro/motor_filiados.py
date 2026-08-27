@@ -28,6 +28,46 @@ from motor_ia.conexao import DOMAIN_DB
 # está em dia quando não está, e isso custa o CR dele.
 JANELA_MESES = 12
 
+# Ordenações oferecidas na tela. Lista controlada em código, nunca texto
+# vindo da requisição: `ORDER BY` não aceita parâmetro do SQLite, então o
+# valor entra por interpolação -- e interpolar o que o navegador mandou
+# seria injeção de SQL. Quem pedir uma chave que não está aqui recebe o
+# padrão.
+#
+# "IS NULL" antes do campo é o que decide de que lado os vazios caem. Em
+# SQLite, NULL ordena antes de tudo por padrão, e sem isso "quem nunca
+# participou" apareceria misturado com "quem participou ontem".
+ORDENACOES = {
+    # Padrão: quem participou mais recentemente primeiro. Quem nunca
+    # participou vai pro fim (é o que "mais atualizados" quer dizer).
+    "recentes": "ultima_participacao IS NULL, ultima_participacao DESC",
+    "antigos": "ultima_participacao IS NULL DESC, ultima_participacao ASC",
+    # A ordenação original da tela: quem precisa de atenção primeiro.
+    "atencao": (
+        "participacoes_12m IS NULL DESC, participacoes_12m ASC, "
+        "ultima_participacao ASC"
+    ),
+    "mais_participacoes": "participacoes_12m IS NULL, participacoes_12m DESC",
+    "nome": "nome COLLATE NOCASE ASC",
+    # Retrato mais velho primeiro -- útil pra saber se a sincronização
+    # está dando conta do rodízio.
+    "retrato_antigo": "sincronizado_em IS NULL DESC, sincronizado_em ASC",
+}
+ORDENACAO_PADRAO = "recentes"
+
+# Faixas de participação oferecidas como filtro. Também lista controlada:
+# vira um trecho de SQL, então não pode vir do navegador.
+FAIXAS_PARTICIPACAO = {
+    "sem_nenhuma": "participacoes_12m = 0",
+    "1_a_7": "participacoes_12m BETWEEN 1 AND 7",
+    "8_a_11": "participacoes_12m BETWEEN 8 AND 11",
+    "12_a_19": "participacoes_12m BETWEEN 12 AND 19",
+    "20_ou_mais": "participacoes_12m >= 20",
+    # Diferente de "sem nenhuma": aqui ninguém consultou, então não se
+    # sabe. É a distinção que a tela inteira protege.
+    "nao_consultado": "participacoes_12m IS NULL",
+}
+
 
 def _agora_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -165,14 +205,28 @@ def contar_participacoes(habitualidade: dict, hoje=None) -> tuple[int, Optional[
 
 
 def listar_panorama(
-    empresa_id: str, somente_ativos: bool = True, busca: Optional[str] = None
+    empresa_id: str,
+    somente_ativos: bool = True,
+    busca: Optional[str] = None,
+    situacao: Optional[str] = None,
+    faixa: Optional[str] = None,
+    participou_de: Optional[str] = None,
+    participou_ate: Optional[str] = None,
+    ordenar_por: Optional[str] = None,
 ) -> list[dict]:
-    """O panorama do clube, ordenado por quem precisa de atenção primeiro:
-    nunca sincronizado, depois menos participações, depois quem está há
-    mais tempo sem aparecer.
+    """O panorama do clube, com os filtros da tela.
 
     `busca` casa com nome, CPF ou matrícula ao mesmo tempo -- mesmo padrão
-    da tela de Clientes, uma caixa só em vez de um campo por coluna."""
+    da tela de Clientes, uma caixa só em vez de um campo por coluna.
+
+    `situacao` ('Ativo'/'Inativo'/None) substitui `somente_ativos` quando
+    vem preenchida; `somente_ativos` continua existindo porque a rota e os
+    testes antigos usam, e mudá-lo seria quebrar chamada de fora à toa.
+
+    `participou_de`/`participou_ate` são ISO (YYYY-MM-DD) e comparam com
+    `ultima_participacao`, que é guardada no mesmo formato -- comparação
+    de texto funciona porque ISO ordena igual à data.
+    """
     con = conectar()
     try:
         sql = (
@@ -181,8 +235,25 @@ def listar_panorama(
             "sincronizacao_erro FROM filiado WHERE empresa_id = ?"
         )
         parametros = [empresa_id]
-        if somente_ativos:
+
+        if situacao in ("Ativo", "Inativo"):
+            sql += " AND status_filiacao = ?"
+            parametros.append(situacao)
+        elif situacao is None and somente_ativos:
             sql += " AND status_filiacao = 'Ativo'"
+
+        if faixa in FAIXAS_PARTICIPACAO:
+            sql += f" AND {FAIXAS_PARTICIPACAO[faixa]}"
+
+        # Quem nunca participou tem ultima_participacao NULL e some de
+        # qualquer filtro por período -- o que é o certo: ele não
+        # participou DENTRO do período pedido.
+        if participou_de:
+            sql += " AND ultima_participacao >= ?"
+            parametros.append(participou_de)
+        if participou_ate:
+            sql += " AND ultima_participacao <= ?"
+            parametros.append(participou_ate)
 
         busca = (busca or "").strip()
         if busca:
@@ -202,10 +273,8 @@ def listar_panorama(
             cpf_curinga = f"%{digitos}%" if digitos else curinga
             parametros += [curinga, cpf_curinga, curinga]
 
-        sql += (
-            " ORDER BY participacoes_12m IS NULL DESC, participacoes_12m ASC, "
-            "ultima_participacao ASC"
-        )
+        ordem = ORDENACOES.get(ordenar_por or "", ORDENACOES[ORDENACAO_PADRAO])
+        sql += f" ORDER BY {ordem}"
         return [dict(l) for l in con.execute(sql, parametros).fetchall()]
     finally:
         con.close()
