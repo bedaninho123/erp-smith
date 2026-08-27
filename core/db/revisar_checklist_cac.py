@@ -20,11 +20,19 @@ condição a verificar, não arquivo a receber. Sem essa distinção o
 checklist de um processo mistura duas coisas que se comportam de forma
 diferente -- uma recebe PDF, a outra recebe um "sim, conferi".
 
-ATENÇÃO, e isto não é formalidade: **estas listas são um rascunho para o
-despachante revisar.** A regra do CAC muda (Decreto nº 11.615/2023 e
-alterações posteriores), varia por SFPC e por nível de CR, e quem faz
-isso todo dia é o usuário, não este código. Os itens marcados com
-`CONFERIR` no comentário são os que mais mudam.
+ATENÇÃO, e isto não é formalidade: **estas listas nasceram como rascunho
+para o despachante revisar.** A regra do CAC muda (Decreto nº
+11.615/2023 e alterações posteriores), varia por SFPC e por nível de CR,
+e quem faz isso todo dia é o usuário, não este código.
+
+Dois pontos estavam em aberto e foram **confirmados por ele em
+2026-08-27**, ambos como indispensáveis (ver os comentários no lugar):
+a capacidade técnica continua exigida na renovação, e o documento de
+origem do CRAF é item próprio, separado da nota fiscal.
+
+O que ainda não foi conferido item a item continua sendo tudo o mais --
+qualquer divergência que apareça na mesa do SFPC vale mais que esta
+lista, e o conserto é editar aqui e rodar de novo.
 
 Idempotente: apaga o checklist ANTIGO dos serviços que revisa e insere o
 novo. Não toca em serviço que não está aqui.
@@ -51,8 +59,10 @@ CHECKLISTS = {
         (DOCUMENTOS, "Certidão negativa criminal da Justiça Militar."),
         (DOCUMENTOS, "Certidão negativa criminal da Justiça Eleitoral."),
         (DOCUMENTOS, "Laudo de aptidão psicológica emitido por psicólogo credenciado pela Polícia Federal."),
-        # CONFERIR: em parte dos SFPC a capacidade técnica é dispensada na
-        # renovação quando há habitualidade comprovada no período.
+        # CONFIRMADO pelo despachante em 2026-08-27: a capacidade técnica é
+        # INDISPENSÁVEL na renovação, não é dispensada por habitualidade
+        # comprovada. A dúvida era minha, não dele -- fica registrada
+        # resolvida para ninguém reabrir a discussão daqui a três meses.
         (DOCUMENTOS, "Laudo de capacidade técnica emitido por instrutor credenciado."),
         (DOCUMENTOS, "Declaração de habitualidade emitida pelo clube, com as participações do período."),
         (DOCUMENTOS, "Comprovante de filiação ao clube de tiro (declaração de vínculo ativo)."),
@@ -91,8 +101,11 @@ CHECKLISTS = {
         (DOCUMENTOS, "Comprovante de residência atual."),
         (DOCUMENTOS, "Autorização de compra que permitiu adquirir o armamento."),
         (DOCUMENTOS, "Nota fiscal da arma, com marca, modelo, calibre e número de série."),
-        # CONFERIR: doação, herança e transferência entram aqui no lugar
-        # da nota fiscal -- o documento de origem muda conforme o caso.
+        # CONFIRMADO pelo despachante em 2026-08-27: item INDISPENSÁVEL e
+        # separado da nota fiscal, não fundido com ela. Arma que veio de
+        # doação, herança ou transferência não tem nota, e é justamente
+        # nesse caso que o processo trava se ninguém pediu o documento de
+        # origem no começo.
         (DOCUMENTOS, "Documento de origem, quando não houver nota fiscal (doação, herança ou transferência)."),
         (DOCUMENTOS, "Comprovante de pagamento da taxa (GRU) do registro."),
         (DOCUMENTOS, "Termo de responsabilidade assinado."),
