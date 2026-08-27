@@ -77,8 +77,12 @@ def sincronizar_habitualidades(empresa_id: str, limite: int) -> dict:
             continue
 
         participacoes, ultima = motor_filiados.contar_participacoes(habitualidade)
+        # As datas vão junto: é delas que sai o gráfico de participações
+        # por dia e por mês do Dashboard. Reescrevem por inteiro o que
+        # essa pessoa tinha, nunca somam -- ver registrar_habitualidade.
+        datas = motor_filiados.datas_participacao(habitualidade)
         motor_filiados.registrar_habitualidade(
-            empresa_id, filiado["filiado_id"], participacoes, ultima
+            empresa_id, filiado["filiado_id"], participacoes, ultima, datas=datas
         )
         resultado["consultados"] += 1
         if participacoes == 0:

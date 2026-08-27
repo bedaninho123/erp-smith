@@ -10,6 +10,7 @@ a consulta ao vivo (o Portal já faz isso). Ver o comentário da tabela
 Como o banco de Domínio é anexado, ele não passa pelas views do Core que
 se filtram sozinhas: **todo WHERE aqui leva empresa_id escrito à mão.**
 """
+import json
 import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -133,10 +134,17 @@ def salvar_filiado(empresa_id: str, dados: dict) -> str:
 def registrar_habitualidade(
     empresa_id: str, filiado_id: str, participacoes: Optional[int],
     ultima_participacao: Optional[str], erro: Optional[str] = None,
+    datas: Optional[list] = None,
 ) -> None:
     """Grava o retrato. `erro` preenchido significa que a consulta falhou
     -- e nesse caso os números anteriores NÃO são apagados: um retrato
-    velho e datado vale mais que nenhum, desde que a tela mostre a data."""
+    velho e datado vale mais que nenhum, desde que a tela mostre a data.
+
+    `datas` REESCREVE a lista da pessoa por inteiro, nunca soma na que
+    estava lá. É isso que faz o gráfico por dia se corrigir sozinho a
+    cada passagem do rodízio (ver o comentário da coluna no schema);
+    acumular duplicaria a mesma participação a cada sincronização.
+    """
     con = conectar()
     try:
         if erro:
@@ -149,9 +157,11 @@ def registrar_habitualidade(
             agora = _agora_iso()
             con.execute(
                 "UPDATE filiado SET participacoes_12m = ?, ultima_participacao = ?, "
-                "sincronizado_em = ?, sincronizacao_erro = NULL, atualizado_em = ? "
-                "WHERE filiado_id = ? AND empresa_id = ?",
-                (participacoes, ultima_participacao, agora, agora, filiado_id, empresa_id),
+                "participacoes_datas = ?, sincronizado_em = ?, sincronizacao_erro = NULL, "
+                "atualizado_em = ? WHERE filiado_id = ? AND empresa_id = ?",
+                (participacoes, ultima_participacao,
+                 json.dumps(datas) if datas is not None else None,
+                 agora, agora, filiado_id, empresa_id),
             )
         con.commit()
     finally:
@@ -202,6 +212,38 @@ def contar_participacoes(habitualidade: dict, hoje=None) -> tuple[int, Optional[
         return 0, None
     dentro = [d for d in datas if d >= limite]
     return len(dentro), max(datas).strftime("%Y-%m-%d")
+
+
+def datas_participacao(habitualidade: dict, hoje=None) -> list:
+    """As datas das participações dentro da janela, em 'AAAA-MM-DD'.
+
+    Função irmã de `contar_participacoes` de propósito, em vez de mudar o
+    retorno daquela: ela é chamada em outros lugares e tem teste próprio,
+    e trocar a assinatura de uma função de contagem para devolver mais
+    coisa é como bugs entram em código que já funcionava.
+
+    Devolve a lista COM repetição -- duas participações no mesmo dia são
+    dois eventos, e é isso que o gráfico por dia precisa somar. Quem quer
+    "em quantos dias distintos essa pessoa apareceu" usa set() em cima.
+    """
+    hoje = hoje or datetime.now().date()
+    limite = hoje - timedelta(days=365 * JANELA_MESES // 12)
+
+    datas = []
+    for grupo in (habitualidade.get("habitualidades") or {}).values():
+        for evento in grupo.get("eventos", []):
+            bruto = evento.get("data_participacao")
+            if not bruto:
+                continue
+            try:
+                data = datetime.strptime(bruto, "%d/%m/%Y").date()
+            except ValueError:
+                # Mesma escolha de contar_participacoes: data em formato
+                # inesperado é ignorada, nunca vira data errada no gráfico.
+                continue
+            if data >= limite:
+                datas.append(data.strftime("%Y-%m-%d"))
+    return sorted(datas)
 
 
 def listar_panorama(
@@ -312,16 +354,22 @@ def obter_por_cpf(empresa_id: str, cpf: Optional[str]) -> Optional[dict]:
         con.close()
 
 
-def cpfs_de_filiados(empresa_id: str) -> set:
+def cpfs_de_filiados(empresa_id: str, somente_ativos: bool = False) -> set:
     """Só os CPFs, para marcar em lote quem é filiado sem uma consulta por
-    linha. Usado ao montar a lista de clientes do despachante."""
+    linha. Usado ao montar a lista de clientes do despachante.
+
+    O padrão inclui INATIVO de propósito: na lista de clientes, quem
+    saiu do clube continua sendo alguém que passou por lá, e a etiqueta
+    tem que aparecer. O Dashboard pede `somente_ativos=True` porque lá a
+    pergunta é outra -- "de quem está no clube HOJE, quantos eu atendo?"
+    -- e misturar ex-filiado afundaria o percentual sem motivo.
+    """
     con = conectar()
     try:
-        return {
-            l[0] for l in con.execute(
-                "SELECT cpf FROM filiado WHERE empresa_id = ?", (empresa_id,)
-            )
-        }
+        query = "SELECT cpf FROM filiado WHERE empresa_id = ?"
+        if somente_ativos:
+            query += " AND status_filiacao = 'Ativo'"
+        return {l[0] for l in con.execute(query, (empresa_id,))}
     finally:
         con.close()
 

@@ -127,17 +127,31 @@ def atualizar_status(
     con = conectar(empresa_id)
     try:
         linha = con.execute(
-            "SELECT status, versao FROM caso WHERE caso_id = ? AND empresa_id = ?",
+            "SELECT status, versao, encerrado_em FROM caso WHERE caso_id = ? AND empresa_id = ?",
             (caso_id, empresa_id),
         ).fetchone()
         if not linha:
             raise ValueError(f"Caso não encontrado: {caso_id}")
         status_antigo = linha["status"]
 
+        # encerrado_em existia no schema desde o começo e nunca era
+        # preenchido -- ou seja, "quantos casos você concluiu em agosto?"
+        # não tinha resposta. É carimbado ao encerrar e APAGADO ao
+        # reabrir, mesma regra da data de conclusão de uma tarefa: caso
+        # reaberto com "encerrado em" de antes seria data que já não
+        # significa nada. 'Cancelado' não conta como encerramento --
+        # trabalho cancelado não é trabalho entregue.
+        agora = _agora_iso()
+        if novo_status == "Encerrado":
+            encerrado_em = linha["encerrado_em"] or agora
+        else:
+            encerrado_em = None
+
         con.execute(
-            "UPDATE caso SET status = ?, atualizado_em = ?, alterado_por = ?, versao = versao + 1 "
+            "UPDATE caso SET status = ?, encerrado_em = ?, atualizado_em = ?, "
+            "alterado_por = ?, versao = versao + 1 "
             "WHERE caso_id = ? AND empresa_id = ?",
-            (novo_status, _agora_iso(), alterado_por, caso_id, empresa_id),
+            (novo_status, encerrado_em, agora, alterado_por, caso_id, empresa_id),
         )
         _registrar_historico(
             con, empresa_id, caso_id, "mudanca_status",

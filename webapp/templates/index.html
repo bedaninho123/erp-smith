@@ -240,6 +240,54 @@
      segundo toque (zoom). Some o atraso em celular. */
   button, a, .btn, input, select, textarea, tr.cursor-pointer { touch-action: manipulation; }
 
+  /* ------------------------------------------------------------------
+     DASHBOARD (Gestor)
+
+     Gráfico é HTML e CSS, sem biblioteca: o painel não tem build step e
+     nenhuma lib de gráfico entraria por CDN sem virar mais uma
+     dependência externa para uma tela só. Barra é <div> com altura em
+     %, o que também deixa o número legível para leitor de tela (o valor
+     está no texto, não só na altura).
+
+     Paleta validada para daltonismo antes de entrar (azul da marca,
+     verde-azulado, laranja): as duas séries que aparecem juntas --
+     abertos x concluídos -- têm separação suficiente em deuteranopia e
+     protanopia, e nunca dependem só da cor: toda série tem legenda e
+     todo valor aparece escrito.
+     ------------------------------------------------------------------ */
+  .graf { display: flex; align-items: flex-end; gap: var(--e2); }
+  .graf.denso { gap: 3px; }
+  .graf-col { flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 0; }
+  .graf-raia { width: 100%; display: flex; align-items: flex-end; }
+  .graf-raia.par { gap: 2px; }
+  .graf-raia.par .graf-barra { flex: 1; }
+  .graf-barra { width: 100%; border-radius: 3px 3px 0 0; background: #3A6FB7; }
+  /* Mês/dia ainda correndo aparece esmaecido: comparar um mês pela
+     metade com meses inteiros é a forma mais fácil de um painel mentir
+     para baixo. */
+  .graf-barra.parcial { opacity: .5; }
+  .graf-rot { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8A909C; margin-top: var(--e1); height: 12px; }
+  .graf-topo { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 500; color: #24487D; margin-bottom: 2px; }
+  .graf-vazio { display: flex; align-items: center; justify-content: center; color: var(--aco); font-size: 13px; text-align: center; padding: var(--e5) var(--e4); }
+  .legenda-graf { display: inline-flex; gap: var(--e4); font-size: 12px; color: var(--aco); }
+  .legenda-graf .chave { display: inline-flex; align-items: center; gap: var(--e1); }
+  .legenda-graf .chave i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  /* Barra horizontal de ranking: rótulo FORA da barra, sempre legível. */
+  .rank { display: grid; grid-template-columns: minmax(0, 1fr) 90px 58px; align-items: center; gap: var(--e3); margin-bottom: var(--e2); font-size: 13px; }
+  .rank-trilho { height: 14px; background: #F1F3F6; border-radius: 3px; overflow: hidden; }
+  .rank-trilho > div { height: 100%; border-radius: 3px; background: #3A6FB7; }
+  .rank-valor { font-family: 'IBM Plex Mono', monospace; font-size: 13px; text-align: right; color: #4A5160; }
+
+  .dash-num { font-family: 'Big Shoulders', sans-serif; font-weight: 700; font-size: 40px; line-height: .9; }
+  .dash-delta { font-size: 12px; font-weight: 500; margin-top: var(--e2); }
+  .dash-sobe { color: #1B6B31; } .dash-desce { color: #A11C2E; } .dash-neutro { color: var(--aco); }
+  /* Etiqueta de procedência. Fica no produto, não é rascunho: um número
+     de estimativa e um número exato não podem ter a mesma cara. */
+  .proc { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; border: 1px solid; white-space: nowrap; }
+  .proc-estimativa { color: #8A5A00; border-color: #F0D9A0; background: #FDF6E6; }
+  .proc-parcial { color: #8A5A00; border-color: #F0D9A0; background: #FDF6E6; border-style: dashed; }
+
   /* Atalho da tela inicial: o cartão de número inteiro é o botão.
      Fica fora da regra das duas alturas pelo mesmo motivo da
      .miniatura -- é um bloco que embrulha conteúdo, não um controle de
@@ -401,6 +449,18 @@
               <p>Início</p>
             </a>
           </li>
+          <!-- Dashboard é do dono: faturamento estimado, produtividade e
+               evasão do clube. Só Gestor, e de propósito NÃO entra no
+               catálogo de permissões -- não existe toggle que dê isso a
+               um Atendente (mesma decisão de Configurações e Auditoria). -->
+          {% if usuario_papel == 'Gestor' %}
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="dashboard">
+              <i class="nav-icon fas fa-chart-line" aria-hidden="true"></i>
+              <p>Dashboard</p>
+            </a>
+          </li>
+          {% endif %}
           <li class="nav-header">ATENDIMENTO</li>
           {% if usuario_papel == 'Gestor' or 'atendimentos' in funcoes_ativas %}
           <li class="nav-item">
@@ -528,6 +588,123 @@
   </aside>
 
   <div class="content-wrapper">
+
+    <div id="view-dashboard" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <div class="d-flex align-items-end justify-content-between flex-wrap" style="gap: var(--e4)">
+            <div>
+              <h1 class="m-0">Dashboard</h1>
+              <p class="text-muted mb-0" id="dash-periodo">Carregando…</p>
+            </div>
+            <span class="badge badge-light" style="font-size: 11px">Visível só para Gestor</span>
+          </div>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <div id="dash-avisos"></div>
+          <div class="row" id="dash-tiles"></div>
+
+          <div class="row">
+            <div class="col-lg-7">
+              <div class="card">
+                <div class="card-header d-flex align-items-center" style="gap: var(--e3)">
+                  <h3 class="card-title">Casos abertos e concluídos por mês</h3>
+                  <span class="ml-auto legenda-graf">
+                    <span class="chave"><i style="background:#3A6FB7"></i>Abertos</span>
+                    <span class="chave"><i style="background:#0E8C7A"></i>Concluídos</span>
+                  </span>
+                </div>
+                <div class="card-body"><div id="dash-casos-mes"></div></div>
+              </div>
+            </div>
+            <div class="col-lg-5">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Onde a fila está parada</h3></div>
+                <div class="card-body"><div id="dash-fila"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-lg-4">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Onde está o valor de tabela</h3></div>
+                <div class="card-body"><div id="dash-servicos"></div></div>
+              </div>
+            </div>
+            <div class="col-lg-4">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Por onde o cliente chega</h3></div>
+                <div class="card-body"><div id="dash-origem"></div></div>
+              </div>
+            </div>
+            <div class="col-lg-4">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Consumo do assistente</h3></div>
+                <div class="card-body"><div id="dash-ia"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">O que precisa de você</h3></div>
+            <div class="card-body"><div class="row" id="dash-alertas"></div></div>
+          </div>
+
+          <div class="content-header px-0">
+            <div class="container-fluid px-0">
+              <h1 class="m-0">Clube</h1>
+              <p class="text-muted mb-0" id="dash-clube-frescor"></p>
+            </div>
+          </div>
+
+          <div class="row" id="dash-clube-tiles"></div>
+
+          <div class="card">
+            <div class="card-header d-flex align-items-center" style="gap: var(--e3)">
+              <h3 class="card-title">Participações por dia — últimos 30 dias</h3>
+              <span class="ml-auto legenda-graf">
+                <span class="chave"><i style="background:#3A6FB7"></i>Dia de semana</span>
+                <span class="chave"><i style="background:#24487D"></i>Sábado e domingo</span>
+              </span>
+            </div>
+            <div class="card-body"><div id="dash-hab-dia"></div></div>
+          </div>
+
+          <div class="row">
+            <div class="col-lg-6">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Participações por mês</h3></div>
+                <div class="card-body"><div id="dash-hab-mes"></div></div>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Novos filiados por mês</h3></div>
+                <div class="card-body"><div id="dash-novos"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-lg-6">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Filiado que ainda não é seu cliente</h3></div>
+                <div class="card-body"><div id="dash-penetracao"></div></div>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="card">
+                <div class="card-header"><h3 class="card-title" id="dash-sumidos-titulo">Sem treinar há muito tempo</h3></div>
+                <div class="card-body"><div id="dash-sumidos"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div id="view-inicio" class="view active">
       <div class="content-header">
@@ -1608,6 +1785,7 @@ document.addEventListener("keydown", (e) => {
 
 function carregarView(viewName) {
   if (viewName === "inicio") carregarInicio();
+  if (viewName === "dashboard") carregarDashboard();
   if (viewName === "pendentes") carregarPendentes();
   if (viewName === "documentos") carregarDocumentosPendentes();
   if (viewName === "clientes") carregarClientesLista();
@@ -1872,6 +2050,367 @@ async function salvarCasoEdicao() {
 }
 
 $("#salvar-caso").addEventListener("click", salvarCasoEdicao);
+
+// ====================================================================
+// DASHBOARD (Gestor)
+//
+// Nenhuma conta acontece aqui: tudo vem pronto de /api/dashboard, que
+// por sua vez usa core/motor_indicadores.py e o motor do Domínio. Se um
+// número precisar mudar de regra, muda lá -- uma segunda implementação
+// da mesma conta no JS é como painel e relatório começam a discordar.
+// ====================================================================
+
+// "não sei" nunca vira zero na tela: null aparece como travessão.
+function numOuTraco(valor, sufixo) {
+  if (valor === null || valor === undefined) return "—";
+  return `${valor}${sufixo || ""}`;
+}
+
+function reais(valor) {
+  return (valor || 0).toLocaleString("pt-BR", {
+    style: "currency", currency: "BRL", maximumFractionDigits: 0,
+  });
+}
+
+// Delta contra o mesmo pedaço do mês anterior. `bomSubir` existe porque
+// nem todo número melhora crescendo: mais casos concluídos é bom, mais
+// dias até concluir é ruim.
+function deltaHtml(valor, anterior, bomSubir, sufixo) {
+  if (valor === null || anterior === null || valor === undefined || anterior === undefined) {
+    return `<div class="dash-delta dash-neutro">sem base de comparação</div>`;
+  }
+  const dif = +(valor - anterior).toFixed(1);
+  if (dif === 0) return `<div class="dash-delta dash-neutro">igual ao mês passado</div>`;
+  const subiu = dif > 0;
+  const bom = subiu === bomSubir;
+  const seta = subiu ? "▲" : "▼";
+  return `<div class="dash-delta ${bom ? "dash-sobe" : "dash-desce"}">`
+    + `${seta} ${Math.abs(dif)}${sufixo || ""} vs. o mesmo período do mês passado</div>`;
+}
+
+function dashTile({ rotulo, valor, extra, procedencia }) {
+  return `
+    <div class="col-lg-3 col-sm-6">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start" style="gap: var(--e2)">
+            <span class="rotulo">${escapeHtml(rotulo)}</span>
+            ${procedencia || ""}
+          </div>
+          <div class="dash-num mt-2">${valor}</div>
+          ${extra || ""}
+        </div>
+      </div>
+    </div>`;
+}
+
+// Gráfico de barras verticais. `series` é uma lista de {rotulo, valores:
+// [], parcial, titulo}; uma cor por série, na ordem fixa da paleta.
+function barrasVerticais(itens, cores, altura, denso) {
+  const maior = Math.max(1, ...itens.flatMap(i => i.valores));
+  return `<div class="graf ${denso ? "denso" : ""}">` + itens.map(item => {
+    const barras = item.valores.map((v, i) =>
+      `<div class="graf-barra ${item.parcial ? "parcial" : ""}" style="height:${Math.round(v / maior * altura)}px;background:${cores[i]}"></div>`
+    ).join("");
+    return `<div class="graf-col" title="${escapeHtml(item.titulo)}">
+        ${item.destaque ? `<span class="graf-topo">${item.destaque}</span>` : ""}
+        <div class="graf-raia ${item.valores.length > 1 ? "par" : ""}" style="height:${altura}px">${barras}</div>
+        <span class="graf-rot">${escapeHtml(item.rotulo || "")}</span>
+      </div>`;
+  }).join("") + `</div>`;
+}
+
+function rankHtml(linhas, cor) {
+  const maior = Math.max(1, ...linhas.map(l => l.valor));
+  return linhas.map(l => `
+    <div class="rank">
+      <span>${escapeHtml(l.nome)}</span>
+      <div class="rank-trilho"><div style="width:${Math.round(l.valor / maior * 100)}%;background:${l.cor || cor || "#3A6FB7"}"></div></div>
+      <span class="rank-valor">${escapeHtml(l.texto)}</span>
+    </div>`).join("");
+}
+
+async function carregarDashboard() {
+  const resposta = await buscarJson("/api/dashboard");
+  if (!resposta.ok) {
+    $("#dash-tiles").innerHTML = `<div class="col-12">${AVISO_FALHA_DE_REDE}</div>`;
+    return;
+  }
+  const d = resposta.dados;
+  const n = d.negocio;
+  const p = n.periodo;
+
+  $("#dash-periodo").textContent =
+    `${p.dias_corridos} dias de ${p.rotulo_atual}, comparados com os ${p.dia_equivalente} primeiros dias de ${p.rotulo_anterior}.`;
+
+  // --- avisos que mudam a leitura de tudo que vem abaixo -------------
+  const avisos = [];
+  if (n.encerrados_sem_data > 0) {
+    avisos.push(`<div class="alert alert-warning mb-3">
+      <b>${n.encerrados_sem_data} caso(s) encerrado(s) sem data de encerramento.</b>
+      São anteriores ao sistema passar a registrar isso e não entram na contagem por período.
+      Rodar <span class="mono">core.db.migrar_encerrado_em</span> recupera o que estiver no histórico.</div>`);
+  }
+  if (!d.shooting_house_real) {
+    avisos.push(`<div class="alert alert-info mb-3">
+      <b>Shooting House em modo simulado.</b> Os números do clube abaixo vêm do dado de teste,
+      não do clube de verdade.</div>`);
+  }
+  $("#dash-avisos").innerHTML = avisos.join("");
+
+  // --- tiles do negócio ---------------------------------------------
+  const autonomia = n.atendimento.pct_sozinha;
+  $("#dash-tiles").innerHTML =
+    dashTile({
+      rotulo: "Casos concluídos",
+      valor: n.concluidos.valor,
+      extra: deltaHtml(n.concluidos.valor, n.concluidos.anterior, true),
+    }) +
+    dashTile({
+      rotulo: "Tempo médio até concluir",
+      valor: n.tempo_medio_dias.valor === null
+        ? "—" : `${n.tempo_medio_dias.valor}<span style="font-size:20px;color:var(--aco)"> dias</span>`,
+      extra: n.tempo_medio_dias.valor === null
+        ? `<div class="dash-delta dash-neutro">nenhum caso encerrado no período</div>`
+        : deltaHtml(n.tempo_medio_dias.valor, n.tempo_medio_dias.anterior, false, " dias"),
+    }) +
+    dashTile({
+      rotulo: "Em andamento",
+      valor: reais(n.em_andamento.total),
+      procedencia: `<span class="proc proc-estimativa">estimativa</span>`,
+      extra: `<div class="dash-delta dash-neutro">${n.em_andamento.processos} processo(s) &times; valor de tabela`
+        + (n.em_andamento.sem_valor ? ` &mdash; ${n.em_andamento.sem_valor} sem valor cadastrado` : "")
+        + `</div>`,
+    }) +
+    dashTile({
+      rotulo: "A IA deu conta sozinha",
+      valor: autonomia === null ? "—" : `${autonomia}<span style="font-size:20px;color:var(--aco)">%</span>`,
+      extra: `<div class="dash-delta dash-neutro">${
+        autonomia === null
+          ? "nenhuma mensagem no período"
+          : `${n.atendimento.sozinha} de ${n.atendimento.total} mensagens` +
+            (d.revisao_humana_ativa ? " — ainda passaram pela sua aprovação" : "")
+      }</div>`,
+    });
+
+  // --- casos por mês (duas séries) -----------------------------------
+  $("#dash-casos-mes").innerHTML = barrasVerticais(
+    n.casos_por_mes.map(m => ({
+      rotulo: m.rotulo,
+      valores: [m.abertos, m.concluidos],
+      parcial: m.em_curso,
+      titulo: `${m.mes} — ${m.abertos} abertos, ${m.concluidos} concluídos`
+        + (m.em_curso ? " (mês em curso)" : ""),
+    })),
+    ["#3A6FB7", "#0E8C7A"], 108,
+  );
+
+  // --- fila por status ------------------------------------------------
+  $("#dash-fila").innerHTML = n.fila_por_status.length
+    ? rankHtml(n.fila_por_status.map(f => ({
+        nome: f.status,
+        valor: f.total,
+        texto: f.parados ? `${f.total} (${f.parados} parados)` : String(f.total),
+        cor: f.parados ? "#C75B1E" : "#3A6FB7",
+      })))
+      + `<p class="text-muted mt-3 mb-0" style="font-size:12px">Em laranja, os que não têm movimento há mais de ${n.alertas.dias_para_parado} dias.</p>`
+    : `<p class="text-muted mb-0">Nenhum caso em aberto.</p>`;
+
+  // --- valor por serviço ----------------------------------------------
+  $("#dash-servicos").innerHTML = n.valor_por_servico.length
+    ? rankHtml(n.valor_por_servico.map(s => ({
+        nome: s.nome_servico,
+        valor: s.total,
+        texto: s.sem_valor ? `${s.processos}×` : reais(s.total),
+      })))
+      + `<p class="text-muted mt-3 mb-0" style="font-size:12px">Valor de tabela do serviço, não o que foi cobrado — o sistema ainda não registra pagamento.</p>`
+    : `<p class="text-muted mb-0">Nenhum processo em andamento.</p>`;
+
+  // --- origem ----------------------------------------------------------
+  $("#dash-origem").innerHTML = d.negocio.origem.length
+    ? rankHtml(d.negocio.origem.map(o => ({
+        nome: o.canal === "Email" ? "E-mail" : o.canal,
+        valor: o.total,
+        texto: `${o.pct}%`,
+      })))
+    : `<p class="text-muted mb-0">Nenhuma mensagem no período.</p>`;
+
+  // --- consumo de IA ---------------------------------------------------
+  const ia = n.ia;
+  $("#dash-ia").innerHTML = `
+    <div class="ficha">
+      <dt>Chamadas</dt><dd class="mono">${ia.chamadas}</dd>
+      <dt>Tokens de entrada</dt><dd class="mono">${ia.tokens_entrada.toLocaleString("pt-BR")}</dd>
+      <dt>Tokens de saída</dt><dd class="mono">${ia.tokens_saida.toLocaleString("pt-BR")}</dd>
+      <dt>Erros</dt><dd class="mono">${ia.erros}</dd>
+      <dt>Retidas para revisão</dt><dd class="mono">${n.atendimento.com_humano}</dd>
+    </div>
+    <p class="text-muted mt-3 mb-0" style="font-size:12px">Sem valor em reais de propósito: o preço por token é do fornecedor, muda sem avisar e não está cadastrado no sistema.</p>`;
+
+  // --- alertas ----------------------------------------------------------
+  const a = n.alertas;
+  $("#dash-alertas").innerHTML = `
+    <div class="col-md-4">
+      <div style="border-left:3px solid #A11C2E;padding-left:var(--e3)">
+        <div class="rotulo" style="color:#A11C2E">Dinheiro parado</div>
+        <p class="mb-1 mt-1" style="font-size:13px"><b>${a.parados.total}</b> caso(s) esperando o cliente há mais de ${a.dias_para_parado} dias${a.parados.valor ? `, com ${reais(a.parados.valor)} de valor de tabela envolvido` : ""}.</p>
+        ${a.parados.lista.map(c => `<div style="font-size:12px;color:var(--aco)">${escapeHtml(c.cliente_nome)} — ${escapeHtml(c.titulo)} <span class="mono">${dataBr(c.atualizado_em)}</span></div>`).join("")}
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div style="border-left:3px solid #C79100;padding-left:var(--e3)">
+        <div class="rotulo" style="color:#8A5A00">Prazo estourando</div>
+        <p class="mb-1 mt-1" style="font-size:13px"><b>${a.prazo.total}</b> processo(s) vencem nos próximos ${a.dias_prazo} dias ou já venceram.</p>
+        ${a.prazo.lista.map(p2 => `<div style="font-size:12px;color:var(--aco)">${escapeHtml(p2.cliente_nome)} — ${escapeHtml(p2.nome_servico)} <span class="mono">${dataBr(p2.prazo_estimado)}</span></div>`).join("")}
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div style="border-left:3px solid #396BB3;padding-left:var(--e3)">
+        <div class="rotulo" style="color:#24487D">Tarefas atrasadas</div>
+        <p class="mb-1 mt-1" style="font-size:13px"><b>${d.tarefas.atrasadas}</b> tarefa(s) passaram do prazo, de ${d.tarefas.abertas} em aberto.</p>
+        <div style="font-size:12px;color:var(--aco)">${d.tarefas.hoje} vence(m) hoje.</div>
+      </div>
+    </div>`;
+
+  desenharClube(d);
+}
+
+function desenharClube(d) {
+  const c = d.clube;
+
+  $("#dash-clube-frescor").textContent = c.retrato_mais_antigo
+    ? `Retrato sincronizado do Shooting House. O mais antigo é de ${dataHoraBr(c.retrato_mais_antigo)}.`
+    : "Nenhum filiado sincronizado ainda — os números abaixo aparecem conforme o rodízio roda.";
+
+  const cob = d.habitualidade_dia.cobertura;
+  const pctCobertura = cob.ativos ? Math.round(cob.com_datas * 100 / cob.ativos) : 0;
+
+  $("#dash-clube-tiles").innerHTML =
+    dashTile({ rotulo: "Filiados ativos", valor: c.ativos,
+      extra: `<div class="dash-delta dash-neutro">${c.inativos} inativos no histórico</div>` }) +
+    dashTile({ rotulo: "Novos filiados no mês", valor: c.novos_no_mes,
+      procedencia: `<span class="proc proc-parcial">com ressalva</span>`,
+      extra: `<div class="dash-delta dash-neutro">${
+        c.carga_no_mes
+          ? `não inclui a carga inicial de ${c.carga_no_mes} pessoas`
+          : "data em que o sistema viu a pessoa, não a de filiação"
+      }</div>` }) +
+    dashTile({ rotulo: `Sem treinar há ${c.dias_sumido}+ dias`, valor: c.sumidos,
+      extra: `<div class="dash-delta dash-neutro">${c.sem_participacao} nunca treinaram na janela de 12 meses</div>` }) +
+    dashTile({ rotulo: "Cobertura do retrato", valor: `${pctCobertura}<span style="font-size:20px;color:var(--aco)">%</span>`,
+      extra: `<div class="dash-delta dash-neutro">${cob.com_datas} de ${cob.ativos} ativos já têm datas</div>` });
+
+  // --- participações por dia -------------------------------------------
+  const dias = d.habitualidade_dia.dias;
+  // O estado vazio é só para "ninguém foi consultado ainda". Trinta dias
+  // zerados COM gente consultada é uma afirmação legítima -- o clube não
+  // teve movimento --, e trocá-la por "não há datas no banco" seria a
+  // tela mentindo bem ao lado do quadro que diz 100% de cobertura.
+  const temDado = cob.com_datas > 0;
+  $("#dash-hab-dia").innerHTML = temDado
+    ? barrasVerticais(
+        dias.map(x => ({
+          rotulo: x.semana === 0 ? x.data.slice(8) : "",
+          valores: [x.participacoes],
+          titulo: `${dataBr(x.data)} — ${x.participacoes} participação(ões), ${x.atiradores} atirador(es)`,
+        })),
+        ["#3A6FB7"], 150, true,
+      ) + avisoCobertura(cob)
+    : vazioHabitualidade(cob);
+
+  // Fim de semana em azul escuro: a leitura do gráfico é justamente
+  // "onde o clube enche". Feito depois de montar, para não repetir a
+  // função de barras só por causa de uma cor.
+  dias.forEach((x, i) => {
+    if (x.semana >= 5) {
+      const col = $("#dash-hab-dia").querySelectorAll(".graf-col")[i];
+      if (col) col.querySelector(".graf-barra").style.background = "#24487D";
+    }
+  });
+
+  // --- participações por mês --------------------------------------------
+  const meses = d.habitualidade_mes.meses;
+  $("#dash-hab-mes").innerHTML = temDado
+    ? barrasVerticais(
+        meses.map(m => ({
+          rotulo: m.rotulo,
+          valores: [m.participacoes],
+          parcial: m.em_curso || m.parcial,
+          titulo: `${m.mes} — ${m.participacoes} participação(ões), ${m.atiradores} atirador(es)`
+            + (m.parcial ? " (mês entrando/saindo da janela de 12 meses)" : ""),
+        })),
+        ["#3A6FB7"], 120,
+      ) + `<p class="text-muted mt-3 mb-0" style="font-size:12px">O primeiro e o último mês aparecem esmaecidos: um está entrando na janela de 12 meses, o outro ainda está correndo.</p>`
+    : vazioHabitualidade(cob);
+
+  // --- novos filiados ----------------------------------------------------
+  const novos = d.novos_filiados;
+  $("#dash-novos").innerHTML = barrasVerticais(
+    novos.meses.map(m => ({
+      rotulo: m.rotulo,
+      valores: [m.carga_inicial ? 0 : m.total],
+      parcial: m.em_curso,
+      titulo: m.carga_inicial
+        ? `${m.mes} — mês da carga inicial (${novos.total_da_carga} pessoas de uma vez), fora do gráfico`
+        : `${m.mes} — ${m.total} novo(s)`,
+    })),
+    ["#0E8C7A"], 120,
+  ) + `<p class="text-muted mt-3 mb-0" style="font-size:12px">${
+    novos.dia_da_carga
+      ? `O mês da carga inicial (<span class="mono">${dataBr(novos.dia_da_carga)}</span>, ${novos.total_da_carga} pessoas) fica zerado de propósito: foi o dia em que o sistema conheceu o clube inteiro, não um mês de crescimento.`
+      : "Conta quando o sistema viu a pessoa pela primeira vez — a API não devolve data de filiação."
+  }</p>`;
+
+  // --- penetração ---------------------------------------------------------
+  const pen = d.penetracao;
+  const pct = pen.filiados ? (pen.tambem_clientes * 100 / pen.filiados) : 0;
+  $("#dash-penetracao").innerHTML = `
+    <div class="d-flex align-items-baseline" style="gap: var(--e3)">
+      <span class="dash-num">${pen.so_filiados}</span>
+      <span style="font-size:13px;color:var(--aco)">de ${pen.filiados} filiados ativos nunca contrataram um serviço seu</span>
+    </div>
+    <div style="display:flex;height:28px;border-radius:4px;overflow:hidden;gap:2px;margin:var(--e4) 0 var(--e3)">
+      <div style="width:${Math.max(pct, 1)}%;background:#C75B1E"></div>
+      <div style="flex:1;background:#DFE3EA"></div>
+    </div>
+    <span class="legenda-graf">
+      <span class="chave"><i style="background:#C75B1E"></i>${pen.tambem_clientes} são clientes (${pct.toFixed(1)}%)</span>
+      <span class="chave"><i style="background:#DFE3EA"></i>${pen.so_filiados} ainda não</span>
+    </span>
+    <p class="text-muted mt-3 mb-0" style="font-size:12px">Cruzamento por CPF entre a lista do clube e os seus clientes.</p>`;
+
+  // --- sumidos -------------------------------------------------------------
+  $("#dash-sumidos-titulo").textContent = `Sem treinar há ${c.dias_sumido} dias ou mais`;
+  $("#dash-sumidos").innerHTML = c.sumidos_lista.length
+    ? `<table class="table table-sm mb-0"><thead><tr><th>Filiado</th><th>Último treino</th></tr></thead><tbody>`
+      + c.sumidos_lista.map(f => `<tr>
+          <td>${escapeHtml(f.nome)}</td>
+          <td class="mono">${dataBr(f.ultima_participacao)}</td>
+        </tr>`).join("")
+      + `</tbody></table>
+      <p class="text-muted mt-3 mb-0" style="font-size:12px">Os 5 mais antigos de ${c.sumidos}. Só vale para quem já tem retrato — ${c.sem_retrato} ativos ainda não foram consultados.</p>`
+    : `<p class="text-muted mb-0">Ninguém sumido entre os filiados já consultados.</p>`;
+}
+
+function avisoCobertura(cob) {
+  if (cob.com_datas >= cob.ativos) return "";
+  return `<p class="text-muted mt-3 mb-0" style="font-size:12px">
+    Mostrando ${cob.com_datas} de ${cob.ativos} filiados ativos — o rodízio de sincronização ainda
+    não passou por todo mundo. O gráfico sobe conforme ele avança, então uma barra baixa aqui pode
+    ser pouco movimento <b>ou</b> pouca gente consultada.</p>`;
+}
+
+function vazioHabitualidade(cob) {
+  return `<div class="graf-vazio">
+    <div>
+      <b>Ainda não há datas de participação no banco.</b><br>
+      ${cob.ativos
+        ? `Nenhum dos ${cob.ativos} filiados ativos foi consultado desde que o sistema passou a guardar as datas.`
+        : "Nenhum filiado ativo cadastrado."}<br>
+      <span class="mono" style="font-size:11px">domain.clube_tiro.sincronizar_habitualidade</span> preenche isso.
+    </div>
+  </div>`;
+}
 
 // ====================================================================
 // TELA INICIAL

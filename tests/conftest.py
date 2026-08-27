@@ -33,6 +33,13 @@ _PASTA_TEMP = Path(tempfile.mkdtemp(prefix="erp_smith_testes_"))
 
 # --- precisa vir antes dos imports do projeto (ver docstring) ---
 os.environ["ERP_CORE_DB"] = str(_PASTA_TEMP / "erp_smith_teste.db")
+# O banco de DOMÍNIO ganhou o mesmo isolamento em 2026-08-27, quando o
+# Dashboard passou a ler filiado/habitualidade numa rota do painel.
+# Antes disso a suíte só não tocava o domínio real por sorte: nenhum
+# teste chegava a executar corpo de rota que o lesse (o aviso no topo de
+# tests/test_papeis.py registrava exatamente esse risco). Sorte não é
+# isolamento -- e aqui o banco real tem 1.525 pessoas de verdade.
+os.environ["ERP_DOMAIN_DB"] = str(_PASTA_TEMP / "dominio_teste.db")
 # Evita que portal/app.py e webapp/app.py gerem uma chave nova e a
 # gravem no .env de verdade durante os testes.
 os.environ.setdefault("PORTAL_SECRET_KEY", "chave-de-teste-portal")
@@ -56,6 +63,45 @@ os.environ["SHOOTING_HOUSE_PASSWORD"] = ""
 import pytest  # noqa: E402
 
 from core.conexao import CORE_DB  # noqa: E402
+from motor_ia.conexao import DOMAIN_DB  # noqa: E402
+
+# --- todos os módulos precisam apontar para o MESMO banco de domínio ---
+# Este arquivo é importado DUAS vezes numa execução de pytest: uma pelo
+# próprio pytest (como conftest) e outra pelos testes que fazem
+# `from tests.conftest import EMPRESA_A`. Cada carga roda mkdtemp() de
+# novo e sobrescreve ERP_DOMAIN_DB -- então quem leu a variável na
+# importação (motor_ia/conexao.py, motor_campeonatos.py e
+# motor_resultados.py leem cada um por conta) podia acabar em pastas
+# temporárias DIFERENTES, dependendo da ordem dos imports.
+#
+# O sintoma foi um teste que passava sozinho e falhava na suíte, com
+# "no such table: campeonato": o fixture criava o schema num arquivo e a
+# rota lia outro. Nenhum dos dois era o banco real, mas o próximo caso
+# desse tipo pode ser -- então em vez de confiar na ordem, todo mundo é
+# realinhado aqui com o valor que o motor_ia já capturou.
+os.environ["ERP_DOMAIN_DB"] = DOMAIN_DB
+
+from domain.clube_tiro import motor_campeonatos, motor_resultados  # noqa: E402
+
+motor_campeonatos.DB_PATH = DOMAIN_DB
+motor_resultados.DB_PATH = DOMAIN_DB
+
+# Rede de segurança da regra número um deste arquivo. Se algum dia um
+# import subir para antes do bloco de os.environ, isto estoura na coleta
+# -- alto e cedo -- em vez de a suíte inteira rodar contra o banco de
+# verdade em silêncio.
+# A conferência é pelo PREFIXO da pasta descartável, e não por
+# _PASTA_TEMP: como este arquivo é importado duas vezes (ver acima), a
+# segunda carga tem uma pasta nova em mãos enquanto os módulos já
+# capturaram a da primeira -- comparar com _PASTA_TEMP acusaria isso
+# como erro sendo que os dois são temporários.
+for _nome, _caminho in (("Core", CORE_DB), ("Domínio", DOMAIN_DB)):
+    assert "erp_smith_testes_" in str(_caminho), (
+        f"O banco de {_nome} da suíte aponta para {_caminho}, que não é uma "
+        "pasta descartável. Algum import do projeto subiu para antes da "
+        "definição das variáveis de ambiente no topo deste arquivo, e a suíte "
+        "rodaria contra o banco de VERDADE."
+    )
 
 AGORA = "2026-07-28T12:00:00Z"
 
@@ -70,6 +116,39 @@ SERVICO_DA_EMPRESA = {EMPRESA_A: "SER-000001", EMPRESA_B: "SER-000002"}
 def _criar_schema(con: sqlite3.Connection) -> None:
     con.executescript((BASE_DIR / "core" / "db" / "schema.sql").read_text(encoding="utf-8"))
     con.executescript((BASE_DIR / "core" / "db" / "views.sql").read_text(encoding="utf-8"))
+
+
+def _apagar_banco(caminho: Path) -> None:
+    """Apaga o arquivo do banco E os companheiros do modo WAL.
+
+    O -wal não é detalhe: apagar só o .db e recriar deixa o journal
+    antigo no disco, e o SQLite trata isso como jornal quente -- ele
+    recupera o conteúdo velho por cima do banco novo, e o schema que o
+    teste acabou de criar simplesmente some. O sintoma é lindo de
+    enganoso: o teste passa sozinho e falha na suíte inteira, com
+    "no such table" numa tabela que o script de schema claramente cria.
+    """
+    for sufixo in ("", "-wal", "-shm"):
+        Path(str(caminho) + sufixo).unlink(missing_ok=True)
+
+
+def _criar_dominio() -> None:
+    """Banco de Domínio limpo, do schema REAL -- nunca de uma cópia
+    escrita à mão aqui, que sairia de sincronia sem ninguém perceber
+    (mesma regra do schema do Core, logo acima).
+
+    Nasce VAZIO de propósito: nenhum filiado semeado. Assim o caminho
+    "ninguém sincronizado ainda" -- que é o estado real de quase todo o
+    clube hoje -- é o padrão que os testes percorrem, em vez de um caso
+    de borda que ninguém lembra de escrever.
+    """
+    _apagar_banco(Path(DOMAIN_DB))
+    con = sqlite3.connect(DOMAIN_DB)
+    con.executescript(
+        (BASE_DIR / "domain" / "clube_tiro" / "db" / "schema.sql").read_text(encoding="utf-8")
+    )
+    con.commit()
+    con.close()
 
 
 def _inserir_empresa(con: sqlite3.Connection, empresa_id: str, nome: str) -> None:
@@ -203,8 +282,8 @@ def banco(tmp_path):
     cliente de dois despachantes -- e é o que faz uma busca por CPF sem
     filtro de empresa devolver a pessoa errada.
     """
-    caminho = Path(CORE_DB)
-    caminho.unlink(missing_ok=True)
+    _apagar_banco(Path(CORE_DB))
+    _criar_dominio()
 
     con = sqlite3.connect(CORE_DB)
     con.row_factory = sqlite3.Row
@@ -267,7 +346,7 @@ def banco(tmp_path):
 
     yield {"arquivo_a": arquivo_a, "arquivo_b": arquivo_b, "arquivo_c": arquivo_c}
 
-    Path(CORE_DB).unlink(missing_ok=True)
+    _apagar_banco(Path(CORE_DB))
 
 
 @pytest.fixture

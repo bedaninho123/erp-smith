@@ -43,6 +43,7 @@ from core.motor_identidade import mascarar_cpf
 from core.conexao import conectar
 from core.configuracoes import atualizar_configuracao, obter_configuracoes
 from core.limitador_tentativas import excedeu_limite
+from core import motor_indicadores
 from core.motor_casos import STATUS_VALIDOS, atualizar_descricao, atualizar_responsavel, atualizar_status
 from core.motor_notificacoes import destinatario_para_notificar
 from core.motor_processos import atualizar_processo, criar_processo
@@ -50,7 +51,7 @@ from core.motor_usuarios import (
     FUNCOES_VALIDAS, atualizar_ativo, atualizar_papel, atualizar_permissoes,
     criar_usuario, listar_permissoes, listar_usuarios, tem_permissao,
 )
-from domain.clube_tiro import motor_filiados
+from domain.clube_tiro import motor_filiados, motor_indicadores_clube
 from domain.clube_tiro.motor_campeonatos import (
     atualizar_campeonato, criar_campeonato, listar_campeonatos, remover_campeonato,
 )
@@ -1261,6 +1262,56 @@ def usuarios_permissoes_atualizar(usuario_id):
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True)
+
+
+@app.route("/api/dashboard")
+@login_required
+@gestor_required
+def dashboard():
+    """Dashboard do dono: os números do negócio e do clube.
+
+    @gestor_required, sem entrada no catálogo de permissões -- mesma
+    decisão de Configurações e Auditoria. Não é uma tela operacional com
+    acesso mais largo: é a visão de faturamento, produtividade e evasão
+    do clube. Atendente não vê, e não existe toggle que faça ver.
+
+    A tela junta Core (casos, processos, mensagens, IA) e Domínio
+    (filiados, habitualidade). É o único lugar do painel que cruza os
+    dois de propósito: os dois motores continuam sem saber um do outro,
+    e quem junta é esta rota.
+    """
+    empresa_id = empresa_atual()
+
+    negocio = motor_indicadores.resumo(empresa_id)
+    clube = motor_indicadores_clube.resumo(empresa_id)
+
+    # Penetração: quantos filiados do clube também são clientes do
+    # despachante. O cruzamento é por CPF e em Python, trazendo o lado
+    # pequeno inteiro -- mesma escolha da tela de Filiados (uma consulta
+    # por linha em 1500 filiados, ou um IN com 1500 parâmetros, seriam os
+    # dois caminhos errados).
+    cpfs_clientes = set(_clientes_por_cpf(empresa_id))
+    cpfs_filiados = motor_filiados.cpfs_de_filiados(empresa_id, somente_ativos=True)
+    tambem_clientes = len(cpfs_filiados & cpfs_clientes)
+
+    return jsonify(
+        negocio=negocio,
+        clube=clube,
+        penetracao={
+            "filiados": len(cpfs_filiados),
+            "tambem_clientes": tambem_clientes,
+            "so_filiados": len(cpfs_filiados) - tambem_clientes,
+        },
+        habitualidade_dia=motor_indicadores_clube.serie_por_dia(empresa_id),
+        habitualidade_mes=motor_indicadores_clube.serie_por_mes(empresa_id),
+        novos_filiados=motor_indicadores_clube.novos_filiados_por_mes(empresa_id),
+        tarefas=motor_tarefas.contar_tarefas(empresa_id),
+        # A tela precisa saber se o freio está ligado para escrever a
+        # frase certa sobre autonomia da IA -- com revisão humana ligada,
+        # "resolveu sozinha" ainda passou pela aprovação de alguém.
+        revisao_humana_ativa=obter_configuracoes(empresa_id).get("revisao_humana_ativa") == "Sim",
+        shooting_house_real=shooting_house_ativo(),
+    )
 
 
 @app.route("/api/auditoria")

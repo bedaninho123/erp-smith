@@ -81,6 +81,7 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.migrar_permissoes_usuario     # idempotente, cria a tabela usuario_permissao
 .venv\Scripts\python.exe -m core.db.migrar_log_administrativo     # idempotente, cria a tabela log_administrativo
 .venv\Scripts\python.exe -m core.db.migrar_conversas_crm          # idempotente, liga mensagens antigas a conversas (tela Atendimentos)
+.venv\Scripts\python.exe -m core.db.migrar_encerrado_em           # idempotente, preenche caso.encerrado_em a partir do historico (Dashboard)
 
 # Conferir se a tabela documento bate com os arquivos em disco (só relata, nunca apaga)
 .venv\Scripts\python.exe -m core.db.auditar_documentos
@@ -99,6 +100,9 @@ domain\clube_tiro\instalar_tarefa_habitualidade.bat
 domain\clube_tiro\remover_tarefa_habitualidade.bat
 # Banco de Domínio já em uso, sem a tabela filiado: idempotente
 .venv\Scripts\python.exe -m domain.clube_tiro.db.migrar_filiados
+# Banco de Domínio já em uso, sem as datas de participação: idempotente
+# (é o que faz o gráfico de habitualidade por dia do Dashboard existir)
+.venv\Scripts\python.exe -m domain.clube_tiro.db.migrar_datas_habitualidade
 
 .venv\Scripts\python.exe -m domain.clube_tiro.db.criar_banco --recriar
 .venv\Scripts\python.exe -m domain.clube_tiro.db.popular_conhecimento
@@ -343,6 +347,85 @@ registro, e era justamente o que ninguém via.
 `USR-000003` e `CLI-000012` são traduzidos para nome de gente na
 exibição, com o ID ao lado: o log guarda ID de propósito (nome muda, ID
 não), mas tela de auditoria que exige decorar identificador não é lida.
+
+### Dashboard: o painel do dono, e as travas para ele não mentir
+
+(2026-08-27.) Tela só de Gestor (`@gestor_required`, **fora** do catálogo
+de permissões, como Configurações e Auditoria — não existe toggle que dê
+isso a um Atendente). É a única tela que cruza Core e Domínio de
+propósito: `core/motor_indicadores.py` (casos, processos, mensagens,
+log_ia — genérico, serve a qualquer domínio futuro) e
+`domain/clube_tiro/motor_indicadores_clube.py` (filiados, habitualidade).
+Os dois motores continuam sem saber um do outro; quem junta é a rota.
+
+**Regra que vale para o Dashboard inteiro: onde o banco não sabe, a
+função devolve `None`, nunca zero.** Zero é "consultei e não teve";
+`None` é "não sei". Num gráfico os dois viram a mesma barra baixinha, e é
+assim que um painel começa a mentir — mesma regra que já vale para
+`filiado.participacoes_12m` e para o Consultor.
+
+Decisões que estão no motor e nenhuma tela pode reimplementar:
+
+- **Mês em curso nunca se compara com mês fechado.** Toda comparação é
+  contra o **mesmo pedaço** do mês anterior (`_recorte_mes`), e a barra do
+  mês corrente aparece esmaecida. Sem isso, dia 5 todo mês pareceria
+  desastre. O `min()` do dia equivalente existe porque 31 de março não
+  existe em fevereiro — sem ele, Dashboard fora do ar em três dias do ano.
+- **`caso.encerrado_em` passou a ser preenchido.** A coluna existia desde
+  o Core mínimo e nunca era escrita, então "quantos casos você concluiu
+  em agosto?" não tinha resposta. Carimba ao encerrar, **apaga ao
+  reabrir**, e 'Cancelado' não conta como concluído. Banco em uso:
+  `core.db.migrar_encerrado_em` (idempotente) recupera a data do
+  `historico`; encerrado sem rastro fica `NULL` de propósito e a tela
+  avisa quantos ficaram de fora.
+- **Sem valor em reais para consumo de IA.** O preço por token é do
+  fornecedor, muda sem avisar e não está cadastrado em lugar nenhum. Um
+  "R$ 47" com preço chutado no código seria o número que ninguém confere
+  e todo mundo repete. A tela mostra chamadas e tokens.
+- **"Em andamento" é valor de TABELA, não receita** (`proc-estimativa` na
+  tela). O sistema não registra o que foi cobrado nem o que foi pago —
+  essa é a maior lacuna dele como ferramenta de gestão.
+
+### Habitualidade por dia e por mês: as datas ficam na linha da pessoa
+
+(2026-08-27.) Para o gráfico de participações por dia existir, `filiado`
+ganhou `participacoes_datas` — a lista JSON das datas dentro da janela de
+12 meses. Migração: `domain.clube_tiro.db.migrar_datas_habitualidade`
+(idempotente; a coluna nasce `NULL` para todo mundo e se preenche
+conforme o rodízio passa).
+
+**Por que na linha da pessoa, e não numa tabela `habitualidade_dia` com o
+total do clube por dia** (que era o desenho inicial): a sincronização é um
+**rodízio** — cada rodada lê ~150 dos ~978 ativos. Um total por dia
+gravado a cada rodada seria a soma de um pedaço do clube, e não haveria
+como corrigir depois sem saber de quem era cada participação. Guardando as
+datas na linha, cada sincronização **reescreve** o que aquela pessoa tem
+(nunca soma — acumular duplicaria a mesma participação a cada rodada), o
+total do dia é recalculado por cima de todo mundo, e o número se conserta
+sozinho conforme o rodízio avança.
+
+Continua sendo **retrato, não cópia do registro**: só a data. Sem
+modalidade, arma, hora ou local — nada que permita remontar o que foi
+lançado no Shooting House, que é quem reporta à PF e ao Exército.
+
+Três coisas que a tela é obrigada a mostrar junto:
+
+- **Cobertura** (`X de Y ativos já têm datas`). Um gráfico subindo pode
+  ser o clube treinando mais **ou** a sincronização alcançando mais gente;
+  sem esse número ao lado os dois são indistinguíveis, e a leitura errada
+  é a otimista.
+- **Estado vazio só quando NINGUÉM foi consultado.** Trinta dias zerados
+  com gente consultada é afirmação legítima ("não teve movimento").
+  Trocar isso por "não há datas no banco" foi um defeito real, pego
+  rodando: a tela dizia isso ao lado de um quadro marcando 100% de
+  cobertura.
+- **A carga inicial não é crescimento.** `filiado.criado_em` é quando
+  **nós** vimos a pessoa, não quando ela se filiou (a API não devolve
+  data de filiação), e a importação trouxe o clube inteiro num dia só. O
+  dia da carga é detectado (o dia com mais primeiras aparições) e fica
+  **fora** de "novos filiados no mês" — senão o número que mais interessa
+  ao dono seria o mais errado da tela. Também pego rodando: o quadro
+  marcava 6 novos filiados sendo que os 6 eram a importação.
 
 ### webapp/ é o painel administrativo real, não uma ferramenta descartável
 

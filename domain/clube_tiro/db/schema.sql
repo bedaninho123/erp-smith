@@ -170,6 +170,24 @@ CREATE TABLE filiado (
     -- conferida convidaria alguém a confiar nela.
     participacoes_12m    INTEGER,                        -- NULL = nunca sincronizado
     ultima_participacao  TEXT,                           -- ISO 8601 (YYYY-MM-DD)
+    -- As DATAS das participações dentro da janela, como lista JSON
+    -- (["2026-08-22", ...]). NULL = nunca sincronizado, [] = consultado
+    -- e não teve.
+    --
+    -- Por que a lista, e não uma tabela `habitualidade_dia` com o total
+    -- do clube por dia (2026-08-27): a sincronização é um RODÍZIO -- cada
+    -- rodada lê ~150 dos ~978 ativos. Um total por dia gravado a cada
+    -- rodada seria a soma de um pedaço do clube, e não haveria como
+    -- corrigir depois sem saber de quem era cada participação. Guardando
+    -- as datas na linha da pessoa, cada sincronização REESCREVE o que
+    -- aquela pessoa tem, o total do dia é recalculado por cima de todo
+    -- mundo, e o número se conserta sozinho conforme o rodízio avança.
+    --
+    -- Continua sendo retrato, não cópia do registro: só a data. Sem
+    -- modalidade, sem arma, sem hora, sem local -- nada que permita
+    -- remontar o que foi lançado no Shooting House, que é quem reporta à
+    -- PF e ao Exército.
+    participacoes_datas  TEXT,
     sincronizado_em      TEXT,                           -- ISO 8601, NULL = nunca
     sincronizacao_erro   TEXT,                           -- último motivo de falha, NULL = ok
 
