@@ -603,6 +603,14 @@ um subconjunto — importar todo mundo para `cliente` seria guardar dado
 pessoal de gente que ninguém atende. `filiado` fica no Domínio pelo mesmo
 critério de `campeonato`: um escritório de advocacia nunca terá um.
 
+As duas telas do painel se chamam **Clientes Despachante** e **Filiados**,
+e **se enxergam pelo CPF** (2026-08-26): a lista de Filiados marca quem
+também é cliente e leva à ficha; a ficha traz um bloco "no clube" com o
+retrato de habitualidade (`motor_filiados.obter_por_cpf`). O cruzamento é
+feito em Python trazendo o lado pequeno inteiro (`_clientes_por_cpf` em
+`webapp/app.py`) — uma consulta por linha em 1500 filiados, ou um `IN` com
+1500 parâmetros, seriam os dois caminhos errados.
+
 **Os números de habitualidade em `filiado` são um retrato com data, não a
 verdade.** Existem só porque desenhar um panorama do clube consultando ao
 vivo seriam centenas de chamadas por tela (a API só lê habitualidade por
