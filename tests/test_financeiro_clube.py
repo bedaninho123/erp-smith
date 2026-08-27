@@ -195,3 +195,33 @@ def test_atendente_nao_ve_o_financeiro(banco, painel_atendente):
     """Mesma trava do resto do Dashboard: situação financeira de filiado
     é do dono, não da equipe."""
     assert painel_atendente.get("/api/dashboard").status_code == 403
+
+
+def test_percentual_e_none_quando_ninguem_tem_informacao(banco):
+    """Achado na revisão visual: com 5 filiados e nenhum com o campo
+    preenchido, o quadro mostrava "0% em dia" — que lê como "ninguém
+    pagou" quando a verdade é "não sei de ninguém". É exatamente o erro
+    que o resto do painel combate, cometido dentro dele."""
+    _salvar("88888888881", "Sem informação 1")
+    _salvar("88888888882", "Sem informação 2")
+
+    f = financeiro(EMPRESA_A)
+
+    assert f["ativos"] == 2
+    assert f["sem_dado"] == 2
+    assert f["pct_em_dia"] is None
+
+
+def test_percentual_existe_assim_que_alguem_tem_informacao(banco):
+    """Com informação de UM, o percentual passa a significar algo -- e o
+    denominador continua sendo o clube inteiro, com `sem_dado` ao lado
+    para o número não parecer mais firme do que é."""
+    _salvar("99999999991", "Em dia", anuidade_em_dia="Sim")
+    _salvar("99999999992", "Sem informação")
+    _salvar("99999999993", "Sem informação 2")
+    _salvar("99999999994", "Sem informação 3")
+
+    f = financeiro(EMPRESA_A)
+
+    assert f["pct_em_dia"] == 25
+    assert f["sem_dado"] == 3

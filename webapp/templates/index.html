@@ -2280,7 +2280,9 @@ async function carregarDashboard() {
         texto: f.parados ? `${f.total} (${f.parados} parados)` : String(f.total),
         cor: f.parados ? "#C75B1E" : "#3A6FB7",
       })))
-      + `<p class="text-muted mt-3 mb-0" style="font-size:12px">Em laranja, os que não têm movimento há mais de ${n.alertas.dias_para_parado} dias.</p>`
+      + (n.fila_por_status.some(f => f.parados)
+          ? `<p class="text-muted mt-3 mb-0" style="font-size:12px">Em laranja, os que não têm movimento há mais de ${n.alertas.dias_para_parado} dias.</p>`
+          : "")
     : `<p class="text-muted mb-0">Nenhum caso em aberto.</p>`;
 
   // --- valor por serviço ----------------------------------------------
@@ -2411,7 +2413,13 @@ function desenharFinanceiro(d) {
       <dt>Vence em ${f.dias_horizonte} dias</dt><dd class="mono">${cr.vence_em_90}</dd>
       <dt>Sem data no cadastro</dt><dd class="mono">${cr.sem_dado}</dd>
     </div>
-    <p class="insight mt-3 mb-0" style="border-left-color:#396BB3">Não é financeiro, mas vem na mesma resposta da API — e é a informação que mais vira serviço para o despachante. ${cr.vencido} filiado(s) com CR vencido é ${cr.vencido} renovação(ões) esperando alguém oferecer.</p>`;
+    <p class="insight mt-3 mb-0" style="border-left-color:#396BB3">Não é financeiro, mas vem na mesma resposta da API — e é a informação que mais vira serviço para o despachante.${
+      cr.vencido
+        ? ` <b>${cr.vencido}</b> filiado(s) com CR vencido é ${cr.vencido} renovação(ões) esperando alguém oferecer.`
+        : ""
+    }${
+      cr.sem_dado ? ` ${cr.sem_dado} ativo(s) não têm a data no cadastro do clube.` : ""
+    }</p>`;
 }
 
 function desenharClube(d) {

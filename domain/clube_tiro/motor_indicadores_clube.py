@@ -317,10 +317,21 @@ def financeiro(empresa_id: str, hoje: Optional[date] = None) -> dict:
     saida["dias_horizonte"] = DIAS_VENCE_HORIZONTE
     saida["vencendo_lista"] = vencendo
     saida["cr"] = {chave: (cr[chave] or 0) for chave in cr.keys()}
-    # Percentual só existe se houver base -- sem filiado ativo, "0% em
-    # dia" seria uma afirmação sobre um clube que não tem ninguém.
+    # Percentual só existe se houver base, e "base" é gente com
+    # informação -- não só gente cadastrada. Sem filiado ativo o
+    # percentual seria uma afirmação sobre um clube que não tem ninguém;
+    # com filiados mas nenhum deles tendo o campo preenchido, "0% em dia"
+    # seria pior ainda: leria como "ninguém pagou" quando a verdade é
+    # "não sei de ninguém". Os dois viram None, e a tela mostra travessão.
+    #
+    # O denominador continua sendo `ativos`, e não "quem tem informação":
+    # a pergunta é "do meu clube, quanto está em dia", e quem não tem
+    # informação também não está confirmado em dia. O quadro mostra
+    # `sem_dado` ao lado para o número não parecer mais firme do que é.
+    tem_informacao = saida["em_dia"] + saida["em_atraso"]
     saida["pct_em_dia"] = (
-        round(saida["em_dia"] * 100 / saida["ativos"]) if saida["ativos"] else None
+        round(saida["em_dia"] * 100 / saida["ativos"])
+        if saida["ativos"] and tem_informacao else None
     )
     return saida
 
