@@ -86,6 +86,14 @@ atendimento\remover_tarefa_agendada.bat
 # Conferir se a tabela documento bate com os arquivos em disco (só relata, nunca apaga)
 .venv\Scripts\python.exe -m core.db.auditar_documentos
 
+# Apagar o dado de ATENDIMENTO de teste do Core (cliente, caso, processo,
+# documento, mensagem, conversa, tarefa, sessão, memória, histórico, log de
+# IA). NÃO toca em empresa/usuário/serviço/configuração nem no banco de
+# Domínio. Sem --confirmar só mostra o que faria; com ele exige backup das
+# últimas 12h e apaga também os arquivos dos documentos.
+.venv\Scripts\python.exe -m core.db.limpar_dados_teste
+.venv\Scripts\python.exe -m core.db.limpar_dados_teste --confirmar
+
 # Backup do banco (Core + Domínio) e da pasta de documentos, com rotação (manual)
 .venv\Scripts\python.exe -m core.db.backup
 # Instalar/remover a Tarefa Agendada do Windows que roda o backup todo dia às 3h
