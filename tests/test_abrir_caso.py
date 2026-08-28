@@ -149,6 +149,55 @@ def test_lista_de_servicos_sai_do_catalogo_da_empresa(banco, painel):
     assert "Renovação do CR" in dados["servicos"]
 
 
+# --------------------------------------------------------------------
+# Busca na lista de casos
+#
+# Uma caixa só para nome, CPF e número do caso: quem procura já sabe o
+# que tem na mão e não deveria ter que acertar em qual campo digitar.
+# --------------------------------------------------------------------
+
+def _buscar(painel, termo):
+    dados = painel.get(f"/api/casos?busca={termo}").get_json()
+    return [c["caso_id"] for c in dados["casos"]]
+
+
+def test_busca_por_nome_parcial_do_cliente(banco, painel):
+    assert _buscar(painel, "Ana") == ["CAS-000001"]
+    # Minúscula tem que achar: ninguém digita respeitando maiúscula ao
+    # procurar às pressas com o cliente no telefone.
+    assert _buscar(painel, "ana") == ["CAS-000001"]
+
+
+def test_busca_por_cpf_aceita_pontuado_e_cru(banco, painel):
+    """A coluna guarda só dígitos (a tela é que formata), mas o CPF colado
+    de outro lugar vem pontuado -- e é assim que ele costuma chegar."""
+    assert _buscar(painel, "111.111.111-11") == ["CAS-000001"]
+    assert _buscar(painel, "11111111111") == ["CAS-000001"]
+
+
+def test_busca_por_numero_do_caso_inteiro_ou_pedaco(banco, painel):
+    assert _buscar(painel, "CAS-000002") == ["CAS-000002"]
+    # Só o final: é o que a pessoa lê em voz alta ao telefone.
+    assert _buscar(painel, "0002") == ["CAS-000002"]
+    # E sem se importar com maiúscula.
+    assert _buscar(painel, "cas-000002") == ["CAS-000002"]
+
+
+def test_busca_de_poucos_digitos_nao_varre_todos_os_cpfs(banco, painel):
+    """Dois dígitos casariam com quase todo CPF e encheriam o resultado de
+    gente que não tem nada a ver com a busca -- o CPF só entra a partir de
+    três dígitos. "11" não é o número de caso de ninguém aqui, então o
+    resultado tem que ser vazio."""
+    assert _buscar(painel, "11") == []
+
+
+def test_busca_sem_resultado_devolve_lista_vazia_e_nao_erro(banco, painel):
+    resposta = painel.get("/api/casos?busca=zzzzz")
+
+    assert resposta.status_code == 200
+    assert resposta.get_json()["casos"] == []
+
+
 def test_atendente_sem_a_funcao_nao_abre_caso(banco, painel_atendente):
     from core.motor_usuarios import atualizar_permissoes
 

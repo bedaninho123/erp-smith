@@ -774,8 +774,15 @@
     <div id="view-casos" class="view">
       <div class="content-header">
         <div class="container-fluid">
-          <h1 class="m-0">Casos</h1>
-          <p class="text-muted mb-0">Acompanhe o que está parado e quem precisa de ação.</p>
+          <div class="d-flex justify-content-between align-items-start flex-wrap" style="gap:var(--e3)">
+            <div>
+              <h1 class="m-0">Casos</h1>
+              <p class="text-muted mb-0">Acompanhe o que está parado e quem precisa de ação.</p>
+            </div>
+            <button class="btn btn-primary" id="ir-abrir-caso" type="button">
+              <i class="fas fa-plus mr-1" aria-hidden="true"></i>Abrir caso
+            </button>
+          </div>
         </div>
       </div>
       <div class="content">
@@ -783,6 +790,11 @@
           <div class="card">
             <div class="card-body">
               <div class="row">
+                <div class="col-md-4">
+                  <label for="busca-caso">Buscar por nome, CPF ou número do caso</label>
+                  <input id="busca-caso" type="text" class="form-control"
+                         placeholder="Ex.: Maria, 123.456.789-00, CAS-000012">
+                </div>
                 <div class="col-md-4">
                   <label for="filtro-status">Status</label>
                   <select id="filtro-status" class="form-control"><option value="">Todos</option></select>
@@ -806,23 +818,90 @@
             </div>
           </div>
 
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Abrir caso</h3></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-caso-novo" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <button class="btn btn-outline-secondary btn-sm" id="voltar-casos-do-novo"><i class="fas fa-arrow-left mr-1" aria-hidden="true"></i>Voltar para Casos</button>
+          <h1 class="m-0 mt-3">Abrir caso</h1>
+          <p class="text-muted mb-0">Para quando o cliente liga, aparece na porta ou fala por fora do sistema. Caso que chega por e-mail ou WhatsApp o assistente abre sozinho.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+
+          <!-- Cadastrar cliente aqui dentro existe porque o caso aberto à
+               mão é justamente o do cliente que ainda não está no sistema:
+               ele ligou agora. Mandar a pessoa até a tela de Clientes e
+               voltar perderia o que já tinha sido digitado. -->
+          <div class="card" id="bloco-cliente-novo">
+            <div class="card-header"><h3 class="card-title">Cliente</h3></div>
             <div class="card-body">
-              <p class="text-muted">Para quando o cliente liga, aparece na porta ou fala por fora do sistema. Caso que chega por e-mail ou WhatsApp o assistente abre sozinho.</p>
-              <div class="row">
-                <div class="col-md-5">
-                  <label for="novo-caso-cliente">Cliente</label>
+              <div class="row align-items-end">
+                <div class="col-md-8">
+                  <label for="novo-caso-cliente">Quem é o cliente</label>
                   <select id="novo-caso-cliente" class="form-control"></select>
                 </div>
-                <div class="col-md-7">
+                <div class="col-md-4">
+                  <button class="btn btn-outline-primary btn-block" id="abrir-form-cliente-caso" type="button">+ Novo cliente</button>
+                </div>
+              </div>
+
+              <div id="form-cliente-caso" style="display:none" class="mt-4">
+                <div class="row">
+                  <div class="col-md-3">
+                    <label for="nc-cpf">CPF</label>
+                    <div class="input-group">
+                      <input id="nc-cpf" type="text" class="form-control" placeholder="Só dígitos">
+                      <div class="input-group-append">
+                        <button class="btn btn-outline-secondary" id="nc-buscar-cpf" type="button">Buscar</button>
+                      </div>
+                    </div>
+                    <small class="text-muted" id="nc-cpf-status"></small>
+                  </div>
+                  <div class="col-md-5">
+                    <label for="nc-nome">Nome</label>
+                    <input id="nc-nome" type="text" class="form-control" placeholder="Preenchido pela busca, ou digite">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="nc-email">E-mail</label>
+                    <input id="nc-email" type="email" class="form-control">
+                  </div>
+                </div>
+                <div class="row mt-2">
+                  <div class="col-md-4">
+                    <label for="nc-telefone">Telefone</label>
+                    <input id="nc-telefone" type="text" class="form-control" placeholder="(14) 99999-8888">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="nc-cidade">Cidade</label>
+                    <input id="nc-cidade" type="text" class="form-control">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="nc-observacoes">Observações (opcional)</label>
+                    <input id="nc-observacoes" type="text" class="form-control">
+                  </div>
+                </div>
+                <button class="btn btn-primary mt-3" id="nc-salvar" type="button">Cadastrar e usar neste caso</button>
+                <button class="btn btn-outline-secondary ml-2 mt-3" id="nc-cancelar" type="button">Cancelar</button>
+                <span class="ml-2" id="nc-status" aria-live="polite"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">O caso</h3></div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-8">
                   <label for="novo-caso-titulo">Título</label>
                   <input id="novo-caso-titulo" type="text" class="form-control"
                          placeholder="Ex.: Renovação de CR — venceu em janeiro">
                 </div>
-              </div>
-              <div class="row mt-3">
-                <div class="col-md-3">
+                <div class="col-md-4">
                   <label for="novo-caso-categoria">Serviço</label>
                   <input id="novo-caso-categoria" type="text" class="form-control"
                          list="novo-caso-servicos" placeholder="Ex.: Renovação do CR">
@@ -832,15 +911,17 @@
                        podendo ser aberto sem esperar cadastro de serviço. -->
                   <datalist id="novo-caso-servicos"></datalist>
                 </div>
-                <div class="col-md-3">
+              </div>
+              <div class="row mt-3">
+                <div class="col-md-4">
                   <label for="novo-caso-canal">Como chegou</label>
                   <select id="novo-caso-canal" class="form-control"></select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-4">
                   <label for="novo-caso-prioridade">Prioridade</label>
                   <select id="novo-caso-prioridade" class="form-control"></select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-4">
                   <label for="novo-caso-responsavel">Responsável</label>
                   <select id="novo-caso-responsavel" class="form-control"><option value="">não atribuído</option></select>
                 </div>
@@ -850,10 +931,14 @@
                 <textarea id="novo-caso-descricao" class="form-control"
                           placeholder="O que o cliente precisa neste caso"></textarea>
               </div>
-              <button class="btn btn-primary" id="salvar-novo-caso">Abrir caso</button>
+              <!-- type="button" explícito: sem ele o padrão do <button> é submit, e um
+                   Enter dentro de qualquer campo desta tela recarregaria a página
+                   no meio do preenchimento. -->
+              <button class="btn btn-primary" id="salvar-novo-caso" type="button">Abrir caso</button>
               <span class="text-muted ml-2" id="salvar-novo-caso-status" aria-live="polite"></span>
             </div>
           </div>
+
         </div>
       </div>
     </div>
@@ -1945,7 +2030,9 @@ function carregarView(viewName) {
   }
   if (viewName === "modalidades") carregarModalidades();
   if (viewName === "habitualidade") carregarHabitualidade();
-  if (viewName === "casos" && !opcoesNovoCasoCarregadas) carregarOpcoesNovoCaso();
+  // As opções do formulário são carregadas ao ENTRAR na tela de abrir
+  // caso, não ao abrir a lista: quem só veio consultar não paga por uma
+  // consulta que traz a lista inteira de clientes e usuários.
   if (viewName === "tarefas") carregarTarefas();
   if (viewName === "auditoria") carregarAuditoria();
 }
@@ -1980,9 +2067,11 @@ const badgesStatus = {
 async function carregarCasos() {
   const status = $("#filtro-status").value;
   const categoria = $("#filtro-categoria").value;
+  const busca = $("#busca-caso").value.trim();
   const params = new URLSearchParams();
   if (status) params.set("status", status);
   if (categoria) params.set("categoria", categoria);
+  if (busca) params.set("busca", busca);
 
   const r = await fetch("/api/casos?" + params.toString());
   const d = await r.json();
@@ -2003,7 +2092,11 @@ async function carregarCasos() {
       <td>${escapeHtml(c.responsavel_nome || 'não atribuído')}</td>
       <td class="text-monospace">${dataHoraBr(c.atualizado_em)}</td>
     </tr>
-  `).join("") : `<tr><td colspan="7" class="text-muted">Nenhum caso encontrado com esses filtros.</td></tr>`;
+  `).join("") : `<tr><td colspan="7" class="text-muted">${
+      busca
+        ? `Nenhum caso para “${escapeHtml(busca)}”. A busca olha nome do cliente, CPF e número do caso.`
+        : "Nenhum caso encontrado com esses filtros."
+    }</td></tr>`;
 
   ligarLinhasClicaveis(
     $("#casos-body"), ".linha-caso",
@@ -2043,8 +2136,86 @@ async function carregarOpcoesNovoCaso() {
   // Presencial é o padrão do caso aberto à mão: quem digita nesta tela
   // quase sempre está com o cliente na frente ou no telefone.
   $("#novo-caso-canal").value = "Presencial";
+
+  // Cadastrar cliente é outra função do catálogo. Quem tem só "casos"
+  // não vê o botão -- a trava de verdade é o funcao_required da rota,
+  // isto é para não oferecer o que não vai funcionar.
+  $("#abrir-form-cliente-caso").style.display = d.pode_cadastrar_cliente ? "" : "none";
+
   opcoesNovoCasoCarregadas = true;
 }
+
+// O cliente recém-cadastrado entra na lista pela RESPOSTA do cadastro, e
+// não por uma releitura de /api/clientes: releitura exigiria a função
+// "clientes" também para listar, e devolveria a lista inteira só para
+// acrescentar uma linha que já está na mão.
+function usarClienteNoFormulario(clienteId, nome) {
+  const select = $("#novo-caso-cliente");
+  const vazio = select.querySelector('option[value=""]');
+  if (vazio) vazio.remove();
+  if (!select.querySelector(`option[value="${clienteId}"]`)) {
+    const opcao = document.createElement("option");
+    opcao.value = clienteId;
+    opcao.textContent = nome;
+    select.appendChild(opcao);
+  }
+  select.value = clienteId;
+}
+
+function limparFormClienteCaso() {
+  ["#nc-cpf", "#nc-nome", "#nc-email", "#nc-telefone", "#nc-cidade", "#nc-observacoes"]
+    .forEach(sel => { $(sel).value = ""; });
+  $("#nc-cpf-status").textContent = "";
+  $("#nc-status").textContent = "";
+}
+
+$("#abrir-form-cliente-caso").addEventListener("click", () => {
+  $("#form-cliente-caso").style.display = "";
+  $("#nc-cpf").focus();
+});
+
+$("#nc-cancelar").addEventListener("click", () => {
+  $("#form-cliente-caso").style.display = "none";
+  limparFormClienteCaso();
+});
+
+$("#nc-buscar-cpf").addEventListener("click", () => buscarCadastroPorCpf(camposCliente("nc")));
+
+$("#nc-salvar").addEventListener("click", async () => {
+  const botao = $("#nc-salvar");
+  const statusEl = $("#nc-status");
+  botao.disabled = true;
+  statusEl.className = "text-muted";
+  statusEl.textContent = "Salvando…";
+
+  const { ok, dados: d } = await enviarCadastroCliente(camposCliente("nc"));
+  botao.disabled = false;
+
+  if (!ok) {
+    // 409 é "esse CPF já é de alguém". Em vez de só reclamar, seleciona
+    // quem já existe: o objetivo de quem está aqui é abrir o caso, e o
+    // cliente certo está a um clique de distância.
+    if (d.cliente_id) {
+      usarClienteNoFormulario(d.cliente_id, `${$("#nc-nome").value.trim() || d.cliente_id}`);
+      $("#form-cliente-caso").style.display = "none";
+      limparFormClienteCaso();
+      $("#salvar-novo-caso-status").className = "text-warning ml-2";
+      $("#salvar-novo-caso-status").textContent =
+        `Esse CPF já estava cadastrado (${d.cliente_id}) — selecionei o cliente existente.`;
+      return;
+    }
+    statusEl.className = "text-danger";
+    statusEl.textContent = d.erro || "Não foi possível cadastrar.";
+    return;
+  }
+
+  usarClienteNoFormulario(d.cliente_id, d.nome);
+  $("#form-cliente-caso").style.display = "none";
+  limparFormClienteCaso();
+  $("#salvar-novo-caso-status").className = "text-success ml-2";
+  $("#salvar-novo-caso-status").textContent = `Cliente ${d.nome} (${d.cliente_id}) cadastrado e selecionado.`;
+  $("#novo-caso-titulo").focus();
+});
 
 async function salvarNovoCaso() {
   const botao = $("#salvar-novo-caso");
@@ -2093,6 +2264,8 @@ async function salvarNovoCaso() {
     $("#novo-caso-titulo").value = "";
     $("#novo-caso-categoria").value = "";
     $("#novo-caso-descricao").value = "";
+    $("#salvar-novo-caso-status").className = "text-muted ml-2";
+    $("#salvar-novo-caso-status").textContent = "";
     await carregarCasos();
     // Abre a ficha do caso recém-criado: quem acabou de abrir um caso
     // quase sempre vai lançar processo ou tarefa nele em seguida.
@@ -2106,6 +2279,14 @@ $("#salvar-novo-caso").addEventListener("click", salvarNovoCaso);
 
 $("#filtro-status").addEventListener("change", carregarCasos);
 $("#filtro-categoria").addEventListener("change", carregarCasos);
+
+// Mesmo desenho da busca de Clientes: 300ms depois da última tecla, para
+// não disparar uma consulta por caractere digitado.
+let buscaCasoTimeout;
+$("#busca-caso").addEventListener("input", () => {
+  clearTimeout(buscaCasoTimeout);
+  buscaCasoTimeout = setTimeout(carregarCasos, 300);
+});
 
 function mostrarView(nomeView) {
   document.querySelectorAll("[data-view]").forEach(b => b.classList.remove("active"));
@@ -3965,10 +4146,27 @@ $("#cancelar-form-cliente").addEventListener("click", () => {
   limparFormCliente();
 });
 
-$("#buscar-cpf-cliente").addEventListener("click", async () => {
-  const cpf = $("#cliente-cpf").value.trim();
-  const statusEl = $("#cliente-cpf-status");
-  if (!cpf) { statusEl.textContent = "Digite um CPF."; return; }
+// Duas telas cadastram cliente -- a de Clientes e a de Abrir caso --, e
+// as duas passam por AQUI. Uma segunda cópia divergiria, e o pedaço que
+// mais dói divergir é o tratamento de "consulta indisponível": ele nunca
+// pode virar "não é filiado", senão a pessoa redigita tudo achando que o
+// cliente não existe no clube.
+function camposCliente(prefixo) {
+  return {
+    cpf: `#${prefixo}-cpf`,
+    cpfStatus: `#${prefixo}-cpf-status`,
+    nome: `#${prefixo}-nome`,
+    email: `#${prefixo}-email`,
+    telefone: `#${prefixo}-telefone`,
+    cidade: `#${prefixo}-cidade`,
+    observacoes: `#${prefixo}-observacoes`,
+  };
+}
+
+async function buscarCadastroPorCpf(campos) {
+  const cpf = $(campos.cpf).value.trim();
+  const statusEl = $(campos.cpfStatus);
+  if (!cpf) { statusEl.className = "text-muted"; statusEl.textContent = "Digite um CPF."; return; }
 
   statusEl.className = "text-muted";
   statusEl.textContent = "Buscando…";
@@ -3990,16 +4188,34 @@ $("#buscar-cpf-cliente").addEventListener("click", async () => {
     return;
   }
 
-  $("#cliente-nome").value = d.nome || "";
-  $("#cliente-email").value = d.email || "";
-  $("#cliente-telefone").value = d.telefone || "";
-  $("#cliente-cidade").value = d.cidade || "";
+  $(campos.nome).value = d.nome || "";
+  $(campos.email).value = d.email || "";
+  $(campos.telefone).value = d.telefone || "";
+  $(campos.cidade).value = d.cidade || "";
   const filiacao = d.status_filiacao ? `, filiação ${d.status_filiacao}` : "";
   statusEl.className = d.simulado ? "text-warning" : "text-success";
   statusEl.textContent = d.simulado
     ? `SIMULADO (integração desligada) — ${d.nome}${filiacao}.`
     : `Encontrado: ${d.nome}${filiacao}.`;
-});
+}
+
+async function enviarCadastroCliente(campos) {
+  const r = await fetch("/api/clientes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      nome: $(campos.nome).value.trim(),
+      cpf: $(campos.cpf).value.trim(),
+      email: $(campos.email).value.trim(),
+      telefone: $(campos.telefone).value.trim(),
+      cidade: $(campos.cidade).value.trim(),
+      observacoes: $(campos.observacoes).value.trim(),
+    }),
+  });
+  return { ok: r.ok, dados: await r.json() };
+}
+
+$("#buscar-cpf-cliente").addEventListener("click", () => buscarCadastroPorCpf(camposCliente("cliente")));
 
 $("#salvar-cliente").addEventListener("click", async () => {
   const statusEl = $("#salvar-cliente-status");
@@ -4008,22 +4224,10 @@ $("#salvar-cliente").addEventListener("click", async () => {
   statusEl.className = "text-muted";
   statusEl.textContent = "Salvando…";
 
-  const r = await fetch("/api/clientes", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      nome: $("#cliente-nome").value.trim(),
-      cpf: $("#cliente-cpf").value.trim(),
-      email: $("#cliente-email").value.trim(),
-      telefone: $("#cliente-telefone").value.trim(),
-      cidade: $("#cliente-cidade").value.trim(),
-      observacoes: $("#cliente-observacoes").value.trim(),
-    }),
-  });
-  const d = await r.json();
+  const { ok, dados: d } = await enviarCadastroCliente(camposCliente("cliente"));
   botao.disabled = false;
 
-  if (!r.ok) {
+  if (!ok) {
     statusEl.className = "text-danger";
     statusEl.textContent = d.erro || "Não foi possível cadastrar.";
     return;
@@ -4273,6 +4477,20 @@ async function enviarDocumento() {
 $("#salvar-documento").addEventListener("click", enviarDocumento);
 
 $("#voltar-casos").addEventListener("click", () => {
+  mostrarView("casos");
+  carregarCasos();
+});
+
+// A tela de abrir caso não tem item de menu de propósito: chega-se nela
+// pelo botão, e volta-se para a lista. Mesmo desenho de caso-detalhe e
+// cliente-detalhe.
+$("#ir-abrir-caso").addEventListener("click", async () => {
+  mostrarView("caso-novo");
+  window.scrollTo(0, 0);
+  if (!opcoesNovoCasoCarregadas) await carregarOpcoesNovoCaso();
+});
+
+$("#voltar-casos-do-novo").addEventListener("click", () => {
   mostrarView("casos");
   carregarCasos();
 });

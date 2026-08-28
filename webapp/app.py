@@ -496,6 +496,7 @@ def casos():
     empresa_id = empresa_atual()
     status = request.args.get("status") or None
     categoria = request.args.get("categoria") or None
+    busca = (request.args.get("busca") or "").strip()
 
     con = conectar(empresa_id)
     query = (
@@ -514,6 +515,24 @@ def casos():
     if categoria:
         query += " AND c.categoria = ?"
         params.append(categoria)
+    if busca:
+        # Uma caixa só, e não três. Quem procura já sabe o que tem na mão
+        # -- o nome, o CPF ou o número do caso -- e não deveria ter que
+        # acertar em qual campo digitar. Os três viram OR.
+        condicoes = ["cl.nome LIKE ?", "c.caso_id LIKE ?"]
+        params_busca = [f"%{busca}%", f"%{busca}%"]
+        # `caso_id` é CAS-000012, então digitar só "12" encontra -- o LIKE
+        # do SQLite já ignora maiúscula em ASCII, então "cas-12" também.
+        digitos = re.sub(r"\D", "", busca)
+        # A coluna guarda só dígitos (a tela é que formata), então o CPF
+        # digitado com ponto e traço precisa ser limpo antes de comparar.
+        # Menos de 3 dígitos não entra: "12" casaria com quase todo CPF e
+        # encheria o resultado de gente que não tem nada a ver com a busca.
+        if len(digitos) >= 3:
+            condicoes.append("cl.cpf LIKE ?")
+            params_busca.append(f"%{digitos}%")
+        query += " AND (" + " OR ".join(condicoes) + ")"
+        params.extend(params_busca)
     query += " ORDER BY c.atualizado_em DESC"
 
     casos = [dict(r) for r in con.execute(query, params).fetchall()]
@@ -624,6 +643,12 @@ def caso_novo_opcoes():
         usuarios=usuarios,
         prioridades=list(PRIORIDADES_VALIDAS),
         canais=list(CANAIS_ORIGEM),
+        # Cadastrar cliente é outra função do catálogo, e a tela de abrir
+        # caso é alcançável por quem só tem "casos". Sem isto o formulário
+        # de cliente novo apareceria para essa pessoa e só falharia com
+        # 403 depois de ela digitar tudo -- a rota continua sendo a trava
+        # de verdade, isto é só não prometer o que não vai cumprir.
+        pode_cadastrar_cliente=_pode("clientes"),
     )
 
 

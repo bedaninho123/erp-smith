@@ -29,6 +29,23 @@ def test_lista_de_casos_so_mostra_a_propria_empresa(banco, painel):
     assert "CAS-000003" not in ids
 
 
+def test_busca_por_cpf_nao_alcanca_caso_de_outra_empresa(banco, painel):
+    """A Ana (empresa A) e a Carla (empresa B) têm o MESMO CPF no fixture,
+    e é de propósito: é o caso em que uma busca mal escrita vaza: quem
+    procura pelo CPF da própria cliente receberia junto o caso de uma
+    pessoa de outro despachante.
+
+    O filtro de empresa continua na consulta; este teste existe para que
+    ele não seja esquecido no dia em que alguém acrescentar mais um campo
+    à busca.
+    """
+    dados = painel.get("/api/casos?busca=11111111111").get_json()
+
+    ids = [c["caso_id"] for c in dados["casos"]]
+    assert ids == ["CAS-000001"]  # o da Ana, e só ele
+    assert "Carla Outra" not in str(dados)
+
+
 def test_nao_abre_caso_de_outra_empresa(banco, painel):
     resposta = painel.get("/api/casos/CAS-000003")
 
