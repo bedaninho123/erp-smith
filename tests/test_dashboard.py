@@ -12,7 +12,7 @@ Duas famílias, por dois riscos:
    desses erra em silêncio: o painel continua desenhando, só com o
    número errado.
 """
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
 
@@ -30,6 +30,19 @@ def _iso(quando: datetime) -> str:
 def _mover_criacao(caso_id: str, quando: datetime) -> None:
     con = conectar_admin()
     con.execute("UPDATE caso SET criado_em = ? WHERE caso_id = ?", (_iso(quando), caso_id))
+    con.commit()
+    con.close()
+
+
+def _encerrar_no_instante_local(caso_id: str, quando_local: datetime) -> None:
+    """Encerra o caso carimbando o instante que corresponde a
+    `quando_local` no relógio de quem olha a tela -- gravado em UTC, que é
+    como todo motor do Core grava."""
+    con = conectar_admin()
+    con.execute(
+        "UPDATE caso SET status = 'Encerrado', encerrado_em = ? WHERE caso_id = ?",
+        (_iso(quando_local.astimezone(timezone.utc)), caso_id),
+    )
     con.commit()
     con.close()
 
@@ -161,6 +174,25 @@ def test_tempo_medio_conta_da_abertura_ao_encerramento(banco):
 
     assert medio is not None
     assert 9.5 <= medio <= 10.5
+
+
+def test_caso_encerrado_nas_pontas_do_dia_local_conta_hoje(banco):
+    """O banco grava instante UTC, a tela pensa em dia LOCAL. Às 21h de
+    Brasília o relógio UTC já virou o dia, e o caso encerrado no fim do
+    expediente saía de "concluídos neste mês" -- justamente no horário em
+    que se encerra caso.
+
+    Os dois extremos do dia estão aqui de propósito: num fuso negativo
+    quem escapa é o fim do dia, num positivo é o começo. Com um só, o
+    teste passaria em metade do mundo e falharia na outra -- e, pior,
+    passaria nesta máquina em 21 das 24 horas do dia, que foi exatamente
+    o que deixou o defeito viver.
+    """
+    hoje = date.today()
+    _encerrar_no_instante_local("CAS-000001", datetime.combine(hoje, time(0, 1)))
+    _encerrar_no_instante_local("CAS-000002", datetime.combine(hoje, time(23, 59)))
+
+    assert resumo(EMPRESA_A)["concluidos"]["valor"] == 2
 
 
 def test_serie_de_meses_nao_pula_mes_vazio(banco):

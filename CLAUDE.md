@@ -407,6 +407,20 @@ Decisões que estão no motor e nenhuma tela pode reimplementar:
   `core.db.migrar_encerrado_em` (idempotente) recupera a data do
   `historico`; encerrado sem rastro fica `NULL` de propósito e a tela
   avisa quantos ficaram de fora.
+- **O banco grava UTC, a tela pensa em dia LOCAL** — e por isso todo
+  recorte por dia ou por mês converte a coluna com `_dia_local()` /
+  `_mes_local()` antes de comparar. Comparar direto tirava de "concluídos
+  neste mês" o caso encerrado depois das 21h de Brasília (o relógio UTC já
+  virou o dia), justamente no fim do expediente, que é quando se encerra
+  caso; e jogava para o mês seguinte o que foi encerrado à noite do dia
+  31. É a mesma armadilha do `hoje_local()` de `motor_tarefas`, vista do
+  outro lado: lá o erro era usar a hora do banco para saber que dia é
+  hoje, aqui era usar o dia de hoje para ler a hora do banco. O
+  deslocamento vem do relógio da máquina, nunca de um número fixo no
+  código. Coberto por
+  `tests/test_dashboard.py::test_caso_encerrado_nas_pontas_do_dia_local_conta_hoje`,
+  que usa as **duas** pontas do dia de propósito — com uma só, o teste
+  passaria em metade do mundo, e nesta máquina em 21 das 24 horas do dia.
 - **Sem valor em reais para consumo de IA.** O preço por token é do
   fornecedor, muda sem avisar e não está cadastrado em lugar nenhum. Um
   "R$ 47" com preço chutado no código seria o número que ninguém confere

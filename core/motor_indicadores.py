@@ -14,10 +14,14 @@ Duas decisões de leitura que valem para todo o módulo:
    sempre pareceria um desastre contra julho inteiro. Toda comparação é
    contra o MESMO PEDAÇO do mês anterior (dia 1 até o mesmo dia do mês),
    e é por isso que `_recorte_mes` existe.
-2. **Datas do banco são UTC** (`_agora_iso()` em todo motor do Core), e
-   o corte de "mês" é feito em texto ISO, que ordena igual a data. O que
-   NÃO se faz aqui é `date('now')` do SQLite: ele é UTC, e às 21h de
-   Brasília já virou o dia seguinte.
+2. **As duas pontas falam relógios diferentes.** O banco grava instante
+   em UTC (`_agora_iso()` em todo motor do Core); quem olha a tela pensa
+   em dia LOCAL. Todo recorte por dia ou por mês converte a coluna com
+   `_dia_local()` / `_mes_local()` antes de comparar -- comparar direto
+   fazia o caso encerrado às 21h de Brasília cair no dia seguinte, e
+   sumir de "concluídos neste mês" justamente no fim do expediente, que
+   é quando se encerra caso. Pelo mesmo motivo não se usa `date('now')`
+   do SQLite, que também é UTC.
 
 Este módulo é genérico de propósito -- lê só tabela do Core (caso,
 processo, servico, mensagem, log_ia). Número de clube de tiro (filiado,
@@ -46,6 +50,33 @@ def _hoje() -> date:
     """A data local da máquina -- é ela que decide o que é "este mês"
     para quem está olhando a tela."""
     return date.today()
+
+
+def _fuso_local() -> str:
+    """O deslocamento desta máquina no formato de modificador do SQLite
+    (ex.: '-180 minutes'), para traduzir instante UTC em dia local dentro
+    da própria consulta.
+
+    Em minutos, e não em horas, porque existe fuso de meia hora -- e vem
+    do relógio da máquina, nunca de um número fixo no código: um '-3
+    horas' escrito aqui seria uma decisão de fuso horário escondida
+    dentro de um motor de indicadores.
+    """
+    minutos = int(datetime.now().astimezone().utcoffset().total_seconds() // 60)
+    return f"{minutos} minutes"
+
+
+def _dia_local(coluna: str) -> str:
+    """Trecho de SQL com o DIA local de uma coluna que guarda instante
+    UTC. Consome um `?` -- o chamador põe `_fuso_local()` na tupla, na
+    mesma posição."""
+    return f"SUBSTR(datetime({coluna}, ?), 1, 10)"
+
+
+def _mes_local(coluna: str) -> str:
+    """Como `_dia_local`, mas o MÊS (AAAA-MM). Sem isto o caso encerrado
+    às 21h30 do dia 31 entraria no mês seguinte do gráfico."""
+    return f"SUBSTR(datetime({coluna}, ?), 1, 7)"
 
 
 def _iso(momento: datetime) -> str:
@@ -85,15 +116,16 @@ def _recorte_mes(hoje: date) -> dict:
 
 def _contar_no_periodo(con, empresa_id: str, coluna: str, de: str, ate: str,
                        extra: str = "") -> int:
-    """SUBSTR(coluna, 1, 10) porque o banco guarda instante ISO completo e
-    o recorte é por DIA -- comparar '2026-08-27T14:00:00Z' com '2026-08-01'
-    como texto funciona, mas o limite superior exclusivo só fecha certo se
-    os dois lados tiverem o mesmo comprimento."""
+    """O recorte é por DIA e a coluna guarda instante ISO completo, então
+    os dois lados precisam ter o mesmo comprimento -- daí o SUBSTR de
+    `_dia_local`, que de quebra traz o instante UTC para o dia de quem
+    está olhando a tela."""
+    fuso = _fuso_local()
     return con.execute(
         f"SELECT COUNT(*) FROM caso WHERE empresa_id = ? AND ativo = 'Sim' "
-        f"AND {coluna} IS NOT NULL AND SUBSTR({coluna}, 1, 10) >= ? "
-        f"AND SUBSTR({coluna}, 1, 10) < ? {extra}",
-        (empresa_id, de, ate),
+        f"AND {coluna} IS NOT NULL AND {_dia_local(coluna)} >= ? "
+        f"AND {_dia_local(coluna)} < ? {extra}",
+        (empresa_id, fuso, de, fuso, ate),
     ).fetchone()[0]
 
 
@@ -140,12 +172,14 @@ def _tempo_medio(con, empresa_id: str, recorte: dict) -> dict:
     Devolve None quando não houve encerramento no recorte -- média de
     conjunto vazio não é zero, e "0 dias" leria como instantâneo.
     """
+    fuso = _fuso_local()
+
     def _media(de: str, ate: str) -> Optional[float]:
         valor = con.execute(
             "SELECT AVG(julianday(encerrado_em) - julianday(criado_em)) FROM caso "
             "WHERE empresa_id = ? AND ativo = 'Sim' AND encerrado_em IS NOT NULL "
-            "AND SUBSTR(encerrado_em, 1, 10) >= ? AND SUBSTR(encerrado_em, 1, 10) < ?",
-            (empresa_id, de, ate),
+            f"AND {_dia_local('encerrado_em')} >= ? AND {_dia_local('encerrado_em')} < ?",
+            (empresa_id, fuso, de, fuso, ate),
         ).fetchone()[0]
         return round(valor, 1) if valor is not None else None
 
@@ -200,14 +234,15 @@ def _atendimento(con, empresa_id: str, de: str, ate: str) -> dict:
     contar 'Enviado' misturaria "a IA resolveu" com "você aprovou". O
     campo diz o que o pipeline decidiu na hora, independente do freio.
     """
+    fuso = _fuso_local()
     linha = con.execute(
         "SELECT COUNT(*) AS total, "
         "SUM(CASE WHEN precisa_humano = 'Não' THEN 1 ELSE 0 END) AS sozinha, "
         "SUM(CASE WHEN precisa_humano = 'Sim' THEN 1 ELSE 0 END) AS com_humano, "
         "SUM(CASE WHEN status_processamento = 'Aguardando Revisão' THEN 1 ELSE 0 END) AS na_fila "
         "FROM mensagem WHERE empresa_id = ? "
-        "AND SUBSTR(data_hora, 1, 10) >= ? AND SUBSTR(data_hora, 1, 10) < ?",
-        (empresa_id, de, ate),
+        f"AND {_dia_local('data_hora')} >= ? AND {_dia_local('data_hora')} < ?",
+        (empresa_id, fuso, de, fuso, ate),
     ).fetchone()
 
     total = linha["total"] or 0
@@ -238,13 +273,15 @@ def _casos_por_mes(con, empresa_id: str, hoje: date, meses: int = 12) -> list[di
         referencia = (referencia - timedelta(days=1)).replace(day=1)
     chaves.reverse()
 
+    fuso = _fuso_local()
+
     def _por_mes(coluna: str) -> dict:
         return {
             r["mes"]: r["total"] for r in con.execute(
-                f"SELECT SUBSTR({coluna}, 1, 7) AS mes, COUNT(*) AS total FROM caso "
+                f"SELECT {_mes_local(coluna)} AS mes, COUNT(*) AS total FROM caso "
                 f"WHERE empresa_id = ? AND ativo = 'Sim' AND {coluna} IS NOT NULL "
-                f"AND SUBSTR({coluna}, 1, 7) >= ? GROUP BY mes",
-                (empresa_id, chaves[0]),
+                f"AND {_mes_local(coluna)} >= ? GROUP BY mes",
+                (fuso, empresa_id, fuso, chaves[0]),
             ).fetchall()
         }
 
@@ -298,11 +335,12 @@ def _valor_por_servico(con, empresa_id: str) -> list[dict]:
 
 def _origem(con, empresa_id: str, de: str, ate: str) -> list[dict]:
     """Por onde a mensagem chegou no período."""
+    fuso = _fuso_local()
     linhas = con.execute(
         "SELECT canal, COUNT(*) AS total FROM mensagem WHERE empresa_id = ? "
-        "AND SUBSTR(data_hora, 1, 10) >= ? AND SUBSTR(data_hora, 1, 10) < ? "
+        f"AND {_dia_local('data_hora')} >= ? AND {_dia_local('data_hora')} < ? "
         "GROUP BY canal ORDER BY total DESC",
-        (empresa_id, de, ate),
+        (empresa_id, fuso, de, fuso, ate),
     ).fetchall()
     total = sum(l["total"] for l in linhas)
     return [
@@ -320,14 +358,15 @@ def _consumo_ia(con, empresa_id: str, de: str, ate: str) -> dict:
     sistema. Um "R$ 47" com preço chutado dentro do código seria o tipo
     de número que ninguém confere e todo mundo repete.
     """
+    fuso = _fuso_local()
     linha = con.execute(
         "SELECT COUNT(*) AS chamadas, "
         "COALESCE(SUM(tokens_entrada), 0) AS tokens_entrada, "
         "COALESCE(SUM(tokens_saida), 0) AS tokens_saida, "
         "SUM(CASE WHEN resultado = 'Erro' THEN 1 ELSE 0 END) AS erros "
         "FROM log_ia WHERE empresa_id = ? "
-        "AND SUBSTR(criado_em, 1, 10) >= ? AND SUBSTR(criado_em, 1, 10) < ?",
-        (empresa_id, de, ate),
+        f"AND {_dia_local('criado_em')} >= ? AND {_dia_local('criado_em')} < ?",
+        (empresa_id, fuso, de, fuso, ate),
     ).fetchone()
     return {
         "chamadas": linha["chamadas"] or 0,
