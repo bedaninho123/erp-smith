@@ -10,6 +10,7 @@ aparecer num commit). O banco só guarda caminho e metadados, nunca o
 conteúdo do arquivo. Estado do Core, sem IA -- este módulo não decide
 quais documentos são exigidos por processo, só registra o que chegou.
 """
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,7 +18,16 @@ from typing import Optional
 
 from core.conexao import conectar
 
-PASTA_DOCUMENTOS = Path(__file__).resolve().parent.parent / "atendimento" / "documentos_recebidos"
+# Sobrescrevível por ERP_DOCUMENTOS_DIR -- mesmo padrão (e mesmo motivo) de
+# ERP_CORE_DB em core/conexao.py. As demonstrações rodam com banco
+# descartável, mas o arquivo em disco não seguia o banco: os PDFs
+# inventados iam parar na MESMA pasta dos documentos de cliente de
+# verdade (empresa_id e cliente_id se repetem entre os dois bancos),
+# sobreviviam ao fim da demonstração e entravam no backup diário.
+PASTA_DOCUMENTOS = Path(
+    os.environ.get("ERP_DOCUMENTOS_DIR")
+    or Path(__file__).resolve().parent.parent / "atendimento" / "documentos_recebidos"
+)
 
 STATUS_RECEBIDO = "Recebido"
 

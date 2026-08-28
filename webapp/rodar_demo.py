@@ -29,6 +29,11 @@ PASTA = Path(tempfile.mkdtemp(prefix="erp_smith_demo_"))
 # --- motor_ia/conexao.py leem estes caminhos uma vez, na importação.
 os.environ["ERP_CORE_DB"] = str(PASTA / "core_demo.db")
 os.environ["ERP_DOMAIN_DB"] = str(PASTA / "dominio_demo.db")
+# O arquivo em disco tem que seguir o banco. Sem isto os PDFs
+# inventados da demonstração iam parar na MESMA pasta dos documentos
+# de cliente de verdade -- empresa_id e cliente_id se repetem nos dois
+# bancos --, sobreviviam ao fim da demonstração e entravam no backup.
+os.environ["ERP_DOCUMENTOS_DIR"] = str(PASTA / "documentos_recebidos")
 # Chaves de sessão próprias: sem isto o painel geraria uma chave nova e a
 # gravaria no .env de verdade.
 os.environ.setdefault("WEBAPP_SECRET_KEY", "chave-de-demonstracao-nao-usar-em-producao")
@@ -37,6 +42,11 @@ os.environ.setdefault("PORTAL_SECRET_KEY", "chave-de-demonstracao-nao-usar-em-pr
 os.environ["SHOOTING_HOUSE_ATIVO"] = ""
 
 from werkzeug.security import generate_password_hash  # noqa: E402
+
+# 5010 continua sendo o padrão. A variável existe porque duas
+# demonstrações podem precisar rodar ao mesmo tempo (uma janela
+# aberta de ontem segura a porta, e a nova morre sem explicar por quê).
+PORTA = int(os.environ.get("PORT") or 5010)
 
 EMPRESA = "EMP-000001"
 SENHA = "demo1234"
@@ -64,6 +74,40 @@ CLIENTES_FICTICIOS = [
 ]
 
 
+# Catálogo de serviços, espelhando o do banco real (mesmos service_key
+# de core/db/migrate_dados_teste.py e core/db/popular_documentos_exigidos.py).
+# Até aqui a demonstração tinha UM serviço e nenhum checklist -- ou seja,
+# a tela que ela existe pra conferir sem dado real não tinha o que
+# mostrar. A service_key é o que importa: é por ela que
+# revisar_checklist_cac encontra o serviço e pendura os itens.
+SERVICOS = [
+    # (service_id, service_key, nome, categoria, prazo_dias, valor)
+    ("SER-000001", "renovacao_cr", "Renovação do CR", "Regularização documental", 45, 850.0),
+    ("SER-000002", "primeiro_cr", "Primeiro CR", "Regularização documental", 60, 1200.0),
+    ("SER-000003", "apostilamento", "Apostilamento", "Regularização documental", 30, 500.0),
+    ("SER-000004", "transferencia_arma", "Transferência", "Transferência", 40, 650.0),
+    # Prazo e valor NULL de propósito nos três últimos, como no banco real:
+    # nunca inventar prazo nem preço (VW_SERVICO trata NULL com "a confirmar").
+    ("SER-000005", "craf", "CRAF", "CRAF", None, None),
+    ("SER-000006", "aquisicao_arma", "Aquisição de Arma", "Aquisição", None, None),
+    ("SER-000007", "guia_trafego", "Guia de Tráfego", "Regularização documental", None, None),
+]
+
+
+def _pdf_exemplo() -> bytes:
+    """PDF mínimo de verdade -- um arquivo de texto com extensão .pdf faria
+    o visualizador mostrar erro do navegador em vez do documento, e a
+    conferência não valeria nada."""
+    return b"\n".join([
+        b"%PDF-1.4",
+        b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj",
+        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj",
+        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 300]>>endobj",
+        b"trailer<</Root 1 0 R>>",
+        b"%%EOF",
+    ])
+
+
 def _criar_banco_core() -> None:
     con = sqlite3.connect(os.environ["ERP_CORE_DB"])
     con.row_factory = sqlite3.Row
@@ -74,12 +118,18 @@ def _criar_banco_core() -> None:
         "INSERT INTO empresa (empresa_id, nome, dominio, ativo, criado_em) VALUES (?,?,?,?,?)",
         (EMPRESA, "Clube de Demonstração", "clube_tiro", "Sim", AGORA),
     )
-    con.execute(
-        "INSERT INTO servico (service_id, empresa_id, service_key, nome_servico, "
-        "categoria, documentos_obrigatorios, ativo) VALUES (?,?,?,?,?,?,?)",
-        ("SER-000001", EMPRESA, "transferencia_arma", "Transferência de Arma",
-         "Transferência", "RG, CPF, CR", "Sim"),
-    )
+    # O resumo curto vem do próprio script do banco real, não de uma cópia:
+    # duas listas divergiriam na primeira correção do despachante.
+    from core.db.popular_documentos_exigidos import DIGEST_CURTO
+
+    for service_id, chave, nome, categoria, prazo, valor in SERVICOS:
+        con.execute(
+            "INSERT INTO servico (service_id, empresa_id, service_key, nome_servico, "
+            "categoria, prazo_estimado_dias, valor_referencia, "
+            "documentos_obrigatorios, ativo) VALUES (?,?,?,?,?,?,?,?,?)",
+            (service_id, EMPRESA, chave, nome, categoria, prazo, valor,
+             DIGEST_CURTO.get(chave, "Ver o checklist detalhado do serviço."), "Sim"),
+        )
     con.execute(
         "INSERT INTO usuario (usuario_id, empresa_id, nome, email, papel, ativo, "
         "criado_em, senha_hash) VALUES (?,?,?,?,?,?,?,?)",
@@ -97,9 +147,11 @@ def _criar_banco_core() -> None:
     # Casos e de Tarefas abrem vazias e não dá pra ver se funcionam --
     # e é justamente o prazo atrasado (vermelho) que precisa ser
     # conferido com o olho, não só com teste.
-    for caso_id, cliente_id, titulo in [
-        ("CAS-000001", "CLI-000001", "Transferência de arma — Helena"),
-        ("CAS-000002", "CLI-000002", "Renovação de CR — Ricardo"),
+    # A categoria acompanha o serviço do caso: o de Ricardo é renovação de
+    # CR, e vinha marcado como "Transferência" na tela.
+    for caso_id, cliente_id, titulo, categoria in [
+        ("CAS-000001", "CLI-000001", "Transferência de arma — Helena", "Transferência"),
+        ("CAS-000002", "CLI-000002", "Renovação de CR — Ricardo", "Regularização documental"),
     ]:
         con.execute(
             "INSERT INTO caso (caso_id, empresa_id, cliente_id, titulo, descricao, "
@@ -107,7 +159,7 @@ def _criar_banco_core() -> None:
             "responsavel_id, criado_em, atualizado_em, criado_por, alterado_por, "
             "versao, ativo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (caso_id, EMPRESA, cliente_id, titulo, "Caso de demonstração.",
-             "Transferência", "Solicitação", "Atendimento", "Email", "Em andamento",
+             categoria, "Solicitação", "Atendimento", "Email", "Em andamento",
              "Triagem", "Normal", "USR-000001", AGORA, AGORA, "demonstração",
              "demonstração", 1, "Sim"),
         )
@@ -125,6 +177,9 @@ def _criar_banco_core() -> None:
     con.close()
 
     _criar_tarefas_demo()
+    _popular_checklist_servicos()
+    processos = _criar_processos_demo()
+    _marcar_checklist_demo(processos["CAS-000002"], "CAS-000002", "CLI-000002")
     _popular_auditoria_demo()
     _popular_dossie_demo()
 
@@ -153,6 +208,102 @@ def _criar_tarefas_demo() -> None:
         )
 
 
+def _popular_checklist_servicos() -> None:
+    """As listas de documento por serviço, rodando o MESMO script do banco
+    real (core/db/revisar_checklist_cac.py) em vez de uma cópia. Cópia
+    divergiria na primeira vez que o despachante corrigisse um item -- e a
+    demonstração passaria a mostrar um checklist que o sistema de verdade
+    não tem."""
+    from core.db.revisar_checklist_cac import revisar
+
+    saida = revisar(EMPRESA)
+    print(f"  Checklist: {saida['itens']} itens em {len(saida['servicos'])} serviços")
+
+
+def _criar_processos_demo() -> dict:
+    """Um processo em cada caso, pelo motor -- mesma razão de
+    _criar_tarefas_demo: INSERT à mão mostraria uma tela que o sistema de
+    verdade não produz.
+
+    O de Renovação do CR está aqui porque é o checklist mais longo (18
+    itens) e o único onde dá pra ver a separação de 2026-08-27 entre o que
+    se COLETA (14 itens) e o que só se CONFERE (4)."""
+    from core.motor_processos import criar_processo
+
+    criados = {}
+    for caso_id, cliente_id, servico_id, proxima_acao in [
+        ("CAS-000002", "CLI-000002", "SER-000001",
+         "Aguardando as certidões negativas do cliente."),
+        ("CAS-000001", "CLI-000001", "SER-000004",
+         "Aguardando o CRAF do vendedor."),
+    ]:
+        criados[caso_id] = criar_processo(
+            EMPRESA, caso_id, cliente_id, servico_id,
+            proxima_acao=proxima_acao, responsavel_id="USR-000001",
+            criado_por="demonstração",
+        )
+    print(f"  Processos: {len(criados)}, cada um com o checklist do seu serviço")
+    return criados
+
+
+def _marcar_checklist_demo(processo_id: str, caso_id: str, cliente_id: str) -> None:
+    """Deixa o checklist com os estados que ele sabe ter: aprovado,
+    aguardando conferência, recusado (que volta a contar como faltando) e
+    faltando.
+
+    Sem isso ele abre com tudo faltando, e a regra que erra em silêncio
+    não aparece na tela: documento pendente NÃO conta na contagem X/Y nem
+    no anel de progresso (core/motor_checklist.py). Com tudo faltando,
+    "conta" e "não conta" produzem exatamente a mesma tela."""
+    from core.conexao import conectar
+    from core.motor_checklist import (
+        MARCADO_POR_CLIENTE, STATUS_AGUARDANDO, marcar_documento, recusar,
+    )
+    from core.motor_documentos import salvar_documento
+
+    con = conectar(EMPRESA)
+    try:
+        itens = [dict(linha) for linha in con.execute(
+            "SELECT de.documento_exigido_id, de.item FROM documento_exigido de "
+            "JOIN processo p ON p.servico_id = de.servico_id "
+            "WHERE p.processo_id = ? AND de.empresa_id = ? AND de.ativo = 'Sim' "
+            "ORDER BY de.ordem",
+            (processo_id, EMPRESA),
+        ).fetchall()]
+    finally:
+        con.close()
+
+    pdf = _pdf_exemplo()
+    # (índice do item, quem marcou, motivo da recusa depois)
+    roteiro = [
+        (0, "painel", None),   # conferido pelo funcionário: nasce aprovado
+        (1, "painel", None),
+        (3, "portal", None),   # enviado pelo cliente: espera conferência
+        (4, "portal", "Foto ilegível -- o número da certidão não aparece."),
+    ]
+    for indice, quem, motivo in roteiro:
+        if indice >= len(itens):
+            continue
+        item = itens[indice]
+        documento_id = salvar_documento(
+            EMPRESA, cliente_id, pdf, f"{item['item'][:40].strip()}.pdf",
+            caso_id=caso_id, processo_id=processo_id,
+            tipo_documento="Documento de demonstração",
+        )
+        if quem == "painel":
+            marcar_documento(
+                EMPRESA, processo_id, item["documento_exigido_id"], documento_id,
+                marcado_por="Gestor de Demonstração",
+            )
+            continue
+        marcacao = marcar_documento(
+            EMPRESA, processo_id, item["documento_exigido_id"], documento_id,
+            marcado_por=MARCADO_POR_CLIENTE, status=STATUS_AGUARDANDO,
+        )
+        if motivo:
+            recusar(EMPRESA, marcacao, motivo, revisado_por="Gestor de Demonstração")
+
+
 def _popular_dossie_demo() -> None:
     """Documentos no dossiê da Helena, nas três situações de validade.
 
@@ -165,18 +316,7 @@ def _popular_dossie_demo() -> None:
     from core.motor_documentos import salvar_no_dossie
 
     hoje = date.today()
-    # PDF mínimo de verdade, para o visualizador ter o que abrir -- um
-    # arquivo de texto com extensão .pdf faria o <iframe> mostrar erro do
-    # navegador em vez do documento, e a conferência não valeria nada.
-    linhas = [
-        b"%PDF-1.4",
-        b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj",
-        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj",
-        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 300]>>endobj",
-        b"trailer<</Root 1 0 R>>",
-        b"%%EOF",
-    ]
-    pdf = b"\n".join(linhas)
+    pdf = _pdf_exemplo()
 
     documentos = [
         ("CR — Certificado de Registro", (hoje + timedelta(days=500)).isoformat(), None),
@@ -263,10 +403,14 @@ def main() -> None:
     print("=" * 60)
     print("PAINEL DE DEMONSTRAÇÃO -- banco temporário, gente fictícia")
     print("=" * 60)
-    print(f"  Endereço : http://127.0.0.1:5010")
+    print(f"  Endereço : http://127.0.0.1:{PORTA}")
     print(f"  Login    : {EMAIL_LOGIN}")
     print(f"  Senha    : {SENHA}")
     print(f"  Banco    : {PASTA}  (apagado ao fechar)")
+    print()
+    print("  Para ver o checklist: Casos -> \"Renovação de CR — Ricardo\" ->")
+    print("    processo de Renovação do CR (18 itens, separados entre o que")
+    print("    se COLETA e o que só se CONFERE).")
     print()
     print("  Shooting House em modo SIMULADO. CPFs que a busca encontra:")
     print("    529.982.247-25  -> percorre o fluxo inteiro")
@@ -277,7 +421,7 @@ def main() -> None:
     from webapp.app import app
 
     try:
-        app.run(host="127.0.0.1", port=5010, debug=False, use_reloader=False)
+        app.run(host="127.0.0.1", port=PORTA, debug=False, use_reloader=False)
     finally:
         shutil.rmtree(PASTA, ignore_errors=True)
 
