@@ -107,12 +107,46 @@ def test_opcoes_do_formulario_nao_vazam_entre_empresas(banco, painel):
     assert all(u["nome"] != "Atendente da Outra" for u in dados["usuarios"])
 
 
-def test_categorias_vem_do_catalogo_de_servicos(banco, painel):
-    """Uma lista fixa aqui divergiria do catálogo na primeira vez que
-    alguém cadastrasse um serviço novo."""
+def test_lista_oferece_o_nome_do_servico_e_nao_a_categoria(banco, painel):
+    """O formulário pergunta QUAL TRABALHO vai ser feito, e o nome disso é
+    o do serviço.
+
+    Até 2026-08-27 a lista vinha de `SELECT DISTINCT categoria`, e como
+    quatro dos sete serviços reais moram em "Regularização documental",
+    quem abria um caso não achava "Primeiro CR" nem "Renovação do CR" em
+    lugar nenhum -- escolhia um agrupamento abstrato em vez de dizer o
+    que ia fazer.
+
+    O fixture ajuda a fixar isso: o serviço se chama "Transferência de
+    Arma" e a categoria dele é "Transferência". São textos diferentes de
+    propósito, então voltar a oferecer a categoria quebra aqui em vez de
+    passar despercebido.
+    """
     dados = painel.get("/api/casos/novo").get_json()
 
-    assert dados["categorias"] == ["Transferência"]  # o serviço do fixture
+    assert dados["servicos"] == ["Transferência de Arma"]
+    assert "Transferência" not in dados["servicos"]
+
+
+def test_lista_de_servicos_sai_do_catalogo_da_empresa(banco, painel):
+    """Uma lista fixa no código divergiria do catálogo na primeira vez
+    que alguém cadastrasse um serviço novo -- e o serviço de outra
+    empresa nunca pode aparecer aqui."""
+    from core.conexao import conectar
+
+    con = conectar(EMPRESA_A)
+    con.execute(
+        "INSERT INTO servico (service_id, empresa_id, service_key, nome_servico, "
+        "categoria, documentos_obrigatorios, ativo) VALUES (?,?,?,?,?,?,?)",
+        ("SER-000900", EMPRESA_A, "renovacao_cr", "Renovação do CR",
+         "Regularização documental", "RG, CPF", "Sim"),
+    )
+    con.commit()
+    con.close()
+
+    dados = painel.get("/api/casos/novo").get_json()
+
+    assert "Renovação do CR" in dados["servicos"]
 
 
 def test_atendente_sem_a_funcao_nao_abre_caso(banco, painel_atendente):

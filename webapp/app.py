@@ -584,10 +584,17 @@ def caso_criar():
 def caso_novo_opcoes():
     """O que o formulário de novo caso precisa para desenhar.
 
-    As categorias saem do catálogo de SERVIÇOS da empresa, e não de uma
-    lista fixa: é o mesmo vocabulário que o checklist e os processos já
-    usam. Uma lista à parte aqui divergiria do catálogo na primeira vez
-    que alguém cadastrasse um serviço novo.
+    A lista oferecida é a de SERVIÇOS da empresa -- o nome do trabalho
+    que vai ser feito ("Renovação do CR"), não o balde em que ele cai.
+    Até 2026-08-27 aqui vinha `SELECT DISTINCT categoria`, e como quatro
+    dos sete serviços moram em "Regularização documental", quem abria um
+    caso não achava na lista nem "Primeiro CR" nem "Renovação do CR":
+    escolhia um agrupamento abstrato em vez de dizer o que ia fazer.
+
+    Continua saindo do catálogo, e não de uma lista fixa no código: é o
+    mesmo vocabulário que o checklist e os processos já usam, e uma
+    lista à parte divergiria na primeira vez que alguém cadastrasse um
+    serviço novo.
     """
     empresa_id = empresa_atual()
     con = conectar(empresa_id)
@@ -597,10 +604,10 @@ def caso_novo_opcoes():
             "AND status = 'Ativo' ORDER BY nome COLLATE NOCASE", (empresa_id,),
         ).fetchall()
     ]
-    categorias = [
+    servicos = [
         r[0] for r in con.execute(
-            "SELECT DISTINCT categoria FROM servico WHERE empresa_id = ? AND ativo = 'Sim' "
-            "ORDER BY categoria", (empresa_id,),
+            "SELECT nome_servico FROM servico WHERE empresa_id = ? AND ativo = 'Sim' "
+            "ORDER BY nome_servico COLLATE NOCASE", (empresa_id,),
         ).fetchall()
     ]
     usuarios = [
@@ -613,7 +620,7 @@ def caso_novo_opcoes():
 
     return jsonify(
         clientes=clientes,
-        categorias=categorias,
+        servicos=servicos,
         usuarios=usuarios,
         prioridades=list(PRIORIDADES_VALIDAS),
         canais=list(CANAIS_ORIGEM),

@@ -823,10 +823,14 @@
               </div>
               <div class="row mt-3">
                 <div class="col-md-3">
-                  <label for="novo-caso-categoria">Categoria</label>
+                  <label for="novo-caso-categoria">Serviço</label>
                   <input id="novo-caso-categoria" type="text" class="form-control"
-                         list="novo-caso-categorias" placeholder="Ex.: Regularização documental">
-                  <datalist id="novo-caso-categorias"></datalist>
+                         list="novo-caso-servicos" placeholder="Ex.: Renovação do CR">
+                  <!-- Segue campo de texto, e não <select>, de propósito: a
+                       lista sugere os serviços do catálogo, mas o caso que
+                       não é nenhum deles ("dúvida", "orientação") continua
+                       podendo ser aberto sem esperar cadastro de serviço. -->
+                  <datalist id="novo-caso-servicos"></datalist>
                 </div>
                 <div class="col-md-3">
                   <label for="novo-caso-canal">Como chegou</label>
@@ -2027,8 +2031,8 @@ async function carregarOpcoesNovoCaso() {
   $("#novo-caso-cliente").innerHTML = d.clientes.length
     ? d.clientes.map(c => `<option value="${c.cliente_id}">${escapeHtml(c.nome)}</option>`).join("")
     : `<option value="">nenhum cliente cadastrado</option>`;
-  $("#novo-caso-categorias").innerHTML = d.categorias
-    .map(c => `<option value="${escapeHtml(c)}">`).join("");
+  $("#novo-caso-servicos").innerHTML = d.servicos
+    .map(s => `<option value="${escapeHtml(s)}">`).join("");
   $("#novo-caso-canal").innerHTML = d.canais
     .map(c => `<option value="${c}">${c === "Email" ? "E-mail" : c}</option>`).join("");
   $("#novo-caso-prioridade").innerHTML = d.prioridades
@@ -2059,7 +2063,7 @@ async function salvarNovoCaso() {
   }
   const categoria = $("#novo-caso-categoria").value.trim();
   if (!categoria) {
-    statusEl.textContent = "Informe a categoria.";
+    statusEl.textContent = "Informe o serviço.";
     $("#novo-caso-categoria").focus();
     return;
   }
