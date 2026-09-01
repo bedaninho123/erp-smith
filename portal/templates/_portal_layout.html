@@ -31,13 +31,13 @@
         <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 10 4l7 6.5"/><path d="M5 9v7h10V9"/><path d="M8 16v-4h4v4"/></svg>
         Início
       </a>
-      <a href="{{ url_for('casos_lista') }}" class="{{ 'ativo' if ativo == 'casos' }}">
+      <!-- Uma aba só: "Meus casos" e "Processos" mostravam o mesmo dado
+           em dois recortes (todo processo pertence a um caso, e as duas
+           listas linkavam pro mesmo caso_detalhe) -- ver despachante()
+           em portal/app.py. -->
+      <a href="{{ url_for('despachante') }}" class="{{ 'ativo' if ativo == 'despachante' }}">
         <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h4.5l1.5 1.8H17V15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6z"/></svg>
-        Meus casos
-      </a>
-      <a href="{{ url_for('processos') }}" class="{{ 'ativo' if ativo == 'processos' }}">
-        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="12" height="14" rx="1.2"/><path d="M7 7.5h6M7 10.5h6M7 13.5h3.5"/></svg>
-        Processos
+        Despachante
       </a>
       <a href="{{ url_for('campeonatos') }}" class="{{ 'ativo' if ativo == 'campeonatos' }}">
         <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="14" height="14" rx="1.2"/><path d="M3 7.5h14"/><path d="M7 3v2M13 3v2"/></svg>

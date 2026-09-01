@@ -1,0 +1,105 @@
+{% extends "_portal_layout.html" %}
+{% block titulo %}Despachante{% endblock %}
+{% block estilo_extra %}
+<style>
+  {# Um grupo por caso: cabeçalho (categoria, status, progresso) e, dentro
+     dele, cada processo daquele caso como uma linha. Antes eram duas
+     telas -- "Meus casos" e "Processos" -- mostrando o mesmo dado em
+     dois recortes (um caso pode ter vários processos, e as duas listas
+     linkavam pro mesmo caso_detalhe); aqui é o mesmo agrupamento
+     Caso -> Processo que o resto do sistema já usa. #}
+  .grupo-caso { margin-bottom: .9rem; overflow: hidden; }
+  .grupo-caso-cabecalho {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.1rem 1.3rem;
+    text-decoration: none;
+    color: inherit;
+    transition: background-color .15s;
+  }
+  .grupo-caso-cabecalho:hover { background: var(--paper); text-decoration: none; color: inherit; }
+  .grupo-caso-corpo { flex: 1; min-width: 0; }
+  .grupo-caso-titulo { font-size: 1.02rem; margin: 0 0 .3rem; }
+  .grupo-caso-resumo { color: var(--steel); font-size: .85rem; margin: 0 0 .5rem; }
+  .grupo-caso-meta { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  .grupo-caso-seta { color: var(--steel); font-size: 1.3rem; flex-shrink: 0; }
+
+  {# Os processos do caso ficam recuados dentro do mesmo cartão, separados
+     por uma linha -- não é um cartão novo por processo, senão a tela
+     voltaria a ter duas fileiras de cartão competindo por atenção. #}
+  .grupo-caso-processos { border-top: 1px solid var(--line); padding: 0 1.3rem; }
+  .grupo-processo {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    padding: .9rem 0;
+    border-bottom: 1px solid var(--line);
+    text-decoration: none;
+    color: inherit;
+  }
+  .grupo-processo:last-child { border-bottom: none; }
+  .grupo-processo:hover { color: inherit; text-decoration: none; }
+  .grupo-processo-corpo { flex: 1; min-width: 0; }
+  .grupo-processo-servico { font-size: .92rem; margin: 0 0 .3rem; }
+  .grupo-processo-meta { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; font-size: .8rem; color: var(--steel); }
+  .grupo-processo-seta { color: var(--steel); font-size: 1.1rem; flex-shrink: 0; }
+</style>
+{% endblock %}
+{% block conteudo %}
+{# Esta tela é pra onde o Portal redireciona quando um caso/documento não
+   é encontrado. Sem este bloco, o aviso morre no caminho e o cliente vê
+   a lista aparecer de novo sem nenhuma explicação. #}
+{% for categoria, mensagem in get_flashed_messages(with_categories=true) %}
+<div class="msg-flash msg-flash--{{ categoria }}">{{ mensagem }}</div>
+{% endfor %}
+<h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:0 0 1rem;">Seus casos e processos</h2>
+
+{% if not casos %}
+<div class="ficha estado-vazio">Você ainda não tem nenhum caso em andamento. Assim que abrirmos um processo pra você, ele aparece aqui.</div>
+{% endif %}
+
+{% for caso in casos %}
+<div class="ficha grupo-caso">
+  <a class="grupo-caso-cabecalho" href="{{ url_for('caso_detalhe', caso_id=caso.caso_id) }}">
+    {% if caso.checklist_total %}
+    <div class="alvo alvo--mini {% if caso.checklist_pct == 100 %}alvo-completo{% endif %}" style="--pct: {{ caso.checklist_pct }}%;"></div>
+    {% endif %}
+    <div class="grupo-caso-corpo">
+      <h3 class="grupo-caso-titulo">{{ caso.categoria }}</h3>
+      {% if caso.titulo %}<p class="grupo-caso-resumo">{{ caso.titulo }}</p>{% endif %}
+      <div class="grupo-caso-meta">
+        <span class="selo selo--{{ caso.status_classe }}">{{ caso.status }}</span>
+        {% if caso.checklist_total %}
+        <span class="mono" style="color:var(--steel); font-size:.78rem;">{{ caso.checklist_recebidos }}/{{ caso.checklist_total }} documentos</span>
+        {% endif %}
+      </div>
+    </div>
+    <span class="grupo-caso-seta">→</span>
+  </a>
+
+  {% if caso.processos %}
+  <div class="grupo-caso-processos">
+    {% for p in caso.processos %}
+    {# Todo processo leva pro mesmo caso_detalhe do cabeçalho acima --
+       não existe tela de detalhe por processo, e a ficha do caso já
+       mostra todos eles. #}
+    <a class="grupo-processo" href="{{ url_for('caso_detalhe', caso_id=caso.caso_id) }}">
+      <div class="grupo-processo-corpo">
+        <h4 class="grupo-processo-servico">{{ p.nome_servico }}</h4>
+        <div class="grupo-processo-meta">
+          <span class="selo selo--{{ p.status_classe }}" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem;">{{ p.status }}</span>
+          {% if p.protocolo %}<span class="mono">protocolo {{ p.protocolo }}</span>{% endif %}
+          {% if p.prazo_estimado_fmt %}<span class="mono">prazo {{ p.prazo_estimado_fmt }}</span>{% endif %}
+          {% if p.checklist_total %}<span>{{ p.checklist_recebidos }}/{{ p.checklist_total }} documentos</span>{% endif %}
+          {% if p.proxima_acao %}<span>{{ p.proxima_acao }}</span>{% endif %}
+        </div>
+      </div>
+      <span class="grupo-processo-seta">→</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

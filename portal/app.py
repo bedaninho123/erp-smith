@@ -254,6 +254,10 @@ def _casos_com_resumo(con, empresa_id: str, cliente_id: str) -> list:
         caso = dict(linha_caso)
         caso["status_classe"] = _classe_selo(caso["status"])
         processos = _processos_com_checklist(con, empresa_id, caso["caso_id"])
+        # A tela "Despachante" mostra o processo dentro do caso dele --
+        # guardar a lista aqui evita uma segunda consulta que repetiria
+        # exatamente este checklist já calculado acima.
+        caso["processos"] = processos
         caso["checklist_total"] = sum(p["checklist_total"] for p in processos)
         caso["checklist_recebidos"] = sum(p["checklist_recebidos"] for p in processos)
         caso["checklist_pct"] = (
@@ -364,7 +368,14 @@ def dashboard():
 
 @app.route("/portal/casos")
 @cliente_login_required
-def casos_lista():
+def despachante():
+    # Antes eram duas telas -- "Meus casos" e "Processos" -- mostrando o
+    # mesmo dado em dois recortes (um caso pode ter vários processos, e
+    # as duas listas linkavam pro mesmo caso_detalhe). Fundidas numa só,
+    # "Despachante", com o agrupamento Caso -> Processo que o resto do
+    # sistema já usa (ver core/motor_casos.py). A URL continua
+    # "/portal/casos" -- não é o que o cliente vê, e mudar quebraria
+    # qualquer link ou favorito antigo à toa.
     cliente_id = session["cliente_id"]
     empresa_id = empresa_atual()
     con = conectar(empresa_id)
@@ -372,8 +383,8 @@ def casos_lista():
     con.close()
 
     return render_template(
-        "portal_casos.html",
-        ativo="casos",
+        "portal_despachante.html",
+        ativo="despachante",
         cliente_nome=session.get("cliente_nome"),
         casos=casos_resumo,
     )
@@ -382,36 +393,10 @@ def casos_lista():
 @app.route("/portal/processos")
 @cliente_login_required
 def processos():
-    cliente_id = session["cliente_id"]
-    empresa_id = empresa_atual()
-    con = conectar(empresa_id)
-    linhas = con.execute(
-        "SELECT p.processo_id, p.protocolo, p.status, p.prazo_estimado, p.proxima_acao, "
-        "s.nome_servico, ca.caso_id, ca.titulo AS caso_titulo "
-        "FROM processo p "
-        "JOIN servico s ON s.service_id = p.servico_id "
-        "JOIN caso ca ON ca.caso_id = p.caso_id "
-        "WHERE p.cliente_id = ? AND p.empresa_id = ? ORDER BY p.ultima_atualizacao DESC",
-        (cliente_id, empresa_id),
-    ).fetchall()
-
-    processos_lista = []
-    for linha in linhas:
-        proc = dict(linha)
-        proc["status_classe"] = _classe_selo(proc["status"])
-        proc["prazo_estimado_fmt"] = _data_br(proc["prazo_estimado"])
-        checklist = motor_checklist.status_checklist(con, empresa_id, proc["processo_id"])
-        proc["checklist_total"] = len(checklist)
-        proc["checklist_recebidos"] = sum(1 for item in checklist if item["recebido"])
-        processos_lista.append(proc)
-    con.close()
-
-    return render_template(
-        "portal_processos.html",
-        ativo="processos",
-        cliente_nome=session.get("cliente_nome"),
-        processos=processos_lista,
-    )
+    # Tela antiga, fundida em despachante() acima (2026-08-31). Mantida
+    # só como redirecionamento -- caso alguém tenha essa URL salva nos
+    # favoritos, ela continua levando a algum lugar em vez de dar 404.
+    return redirect(url_for("despachante"))
 
 
 @app.route("/portal/habitualidade")
@@ -629,7 +614,7 @@ def caso_detalhe(caso_id):
     if not linha_caso:
         con.close()
         flash("Caso não encontrado.", "erro")
-        return redirect(url_for("casos_lista"))
+        return redirect(url_for("despachante"))
 
     caso = dict(linha_caso)
     caso["status_classe"] = _classe_selo(caso["status"])
@@ -694,7 +679,7 @@ def upload_documento():
     def _voltar():
         if caso_id:
             return redirect(url_for("caso_detalhe", caso_id=caso_id))
-        return redirect(url_for("casos_lista"))
+        return redirect(url_for("despachante"))
 
     arquivo = request.files.get("arquivo")
     if not arquivo or not arquivo.filename:
@@ -716,7 +701,7 @@ def upload_documento():
 
     if not caso_id:
         flash("Selecione a qual caso este documento pertence.", "erro")
-        return redirect(url_for("casos_lista"))
+        return redirect(url_for("despachante"))
 
     # Nunca confiar no caso_id vindo do formulário sem checar que
     # pertence a este cliente -- ponto central de isolamento de dado do
@@ -734,7 +719,7 @@ def upload_documento():
     con.close()
     if not dono or dono["cliente_id"] != cliente_id:
         flash("Caso não encontrado.", "erro")
-        return redirect(url_for("casos_lista"))
+        return redirect(url_for("despachante"))
 
     # "__outro__" é o valor do <select> quando o documento não está na
     # lista de faltantes (portal_caso.html) -- nesse caso o texto de

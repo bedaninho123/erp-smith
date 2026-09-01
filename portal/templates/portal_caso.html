@@ -35,7 +35,7 @@
 </style>
 {% endblock %}
 {% block conteudo %}
-<a class="link-voltar" href="{{ url_for('casos_lista') }}">← Voltar pros seus casos</a>
+<a class="link-voltar" href="{{ url_for('despachante') }}">← Voltar para Despachante</a>
 
 {% for categoria, mensagem in get_flashed_messages(with_categories=true) %}
 <div class="msg-flash msg-flash--{{ categoria }}">{{ mensagem }}</div>

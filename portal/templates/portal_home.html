@@ -56,11 +56,11 @@
 </div>
 
 <div class="stats-grid">
-  <a class="ficha stat-card" href="{{ url_for('casos_lista') }}">
+  <a class="ficha stat-card" href="{{ url_for('despachante') }}">
     <span class="stat-numero">{{ casos_abertos }}</span>
     <span class="stat-rotulo">{{ 'caso aberto' if casos_abertos == 1 else 'casos abertos' }}</span>
   </a>
-  <a class="ficha stat-card" href="{{ url_for('processos') }}">
+  <a class="ficha stat-card" href="{{ url_for('despachante') }}">
     <span class="stat-numero">{{ documentos_pendentes }}</span>
     <span class="stat-rotulo">{{ 'documento pendente' if documentos_pendentes == 1 else 'documentos pendentes' }}</span>
   </a>
@@ -69,7 +69,7 @@
 <div class="secao-titulo">
   <h2>Processos em andamento</h2>
   {% if total_processos_em_andamento > processos_em_andamento|length %}
-  <a href="{{ url_for('processos') }}">Ver todos ({{ total_processos_em_andamento }})</a>
+  <a href="{{ url_for('despachante') }}">Ver todos ({{ total_processos_em_andamento }})</a>
   {% endif %}
 </div>
 
