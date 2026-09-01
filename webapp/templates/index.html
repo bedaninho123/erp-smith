@@ -240,6 +240,17 @@
      segundo toque (zoom). Some o atraso em celular. */
   button, a, .btn, input, select, textarea, tr.cursor-pointer { touch-action: manipulation; }
 
+  /* Lista de sugestão de "Tipo de documento" (ver
+     atualizarOpcoesTipoDocumento) -- realce igual ao resto do sistema
+     visual em vez do cinza padrão do Bootstrap, pra parecer o mesmo tipo
+     de dropdown que o combo nativo (Ano, Status etc.), não uma lista
+     genérica qualquer. */
+  #documento-tipo-sugestoes .list-group-item-action { cursor: pointer; }
+  #documento-tipo-sugestoes .list-group-item-action:hover,
+  #documento-tipo-sugestoes .list-group-item-action:focus {
+    background: var(--blue-soft); color: var(--blue-deep);
+  }
+
   /* ------------------------------------------------------------------
      DASHBOARD (Gestor)
 
@@ -4722,13 +4733,16 @@ function atualizarOpcoesTipoDocumento() {
     return;
   }
   sugestoes.style.display = "";
-  // Sem processo a lista é o catálogo inteiro (bem mais longa que o
-  // checklist de um serviço só) -- por isso só aqui ganha rolagem, pra
-  // não empurrar o resto do formulário pra fora da tela.
-  sugestoes.style.maxHeight = processo ? "" : "180px";
-  sugestoes.style.overflowY = processo ? "" : "auto";
-  sugestoes.innerHTML = `<small class="text-muted d-block mb-1">${rotulo}</small>` +
-    itens.map(item => `<button type="button" class="btn btn-outline-secondary btn-sm mr-1 mb-1 btn-sugestao-tipo-documento">${escapeHtml(item)}</button>`).join("");
+  // Uma linha por item dentro de uma caixa com rolagem própria -- pra
+  // parecer um dropdown de verdade (como o combo nativo de Ano), não uma
+  // fileira de etiquetas soltas. A altura é fixa nos dois casos (com ou
+  // sem processo) por isso: um dropdown não muda de tamanho conforme o
+  // que tem dentro.
+  sugestoes.innerHTML = `
+    <small class="text-muted d-block mb-1">${rotulo}</small>
+    <div class="list-group list-group-flush border rounded" style="max-height:200px; overflow-y:auto;">
+      ${itens.map(item => `<button type="button" class="list-group-item list-group-item-action py-1 px-2 btn-sugestao-tipo-documento" style="font-size:.85rem">${escapeHtml(item)}</button>`).join("")}
+    </div>`;
   sugestoes.querySelectorAll(".btn-sugestao-tipo-documento").forEach(botao => {
     botao.addEventListener("click", () => {
       $("#documento-tipo").value = botao.textContent;
