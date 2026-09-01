@@ -897,7 +897,11 @@
                   </div>
                   <div class="col-md-4">
                     <label for="nc-cidade">Cidade</label>
-                    <input id="nc-cidade" type="text" class="form-control">
+                    <input id="nc-cidade" type="text" class="form-control" list="lista-cidades-brasil" autocomplete="off">
+                    <!-- Compartilhado com #cliente-cidade (ficha do Cliente) --
+                         populado sob demanda por ligarAutocompleteCidade(),
+                         nunca com as 5571 cidades de uma vez. -->
+                    <datalist id="lista-cidades-brasil"></datalist>
                   </div>
                   <div class="col-md-4">
                     <label for="nc-observacoes">Observações (opcional)</label>
@@ -1093,7 +1097,10 @@
                 <textarea id="processo-observacoes" class="form-control"></textarea>
               </div>
               <button class="btn btn-primary" id="salvar-processo">Adicionar processo</button>
-              <button class="btn btn-outline-secondary ml-2" id="cancelar-edicao-processo" style="display:none">Cancelar edição</button>
+              <!-- Sempre visível (não só editando): fecha a seção sem
+                   salvar, tanto pra desistir de um processo novo quanto
+                   pra sair de uma edição em andamento. -->
+              <button class="btn btn-outline-secondary ml-2" id="cancelar-edicao-processo">Cancelar</button>
               <span class="text-muted ml-2" id="salvar-processo-status"></span>
             </details>
           </div>
@@ -1107,7 +1114,7 @@
             <div class="card-header"><h3 class="card-title">Documentos</h3></div>
             <div class="card-body table-responsive p-0">
               <table class="table table-hover text-nowrap">
-                <thead><tr><th>Tipo</th><th>Arquivo</th><th>Status</th><th>Enviado em</th></tr></thead>
+                <thead><tr><th>Tipo</th><th>Arquivo</th><th>Status</th><th>Enviado em</th><th></th></tr></thead>
                 <tbody id="caso-documentos-body"></tbody>
               </table>
             </div>
@@ -1126,7 +1133,23 @@
               </div>
               <div class="form-group mt-3">
                 <label for="documento-tipo">Tipo de documento</label>
-                <input id="documento-tipo" type="text" class="form-control" placeholder="Ex.: RG, comprovante de residência" value="Anexo enviado pelo painel">
+                <!-- Escolher um processo acima preenche a lista com o
+                     checklist exigido daquele serviço (ex.: Renovação do
+                     CRAF -> os documentos que a Renovação do CRAF pede) --
+                     ver atualizarOpcoesTipoDocumento(). Sem processo
+                     escolhido, fica texto livre, como sempre foi. -->
+                <input id="documento-tipo" type="text" class="form-control" list="documento-tipo-opcoes"
+                       placeholder="Ex.: RG, comprovante de residência" value="Anexo enviado pelo painel">
+                <datalist id="documento-tipo-opcoes"></datalist>
+                <!-- <datalist> sozinho não é confiável -- em vários
+                     navegadores só sugere depois que a pessoa já digitou
+                     alguma letra, sem dar a entender que dá pra clicar e
+                     ver tudo. Esta lista mostra o checklist inteiro do
+                     processo escolhido, sempre visível, cada item um
+                     clique -- ver atualizarOpcoesTipoDocumento(). -->
+                <div id="documento-tipo-sugestoes" class="mt-2" style="display:none">
+                  <small class="text-muted d-block mb-1">Documentos exigidos por este processo -- clique para preencher:</small>
+                </div>
               </div>
               <div class="form-group">
                 <label for="documento-observacoes">Observações</label>
@@ -1473,7 +1496,7 @@
                   </div>
                   <div class="col-md-3">
                     <label for="cliente-cidade">Cidade</label>
-                    <input id="cliente-cidade" type="text" class="form-control">
+                    <input id="cliente-cidade" type="text" class="form-control" list="lista-cidades-brasil" autocomplete="off">
                   </div>
                   <div class="col-md-6">
                     <label for="cliente-observacoes">Observações (opcional)</label>
@@ -1970,10 +1993,86 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
+<!-- Lista de municípios do Brasil (IBGE), só pra sugerir Cidade no
+     cadastro de cliente -- ver o comentário no topo do próprio arquivo. -->
+<script src="{{ url_for('static', filename='js/cidades_brasil.js') }}"></script>
 
 <script>
 const $ = (sel) => document.querySelector(sel);
 let casoDocumentosAtuais = [];
+// Processos do caso aberto, com checklist já anexado (mesma resposta de
+// /api/casos/<id>) -- usado só para sugerir o "Tipo de documento" a
+// partir do processo escolhido no formulário de envio manual.
+let casoProcessosAtuais = [];
+// Catálogo de TODO tipo de documento exigido por QUALQUER serviço da
+// empresa (mesma resposta de /api/casos/<id>) -- usado quando o envio
+// manual não está ligado a um processo específico, pra ainda oferecer
+// alguma sugestão em vez de só texto livre.
+let catalogoDocumentosAtuais = [];
+
+// ----------------------------------------------------------------------
+// Telefone e cidade no cadastro de cliente -- os mesmos dois campos
+// existem duas vezes (Abrir caso -> Novo cliente, e na ficha do
+// Cliente), então cada função abaixo é ligada duas vezes em vez de
+// duplicar a lógica de máscara/busca.
+// ----------------------------------------------------------------------
+
+// (14) 99999-8888 pra celular, (14) 9999-8888 pra fixo -- decide sozinho
+// pela quantidade de dígito já digitado. Reformata a cada tecla; não
+// tenta preservar a posição do cursor no meio do número (raro alguém
+// editar ali, quase sempre é digitação corrida do começo pro fim).
+function mascararTelefone(valor) {
+  const d = valor.replace(/\D/g, "").slice(0, 11);
+  if (d.length === 0) return "";
+  if (d.length <= 2) return `(${d}`;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+function ligarMascaraTelefone(seletor) {
+  const campo = $(seletor);
+  campo.addEventListener("input", () => { campo.value = mascararTelefone(campo.value); });
+}
+
+// Sem acento, pra "marilia" digitado sem acento achar "Marília" -- a
+// lista (webapp/static/js/cidades_brasil.js) traz o nome oficial do
+// IBGE, acentuado, e ninguém digita acento tentando buscar.
+function _semAcento(txt) {
+  return txt.toLowerCase()
+    .replace(/[áàãâä]/g, "a")
+    .replace(/[éèêë]/g, "e")
+    .replace(/[íìîï]/g, "i")
+    .replace(/[óòõôö]/g, "o")
+    .replace(/[úùûü]/g, "u")
+    .replace(/ç/g, "c");
+}
+
+// A lista tem 5571 municípios -- um <datalist> permanente com todos eles
+// pesaria à toa numa tela que só precisa de uma sugestão por vez. Filtra
+// a cada tecla e limita a 30 opções, que é mais do que cabe na tela do
+// navegador de qualquer forma.
+function ligarAutocompleteCidade(seletor) {
+  const campo = $(seletor);
+  campo.addEventListener("input", () => {
+    const opcoes = $("#lista-cidades-brasil");
+    const busca = _semAcento(campo.value.trim());
+    if (busca.length < 2 || typeof CIDADES_BRASIL === "undefined") {
+      opcoes.innerHTML = "";
+      return;
+    }
+    opcoes.innerHTML = CIDADES_BRASIL
+      .filter(cidade => _semAcento(cidade).includes(busca))
+      .slice(0, 30)
+      .map(cidade => `<option value="${escapeHtml(cidade)}">`)
+      .join("");
+  });
+}
+
+ligarMascaraTelefone("#nc-telefone");
+ligarMascaraTelefone("#cliente-telefone");
+ligarAutocompleteCidade("#nc-cidade");
+ligarAutocompleteCidade("#cliente-cidade");
 
 // Papel e ID de quem está logado -- usados para esconder botão de
 // remoção (Atendente não vê, mesmo que o backend já barre) e para
@@ -2416,6 +2515,8 @@ async function abrirCaso(casoId) {
   `;
 
   casoDocumentosAtuais = d.documentos;
+  casoProcessosAtuais = d.processos;
+  catalogoDocumentosAtuais = d.catalogo_documentos;
   $("#card-checklist").style.display = "none";
 
   $("#caso-processos-body").innerHTML = d.processos.length ? d.processos.map(p => `
@@ -2465,10 +2566,31 @@ async function abrirCaso(casoId) {
         : escapeHtml(doc.nome_arquivo || '—')}</td>
       <td>${escapeHtml(doc.status)}</td>
       <td class="text-monospace">${dataHoraBr(doc.data_envio) || '—'}</td>
+      <td class="text-nowrap">
+        <button type="button" class="btn btn-outline-danger btn-sm btn-excluir-documento"
+                data-documento="${escapeHtml(doc.documento_id)}" data-tipo="${escapeHtml(doc.tipo_documento)}"
+                aria-label="Excluir ${escapeHtml(doc.tipo_documento)}">
+          <i class="fas fa-trash" aria-hidden="true"></i>
+        </button>
+      </td>
     </tr>
-  `).join("") : `<tr><td colspan="4" class="text-muted">Nenhum documento neste caso.</td></tr>`;
+  `).join("") : `<tr><td colspan="5" class="text-muted">Nenhum documento neste caso.</td></tr>`;
 
   ligarBotoesVerDocumento($("#caso-documentos-body"));
+  $("#caso-documentos-body").querySelectorAll(".btn-excluir-documento").forEach(botao => {
+    botao.addEventListener("click", async () => {
+      if (!confirm(`Excluir "${botao.dataset.tipo}"? O arquivo é apagado e some do checklist, se estava marcado nele.`)) return;
+      botao.disabled = true;
+      const r = await fetch(`/api/documentos/${encodeURIComponent(botao.dataset.documento)}/excluir`, { method: "POST" });
+      if (!r.ok) {
+        const erro = await r.json();
+        alert("Erro ao excluir: " + (erro.erro || "falha desconhecida"));
+        botao.disabled = false;
+        return;
+      }
+      abrirCaso(casoId);
+    });
+  });
 
   $("#documento-processo").innerHTML = `<option value="">não vincular a um processo específico</option>` +
     d.processos.map(p => `<option value="${p.processo_id}">${escapeHtml(p.nome_servico)} (${p.processo_id})</option>`).join("");
@@ -2477,6 +2599,7 @@ async function abrirCaso(casoId) {
   $("#documento-observacoes").value = "";
   $("#salvar-documento-status").textContent = "";
   $("#salvar-documento").dataset.casoId = casoId;
+  atualizarOpcoesTipoDocumento();
 
   $("#caso-mensagens").innerHTML = d.mensagens.length ? d.mensagens.map(m => `
     <div class="mb-4 pb-3 border-bottom">
@@ -3572,7 +3695,6 @@ function resetFormularioProcesso(casoId) {
   $("#salvar-processo").textContent = "Adicionar processo";
   $("#salvar-processo").dataset.casoId = casoId;
   delete $("#salvar-processo").dataset.processoId;
-  $("#cancelar-edicao-processo").style.display = "none";
   $("#salvar-processo-status").textContent = "";
 }
 
@@ -3593,7 +3715,6 @@ function editarProcesso(p) {
   $("#processo-observacoes").value = p.observacoes || "";
   $("#salvar-processo").textContent = "Salvar alterações";
   $("#salvar-processo").dataset.processoId = p.processo_id;
-  $("#cancelar-edicao-processo").style.display = "inline-block";
   $("#salvar-processo-status").textContent = "";
   $("#processo-servico").scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -3636,7 +3757,10 @@ async function salvarProcesso() {
 }
 
 $("#salvar-processo").addEventListener("click", salvarProcesso);
-$("#cancelar-edicao-processo").addEventListener("click", () => resetFormularioProcesso($("#salvar-processo").dataset.casoId));
+$("#cancelar-edicao-processo").addEventListener("click", () => {
+  resetFormularioProcesso($("#salvar-processo").dataset.casoId);
+  $("#processo-form-detalhes").open = false;
+});
 
 function resetFormularioCampeonato() {
   $("#campeonato-id").value = "";
@@ -4567,6 +4691,53 @@ async function enviarDocumento() {
 }
 
 $("#salvar-documento").addEventListener("click", enviarDocumento);
+
+// O checklist de um processo já vem pronto em cada objeto de
+// casoProcessosAtuais (mesmo dado usado por abrirChecklist()) -- reaproveita
+// em vez de consultar de novo. Sem processo escolhido, o campo volta a ser
+// texto livre puro, como sempre foi (não dá pra sugerir documento de um
+// serviço que ninguém indicou).
+function atualizarOpcoesTipoDocumento() {
+  const processoId = $("#documento-processo").value;
+  const processo = casoProcessosAtuais.find(p => p.processo_id === processoId);
+
+  // Com processo: só o checklist daquele serviço (ex.: CRAF -> os
+  // documentos que a CRAF pede). Sem processo -- "não vincular a um
+  // processo específico" -- ninguém apontou qual checklist usar, mas a
+  // despachante ainda precisa poder guardar qualquer documento do
+  // cliente (um CR antigo, por exemplo), então a sugestão vira o
+  // catálogo inteiro: todo item exigido por algum serviço da empresa.
+  const itens = processo
+    ? [...new Set(processo.checklist.map(i => i.item))]
+    : catalogoDocumentosAtuais;
+  const rotulo = processo
+    ? "Documentos exigidos por este processo -- clique para preencher:"
+    : "Sem processo escolhido -- todo tipo de documento já cadastrado em algum serviço, clique para preencher:";
+
+  $("#documento-tipo-opcoes").innerHTML = itens.map(item => `<option value="${escapeHtml(item)}"></option>`).join("");
+
+  const sugestoes = $("#documento-tipo-sugestoes");
+  if (!itens.length) {
+    sugestoes.style.display = "none";
+    return;
+  }
+  sugestoes.style.display = "";
+  // Sem processo a lista é o catálogo inteiro (bem mais longa que o
+  // checklist de um serviço só) -- por isso só aqui ganha rolagem, pra
+  // não empurrar o resto do formulário pra fora da tela.
+  sugestoes.style.maxHeight = processo ? "" : "180px";
+  sugestoes.style.overflowY = processo ? "" : "auto";
+  sugestoes.innerHTML = `<small class="text-muted d-block mb-1">${rotulo}</small>` +
+    itens.map(item => `<button type="button" class="btn btn-outline-secondary btn-sm mr-1 mb-1 btn-sugestao-tipo-documento">${escapeHtml(item)}</button>`).join("");
+  sugestoes.querySelectorAll(".btn-sugestao-tipo-documento").forEach(botao => {
+    botao.addEventListener("click", () => {
+      $("#documento-tipo").value = botao.textContent;
+      $("#documento-tipo").focus();
+    });
+  });
+}
+
+$("#documento-processo").addEventListener("change", atualizarOpcoesTipoDocumento);
 
 $("#voltar-casos").addEventListener("click", () => {
   mostrarView("casos");

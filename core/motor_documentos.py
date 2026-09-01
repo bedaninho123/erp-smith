@@ -115,6 +115,88 @@ def listar_por_mensagem(empresa_id: str, mensagem_id: str) -> list:
         con.close()
 
 
+def _registrar_historico(
+    con, empresa_id: str, caso_id: str, descricao: str, criado_por: str,
+) -> None:
+    """Mesma regra do resto do Core: mudança de estado sempre deixa
+    rastro (CLAUDE.md). `tipo_evento='outro'` pelo mesmo motivo de
+    core/motor_checklist.py: a lista fechada do schema cobre eventos do
+    Caso em si, e documento é evento dentro do caso, não status dele."""
+    maior = con.execute(
+        "SELECT MAX(CAST(SUBSTR(historico_id, 5) AS INTEGER)) FROM historico"
+    ).fetchone()[0] or 0
+    con.execute(
+        "INSERT INTO historico (historico_id, empresa_id, caso_id, tipo_evento, "
+        "descricao, criado_em, criado_por) VALUES (?,?,?,'outro',?,?,?)",
+        (f"HIS-{maior + 1:06d}", empresa_id, caso_id, descricao, _agora_iso(), criado_por),
+    )
+
+
+def excluir_de_caso(
+    empresa_id: str, documento_id: str, excluido_por: str = "Painel administrativo",
+) -> Optional[str]:
+    """Apaga um documento de CASO -- linha, marcação de checklist (se
+    houver) e arquivo em disco. Devolve o caso_id (para a camada de cima
+    poder recarregar a ficha certa), ou None se o documento não tinha
+    caso associado.
+
+    Só documento de Caso sai por aqui -- dossiê tem sua própria rota
+    (webapp/app.py::dossie_remover), de propósito: as consequências são
+    diferentes (aqui existe checklist marcado e histórico de caso pra
+    limpar; lá não existe nenhum dos dois).
+
+    A ordem importa: `documento_checklist.documento_id` referencia esta
+    linha SEM CASCADE (schema.sql), e o projeto roda com
+    `PRAGMA foreign_keys = ON` -- apagar o documento antes da marcação
+    seria rejeitado pela própria integridade referencial do banco. Apagar
+    a marcação primeiro devolve o item pro estado "faltando", exatamente
+    como já acontece quando um documento é recusado.
+    """
+    con = conectar(empresa_id)
+    try:
+        documento = con.execute(
+            "SELECT caso_id, tipo_documento, link_arquivo, categoria FROM documento "
+            "WHERE documento_id = ? AND empresa_id = ?",
+            (documento_id, empresa_id),
+        ).fetchone()
+        if not documento:
+            raise ValueError(f"Documento não encontrado: {documento_id}")
+        documento = dict(documento)
+        if documento["categoria"] == CATEGORIA_DOSSIE:
+            raise ValueError("Documento do dossiê -- use a remoção do dossiê, não esta.")
+
+        con.execute(
+            "DELETE FROM documento_checklist WHERE documento_id = ? AND empresa_id = ?",
+            (documento_id, empresa_id),
+        )
+        con.execute(
+            "DELETE FROM documento WHERE documento_id = ? AND empresa_id = ?",
+            (documento_id, empresa_id),
+        )
+        if documento["caso_id"]:
+            _registrar_historico(
+                con, empresa_id, documento["caso_id"],
+                descricao=f"Documento excluído: {documento['tipo_documento']}",
+                criado_por=excluido_por,
+            )
+        con.commit()
+    finally:
+        con.close()
+
+    caminho = documento.get("link_arquivo")
+    if caminho and os.path.exists(caminho):
+        try:
+            os.remove(caminho)
+        except OSError:
+            # Mesma escolha de dossie_remover: arquivo que não sai não
+            # desfaz a exclusão do banco -- vira órfão, e
+            # core.db.auditar_documentos denuncia depois.
+            import traceback
+            traceback.print_exc()
+
+    return documento["caso_id"]
+
+
 # ---------------------------------------------------------------------
 # DOSSIÊ DO CLIENTE (2026-08-27)
 #

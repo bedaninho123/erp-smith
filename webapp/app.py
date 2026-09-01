@@ -716,6 +716,18 @@ def caso_detalhe(caso_id):
         "AND empresa_id = ? ORDER BY nome_servico", (empresa_id,),
     ).fetchall()
 
+    # Catálogo completo de tipo de documento -- todo item de checklist de
+    # todo serviço da empresa, sem repetir. Alimenta a sugestão de "Tipo
+    # de documento" quando o envio manual NÃO está ligado a um processo
+    # específico: sem processo pra apontar qual checklist usar, a
+    # despachante ainda precisa poder guardar qualquer documento do
+    # cliente (um CR antigo, por exemplo), então a lista vira "tudo que
+    # já é exigido por algum serviço" em vez de nada.
+    catalogo_documentos = con.execute(
+        "SELECT DISTINCT item FROM documento_exigido WHERE empresa_id = ? "
+        "AND ativo = 'Sim' ORDER BY item", (empresa_id,),
+    ).fetchall()
+
     con.close()
 
     # Fora da conexão de cima de propósito: listar_tarefas abre a própria
@@ -735,6 +747,7 @@ def caso_detalhe(caso_id):
         tarefa_tipos_sugeridos=list(motor_tarefas.TIPOS_SUGERIDOS),
         usuarios=[dict(r) for r in usuarios],
         servicos=[dict(r) for r in servicos],
+        catalogo_documentos=[r["item"] for r in catalogo_documentos],
     )
 
 
@@ -1130,6 +1143,24 @@ def documento_upload(caso_id):
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True, documento_id=documento_id)
+
+
+@app.route("/api/documentos/<documento_id>/excluir", methods=["POST"])
+@login_required
+@funcao_required("casos")
+def documento_excluir(documento_id):
+    """Exclui um documento de CASO -- mesma função ("casos") que já
+    protege o upload em documento_upload() acima; quem pode anexar pode
+    tirar o que anexou errado. Dossiê tem sua própria rota
+    (dossie_remover), guardada por "clientes"."""
+    empresa_id = empresa_atual()
+    try:
+        caso_id = motor_documentos.excluir_de_caso(
+            empresa_id, documento_id, excluido_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 404
+    return jsonify(ok=True, caso_id=caso_id)
 
 
 @app.route("/api/clientes/<cliente_id>/dossie")
