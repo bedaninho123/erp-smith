@@ -37,7 +37,7 @@ def main() -> None:
     # atalho que pula a autenticação. Se o link mágico quebrar um dia,
     # esta demonstração quebra junto, que é o comportamento certo.
     token = criar_token(base.EMPRESA, CLIENTE_DEMO)
-    entrada = f"http://127.0.0.1:{PORTA}/entrar/{token}"
+    entrada = f"http://127.0.0.1:{PORTA}/portal/entrar/{token}"
 
     print()
     print("=" * 68)

@@ -1,0 +1,108 @@
+{% extends "_portal_layout.html" %}
+{% block titulo %}Meus anúncios{% endblock %}
+{% block estilo_extra %}
+<style>
+  .campo { margin-bottom: 1rem; }
+  .campo-linha { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+  @media (min-width: 600px) { .campo-linha { grid-template-columns: 1fr 1fr; } }
+  .anuncio-linha { padding: 1rem 0; border-bottom: 1px solid var(--line); }
+  .anuncio-linha:last-child { border-bottom: none; }
+  .anuncio-linha-topo { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .3rem; }
+  .anuncio-linha-titulo { font-size: .98rem; margin: 0; }
+  .anuncio-linha-acoes { margin-top: .6rem; display: flex; gap: .6rem; flex-wrap: wrap; }
+  .anuncio-linha-acoes button { font-size: .8rem; padding: .4rem .8rem; }
+  .botao--secundario { background: transparent; color: var(--steel); border: 1px solid var(--line); }
+  .botao--secundario:hover { background: var(--paper); color: var(--ink); }
+</style>
+{% endblock %}
+{% block conteudo %}
+<h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:0 0 1rem;">Marketplace</h2>
+
+{% for categoria, mensagem in get_flashed_messages(with_categories=true) %}
+<div class="msg-flash msg-flash--{{ categoria }}">{{ mensagem }}</div>
+{% endfor %}
+
+<div class="secao-titulo" style="margin-top:0;">
+  <h2>Meus anúncios</h2>
+  <a href="{{ url_for('marketplace') }}">← Ver vitrine</a>
+</div>
+
+<div class="ficha ficha-form" style="padding:1.3rem 1.4rem; margin-bottom:1.6rem;">
+  <h3 style="margin-top:0;">Publicar novo anúncio</h3>
+  <form method="post" action="{{ url_for('marketplace_publicar') }}" enctype="multipart/form-data">
+    <div class="campo">
+      <label for="categoria">Categoria</label>
+      <select id="categoria" name="categoria" required>
+        {% for c in categorias %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="titulo">Título</label>
+      <input id="titulo" name="titulo" type="text" placeholder="Ex.: Pistola 9mm em ótimo estado" required>
+    </div>
+    <div class="campo">
+      <label for="descricao">Descrição</label>
+      <textarea id="descricao" name="descricao" rows="3" placeholder="Detalhes, estado de conservação, acessórios inclusos..."></textarea>
+    </div>
+    <div class="campo-linha">
+      <div class="campo">
+        <label for="valor">Valor (deixe em branco para "a combinar")</label>
+        <input id="valor" name="valor" type="text" inputmode="decimal" placeholder="Ex.: 3500,00">
+      </div>
+      <div class="campo">
+        <label for="fotos">Fotos (PDF ou imagem, até 15MB cada)</label>
+        <input id="fotos" name="fotos" type="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp" multiple>
+      </div>
+    </div>
+    <div class="campo-linha">
+      <div class="campo">
+        <label for="contato_telefone">Telefone de contato</label>
+        <input id="contato_telefone" name="contato_telefone" type="text" value="{{ telefone_padrao or '' }}" placeholder="(00) 00000-0000">
+      </div>
+      <div class="campo">
+        <label for="contato_email">E-mail de contato</label>
+        <input id="contato_email" name="contato_email" type="text" value="{{ email_padrao or '' }}" placeholder="seu@email.com">
+      </div>
+    </div>
+    <button type="submit" class="botao">Publicar anúncio</button>
+  </form>
+</div>
+
+{% if not anuncios %}
+<div class="ficha estado-vazio">Você ainda não publicou nenhum anúncio.</div>
+{% else %}
+<div class="ficha" style="padding:0 1.3rem;">
+  {% for a in anuncios %}
+  <div class="anuncio-linha">
+    <div class="anuncio-linha-topo">
+      <span class="badge-item badge-item--sim">{{ a.categoria }}</span>
+      {% if a.status == 'Pendente' %}<span class="badge-item badge-item--aguardando">Aguardando aprovação</span>
+      {% elif a.status == 'Aprovado' %}<span class="badge-item badge-item--sim">Visível na vitrine</span>
+      {% elif a.status == 'Recusado' %}<span class="badge-item" style="background:var(--signal-soft); color:var(--signal);">Recusado</span>
+      {% elif a.status == 'Vendido' %}<span class="badge-item badge-item--nao">Vendido</span>
+      {% elif a.status == 'Removido' %}<span class="badge-item badge-item--nao">Removido</span>
+      {% endif %}
+    </div>
+    <h4 class="anuncio-linha-titulo">{{ a.titulo }} — {{ a.valor_fmt or "a combinar" }}</h4>
+    {% if a.status == 'Recusado' and a.motivo_recusa %}
+    <p style="color:var(--signal); font-size:.85rem; margin:.3rem 0;">Motivo: {{ a.motivo_recusa }}</p>
+    {% endif %}
+    <span class="mono" style="font-size:.78rem; color:var(--steel);">publicado em {{ a.criado_em_fmt }}</span>
+
+    {% if a.status in ('Pendente', 'Aprovado') %}
+    <div class="anuncio-linha-acoes">
+      <form method="post" action="{{ url_for('marketplace_marcar_vendido', anuncio_id=a.anuncio_id) }}">
+        <button type="submit" class="botao">Marcar como vendido</button>
+      </form>
+      <form method="post" action="{{ url_for('marketplace_remover', anuncio_id=a.anuncio_id) }}">
+        <button type="submit" class="botao botao--secundario">Remover</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

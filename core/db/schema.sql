@@ -185,6 +185,14 @@ CREATE TABLE documento (
     -- código (core/motor_documentos.py), não CHECK de valor, mesmo
     -- padrão do status do Caso.
     categoria         TEXT NOT NULL DEFAULT 'Caso',
+    -- Finalidade de uso da arma a que este documento se refere -- 'Tiro'
+    -- / 'Caça' / 'Coleção' (2026-09-01). Vocabulário de CAC, então o Core
+    -- só guarda o texto e não valida contra essa lista (mesmo motivo de
+    -- tipo_documento): quem sabe o que são essas três palavras é
+    -- domain/clube_tiro/documentos_cac.py, oferecida como SELECT na
+    -- tela. Sempre NULL em documento de Caso e em documento de dossiê
+    -- que não é de arma nenhuma (CPF, comprovante de residência).
+    finalidade        TEXT,
     -- O CHECK cobre os dois e não deixa zona cinzenta: dossiê com caso
     -- preenchido é recusado, e documento de caso sem caso também.
     CHECK (
@@ -558,3 +566,53 @@ CREATE TABLE portal_token (
 
 CREATE INDEX idx_portal_token_empresa_id ON portal_token(empresa_id);
 CREATE INDEX idx_portal_token_cliente_id ON portal_token(cliente_id);
+
+-- Marketplace de classificados (2026-09-02) -- mural entre os próprios
+-- clientes/afiliados de uma empresa (quem conta como "pode ver e
+-- publicar" é decisão de CADA domínio, não deste schema -- no Domínio
+-- de clube de tiro é "filiado ativo", ver portal/app.py e
+-- domain/clube_tiro/motor_filiados.py). Fica no Core porque
+-- "visibilidade por comunidade/afiliação dentro de uma empresa" não é
+-- exclusivo de clube de tiro -- um domínio futuro pode ter o mesmo
+-- conceito com outro critério de quem participa.
+--
+-- `categoria` é texto livre com sugestão de tela (mesmo padrão de
+-- documento.tipo_documento / domain/clube_tiro/documentos_cac.py) --
+-- o Core não sabe o que é "Luneta/Mira".
+--
+-- SEM tabela de pedido/pagamento: é mural de classificados, combinação
+-- de preço e entrega acontece fora do sistema (decisão do usuário,
+-- 2026-09-02) -- por isso não existe "comprador" aqui, só quem anuncia.
+CREATE TABLE anuncio (
+    anuncio_id       TEXT PRIMARY KEY,                  -- ANC-000001
+    empresa_id       TEXT NOT NULL REFERENCES empresa(empresa_id),
+    cliente_id       TEXT NOT NULL REFERENCES cliente(cliente_id),
+    categoria        TEXT NOT NULL,
+    titulo           TEXT NOT NULL,
+    descricao        TEXT,
+    valor            REAL,                              -- número puro, ex. 3500.00; NULL = "a combinar"
+    contato_telefone TEXT,
+    contato_email    TEXT,
+    -- Caminhos de arquivo, um por linha -- mesmo formato de lista simples
+    -- já usado no projeto (documento_exigido.itens), não JSON: não há
+    -- necessidade de estrutura por item, só uma lista de fotos.
+    fotos            TEXT,
+    -- Fila de moderação: nasce Pendente, só fica visível a outros depois
+    -- que um Gestor/Atendente aprova (mesmo cuidado do documento enviado
+    -- pelo Portal no checklist -- ninguém da equipe olhou ainda).
+    -- Lista controlada em código (core/motor_marketplace.py), mesmo
+    -- padrão do status do Caso.
+    status           TEXT NOT NULL DEFAULT 'Pendente',
+    motivo_recusa    TEXT,
+    revisado_por     TEXT,
+    revisado_em      TEXT,                               -- ISO 8601
+    criado_em        TEXT NOT NULL,                       -- ISO 8601
+    atualizado_em    TEXT NOT NULL                        -- ISO 8601
+);
+
+CREATE INDEX idx_anuncio_empresa_id ON anuncio(empresa_id);
+CREATE INDEX idx_anuncio_cliente_id ON anuncio(cliente_id);
+-- A vitrine sempre filtra por (empresa, status='Aprovado'); "meus
+-- anúncios" sempre filtra por (empresa, cliente_id) -- os dois juntos
+-- são as duas únicas formas de ler esta tabela.
+CREATE INDEX idx_anuncio_status ON anuncio(empresa_id, status);

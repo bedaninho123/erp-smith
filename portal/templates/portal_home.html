@@ -53,6 +53,35 @@
       {% endif %}
     </div>
   </a>
+
+  {% if filiacao_resumo and filiacao_resumo.tem_registro %}
+  <div class="ficha destaque-mini">
+    <div class="destaque-mini-icone">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5l6 2.2v4.3c0 4-2.6 6.6-6 8.5-3.4-1.9-6-4.5-6-8.5V4.7l6-2.2z"/></svg>
+    </div>
+    <div>
+      <p class="destaque-mini-eyebrow">Filiação</p>
+      {% if filiacao_resumo.anuidade_validade %}
+      <h3 class="destaque-mini-titulo">Válida até {{ filiacao_resumo.anuidade_validade }}</h3>
+      <p class="destaque-mini-meta">{% if filiacao_resumo.anuidade_em_dia == 'Sim' %}Anuidade em dia{% elif filiacao_resumo.anuidade_em_dia == 'Não' %}Anuidade em atraso{% else %}Situação da anuidade não informada{% endif %}</p>
+      {% else %}
+      <h3 class="destaque-mini-titulo">Data de validade não informada</h3>
+      <p class="destaque-mini-meta">Fale com o clube pra confirmar</p>
+      {% endif %}
+    </div>
+  </div>
+  {% elif filiacao_resumo and filiacao_resumo.indisponivel %}
+  <div class="ficha destaque-mini">
+    <div class="destaque-mini-icone">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5l6 2.2v4.3c0 4-2.6 6.6-6 8.5-3.4-1.9-6-4.5-6-8.5V4.7l6-2.2z"/></svg>
+    </div>
+    <div>
+      <p class="destaque-mini-eyebrow">Filiação</p>
+      <h3 class="destaque-mini-titulo">Consulta indisponível</h3>
+      <p class="destaque-mini-meta">Tente novamente em instantes</p>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 <div class="stats-grid">

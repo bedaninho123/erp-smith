@@ -226,12 +226,18 @@ def salvar_no_dossie(
     tipo_documento: str,
     data_validade: Optional[str] = None,
     referencia: Optional[str] = None,
+    finalidade: Optional[str] = None,
 ) -> str:
     """Guarda um documento permanente da pessoa.
 
     `referencia` é o "de qual arma" -- CRAF, guia de tráfego e nota
     fiscal existem mais de uma vez por pessoa, e sem isso três CRAFs no
     dossiê ficam indistinguíveis. Vai em `observacoes`, que já existia.
+
+    `finalidade` é a que ACERVO essa arma pertence -- 'Tiro' / 'Caça' /
+    'Coleção' (domain/clube_tiro/documentos_cac.FINALIDADES_ARMA). Texto
+    livre aqui também: o Core não valida contra essa lista, que é
+    vocabulário de CAC oferecido como SELECT na tela.
 
     ATENÇÃO ao que se guarda aí: número de série de arma é dado sensível
     (ver a regra do Redator em CLAUDE.md). Aqui ele é legítimo -- o
@@ -264,12 +270,13 @@ def salvar_no_dossie(
         con.execute(
             "INSERT INTO documento (documento_id, empresa_id, cliente_id, caso_id, "
             "processo_id, tipo_documento, nome_arquivo, link_arquivo, status, "
-            "data_envio, data_validade, observacoes, categoria) "
-            "VALUES (?,?,?,NULL,NULL,?,?,?,?,?,?,?,?)",
+            "data_envio, data_validade, observacoes, categoria, finalidade) "
+            "VALUES (?,?,?,NULL,NULL,?,?,?,?,?,?,?,?,?)",
             (documento_id, empresa_id, cliente_id, tipo_documento,
              nome_arquivo_original, str(caminho), STATUS_RECEBIDO, _agora_iso(),
              (data_validade or "").strip() or None,
-             (referencia or "").strip() or None, CATEGORIA_DOSSIE),
+             (referencia or "").strip() or None, CATEGORIA_DOSSIE,
+             (finalidade or "").strip() or None),
         )
         con.commit()
         return documento_id

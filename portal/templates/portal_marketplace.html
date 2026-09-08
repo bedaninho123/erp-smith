@@ -1,0 +1,75 @@
+{% extends "_portal_layout.html" %}
+{% block titulo %}Marketplace{% endblock %}
+{% block estilo_extra %}
+<style>
+  .anuncio-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+  @media (min-width: 700px) { .anuncio-grid { grid-template-columns: 1fr 1fr; } }
+  .anuncio-card { padding: 1rem 1.2rem; }
+  .anuncio-foto {
+    width: 100%; height: 170px; object-fit: cover;
+    border-radius: var(--radius); margin-bottom: .8rem; background: var(--paper);
+  }
+  .anuncio-titulo { font-size: 1.05rem; margin: 0 0 .2rem; }
+  .anuncio-valor { font-family: 'Big Shoulders', system-ui, sans-serif; font-weight: 700; font-size: 1.2rem; color: var(--blue-deep); }
+  .anuncio-descricao { font-size: .88rem; color: var(--steel); margin: .5rem 0; }
+  .anuncio-contato { font-size: .85rem; margin-top: .6rem; }
+  .anuncio-contato div { margin-bottom: .15rem; }
+  .filtro-categorias { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
+  .filtro-categorias a {
+    display: inline-block; padding: .35rem .8rem; border-radius: 999px;
+    border: 1px solid var(--line); font-size: .82rem; text-decoration: none; color: var(--steel);
+  }
+  .filtro-categorias a.ativo { background: var(--blue-deep); color: #fff; border-color: var(--blue-deep); }
+  .cta-documentacao { margin-top: .8rem; padding-top: .8rem; border-top: 1px solid var(--line); }
+  .cta-documentacao button { width: 100%; }
+</style>
+{% endblock %}
+{% block conteudo %}
+<h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:0 0 1rem;">Marketplace</h2>
+
+{% for categoria, mensagem in get_flashed_messages(with_categories=true) %}
+<div class="msg-flash msg-flash--{{ categoria }}">{{ mensagem }}</div>
+{% endfor %}
+
+<div class="secao-titulo" style="margin-top:0;">
+  <h2>Anúncios dos filiados</h2>
+  <a href="{{ url_for('meus_anuncios') }}">Meus anúncios →</a>
+</div>
+
+<div class="filtro-categorias">
+  <a href="{{ url_for('marketplace') }}" class="{{ 'ativo' if not categoria_filtro }}">Todas</a>
+  {% for c in categorias %}
+  <a href="{{ url_for('marketplace', categoria=c) }}" class="{{ 'ativo' if categoria_filtro == c }}">{{ c }}</a>
+  {% endfor %}
+</div>
+
+{% if not anuncios %}
+<div class="ficha estado-vazio">Nenhum anúncio {{ 'nesta categoria' if categoria_filtro else 'ainda' }}.</div>
+{% else %}
+<div class="anuncio-grid">
+  {% for a in anuncios %}
+  <div class="ficha anuncio-card">
+    {% if a.fotos %}
+    <img class="anuncio-foto" src="{{ url_for('marketplace_foto', anuncio_id=a.anuncio_id, indice=0) }}" alt="{{ a.titulo }}">
+    {% endif %}
+    <span class="badge-item badge-item--sim">{{ a.categoria }}</span>
+    {% if a.e_meu %}<span class="badge-item badge-item--aguardando">Meu anúncio</span>{% endif %}
+    <h3 class="anuncio-titulo">{{ a.titulo }}</h3>
+    <div class="anuncio-valor">{{ a.valor_fmt or "A combinar" }}</div>
+    {% if a.descricao %}<p class="anuncio-descricao">{{ a.descricao }}</p>{% endif %}
+    <div class="anuncio-contato">
+      {% if a.contato_telefone %}<div>📞 {{ a.contato_telefone }}</div>{% endif %}
+      {% if a.contato_email %}<div>✉️ {{ a.contato_email }}</div>{% endif %}
+    </div>
+    {% if a.categoria == categoria_arma and mostra_cta_documentacao %}
+    <div class="cta-documentacao">
+      <form method="post" action="{{ url_for('marketplace_documentacao', anuncio_id=a.anuncio_id) }}">
+        <button type="submit" class="botao">Preciso de ajuda com a documentação</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

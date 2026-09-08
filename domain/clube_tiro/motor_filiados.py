@@ -299,7 +299,8 @@ def listar_panorama(
         sql = (
             "SELECT filiado_id, nome, cpf, matricula, status_filiacao, "
             "participacoes_12m, ultima_participacao, sincronizado_em, "
-            "sincronizacao_erro FROM filiado WHERE empresa_id = ?"
+            "sincronizacao_erro, anuidade_em_dia, anuidade_validade "
+            "FROM filiado WHERE empresa_id = ?"
         )
         parametros = [empresa_id]
 
@@ -374,6 +375,42 @@ def obter_por_cpf(empresa_id: str, cpf: Optional[str]) -> Optional[dict]:
             "SELECT * FROM filiado WHERE empresa_id = ? AND cpf = ?",
             (empresa_id, digitos),
         ).fetchone()
+        return dict(linha) if linha else None
+    finally:
+        con.close()
+
+
+def localizar_ativo_por_cpf_ou_email(empresa_id: str, identificador: str) -> Optional[dict]:
+    """Busca exata (nunca aproximada) por CPF ou e-mail, só entre
+    filiados ATIVOS -- usada pelo login do Portal (portal/app.py) quando
+    a pessoa ainda não é `cliente`, mas já é do clube (ex.: marketplace,
+    2026-09-02). Mesmo padrão de busca exata de
+    core/motor_portal_auth.py::localizar_cliente_por_cpf_ou_email, pelo
+    mesmo motivo: aqui decide quem GANHA ACESSO, então não pode haver
+    ambiguidade nem busca aproximada.
+
+    Só ATIVO -- filiado inativo não ganha conta nova por essa porta (se
+    já for cliente, continua entrando normalmente pelo caminho de
+    sempre; isso aqui é só o caminho de ENTRADA nova)."""
+    identificador = (identificador or "").strip()
+    if not identificador:
+        return None
+
+    con = conectar()
+    try:
+        linha = None
+        cpf_normalizado = re.sub(r"\D", "", identificador)
+        if cpf_normalizado:
+            linha = con.execute(
+                "SELECT * FROM filiado WHERE empresa_id = ? AND cpf = ? AND status_filiacao = 'Ativo'",
+                (empresa_id, cpf_normalizado),
+            ).fetchone()
+        if not linha and "@" in identificador:
+            linha = con.execute(
+                "SELECT * FROM filiado WHERE empresa_id = ? AND lower(email) = lower(?) "
+                "AND status_filiacao = 'Ativo' AND email IS NOT NULL AND email != ''",
+                (empresa_id, identificador),
+            ).fetchone()
         return dict(linha) if linha else None
     finally:
         con.close()

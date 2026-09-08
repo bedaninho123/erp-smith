@@ -259,10 +259,10 @@ def _cr_simulado(cpf: str) -> Optional[dict]:
 # até essa resolução CPF -> idatirador existir de verdade.
 _PERFIS_ARMAS_TESTE = {
     "12345678900": [  # Felipe Bedani
-        {"id": 1, "model": "G3", "brand": "Taurus", "caliber": ".40 S&W", "serie": "TA123456", "type": "Pistola"},
+        {"id": 1, "model": "G3", "brand": "Taurus", "caliber": ".40 S&W", "serie": "TA123456", "type": "Pistola", "grupo": "ACRR"},
     ],
     "10000000006": [  # Helena Costa
-        {"id": 2, "model": "G3", "brand": "Glock", "caliber": "9mm", "serie": "GL654321", "type": "Pistola"},
+        {"id": 2, "model": "G3", "brand": "Glock", "caliber": "9mm", "serie": "GL654321", "type": "Pistola", "grupo": "ACRP"},
     ],
 }
 
@@ -309,9 +309,72 @@ def consultar_armas(cpf: str) -> list[dict]:
             "caliber": a.get("caliber"),
             "serie": a.get("serie"),
             "sigma": a.get("sigma"),
+            # `grupo` não está no schema Weapon documentado publicamente
+            # (a especificação pública só lista id/model/caliber/serie/
+            # brand/type/shooter_id/sigma). Tentativa mantida aqui porque
+            # é de graça (só um .get a mais) -- mas conferido contra
+            # resposta real em 2026-09-02: para a arma testada, `serie`,
+            # `sigma` e `grupo` vieram todos None por este endpoint (só
+            # type/brand/model/caliber vieram). `completar_arma_via_habitualidade`
+            # abaixo é quem de fato preenche os três, a partir da
+            # habitualidade -- ver docstring dela.
+            "grupo": a.get("grupo"),
         }
         for a in dados if isinstance(a, dict)
     ]
+
+
+_RE_SERIE_ARMA_FORMATADA = re.compile(r"^\(([^)]+)\)")
+_RE_SIGMA_ARMA_FORMATADA = re.compile(r"n[ºo]\s*sigma:?\s*(\S+)", re.IGNORECASE)
+
+
+def completar_arma_via_habitualidade(arma: dict, habitualidade: dict) -> dict:
+    """Preenche série, sigma e grupo de uma arma (de `consultar_armas`)
+    usando a resposta de `consultar_habitualidade` da MESMA pessoa,
+    quando o endpoint de armas não trouxe esses três campos.
+
+    Por quê: conferido contra resposta real em 2026-09-02 -- o endpoint
+    de armas devolveu type/brand/model/caliber, mas serie/sigma/grupo
+    vieram todos vazios para a arma testada. A habitualidade, para essa
+    MESMA arma, tem os três: `grupo` é a chave de fora de
+    `habitualidades[grupo][id_arma]` (já usada em portal/app.py e em
+    /api/filiados/<cpf>/ficha), e `arma_formatada` embute a série entre
+    parênteses no início do texto e o sigma depois de "Nº Sigma:" (ex.:
+    "(ABA212416) Pistola - g17 - 9mm - Nº Sigma: 256").
+
+    O casamento entre as duas respostas é por TEXTO (o `model` da arma
+    aparecendo dentro do `arma_formatada` do evento), não pelo `id` --
+    não há confirmação de que o `id` de consultar_armas() é o mesmo
+    `id_arma` de dentro de habitualidades (a spec pública não liga os
+    dois), e apostar nisso sem confirmar arriscaria casar arma errada em
+    silêncio. Casar pelo texto foi o que os dois prints do usuário
+    mostraram bater (mesmo "g17", mesmo "9mm" nos dois lados) -- e se
+    nenhum evento tiver o modelo desta arma, os campos que já eram None
+    continuam None, nunca um valor inventado.
+
+    Só entra aqui o que o endpoint de armas NÃO trouxe -- campo que já
+    veio de lá (`arma.get(...)` verdadeiro) nunca é sobrescrito."""
+    if arma.get("serie") and arma.get("sigma") and arma.get("grupo"):
+        return arma  # endpoint de armas já trouxe tudo -- nada a completar
+
+    modelo = str(arma.get("model") or "").strip().lower()
+    if not modelo:
+        return arma
+
+    for grupo, dados in (habitualidade.get("habitualidades") or {}).items():
+        for evento in dados.get("eventos", []):
+            texto = evento.get("arma") or ""
+            if modelo not in texto.lower():
+                continue
+            serie_m = _RE_SERIE_ARMA_FORMATADA.match(texto)
+            sigma_m = _RE_SIGMA_ARMA_FORMATADA.search(texto)
+            return {
+                **arma,
+                "serie": arma.get("serie") or (serie_m.group(1) if serie_m else None),
+                "sigma": arma.get("sigma") or (sigma_m.group(1) if sigma_m else None),
+                "grupo": arma.get("grupo") or grupo,
+            }
+    return arma
 
 
 # Perfis de documentos com vencimento pra teste -- espelha GET /registers/
@@ -845,6 +908,8 @@ def consultar_ficha_completa(cpf: str) -> Optional[dict]:
             "rg": None, "nascimento": None, "filiado_desde": None,
             "profissao": None, "estado_civil": None, "titulo": None,
             "endereco": None, "cr": None,
+            "anuidade_em_dia": "Sim", "anuidade_validade": "2027-03-31",
+            "financeiro_em_dia": "Sim",
         }
 
     dados = _buscar_atirador(cpf_limpo)
@@ -887,6 +952,16 @@ def consultar_ficha_completa(cpf: str) -> Optional[dict]:
             "em_dia": cr_bruto.get("status"),
             "data_expiracao_bruta": cr_bruto.get("expirationDate"),
         } if cr_bruto else None,
+        # Anuidade/financeiro (2026-09-03) -- mesmos campos que
+        # `_listar_por_status` já lê pra popular `filiado` em massa, só
+        # que AO VIVO aqui: essa é a diferença que a docstring desta
+        # função promete ("pergunta na hora", nunca o retrato). `monthly`
+        # é a anuidade (status + até quando vale); `financial` é a
+        # situação financeira geral. `_sim_nao`/`_data_iso` preservam
+        # None quando o campo não veio -- ausência não é "em atraso".
+        "anuidade_em_dia": _sim_nao(_dentro(dados, "monthly", "status")),
+        "anuidade_validade": _data_iso(_dentro(dados, "monthly", "expirationDate")),
+        "financeiro_em_dia": _sim_nao(_dentro(dados, "financial", "status")),
     }
 
 

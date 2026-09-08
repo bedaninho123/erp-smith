@@ -70,7 +70,7 @@
   {% for d in documentos %}
   <div class="doc-linha">
     <div class="doc-corpo">
-      <h3 class="doc-tipo">{{ d.tipo_documento }}</h3>
+      <h3 class="doc-tipo">{{ d.tipo_documento }}{% if d.finalidade %} <span class="selo selo--padrao" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem; vertical-align:middle;">{{ d.finalidade }}</span>{% endif %}</h3>
       {% if d.observacoes %}<p class="doc-ref">{{ d.observacoes }}</p>{% endif %}
       <div class="doc-meta">
         {% if d.situacao_validade == 'vencido' %}

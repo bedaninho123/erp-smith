@@ -39,6 +39,13 @@ from integracoes.shooting_house import (
     verificar_credencial,
 )
 
+# Campos que consultar_armas() lê de cada item de /registers/shooters/
+# weapon/{cpf}. "grupo" está aqui por pedido do usuário (2026-09-01) --
+# nunca apareceu no schema Weapon documentado publicamente, então
+# precisa ser conferido contra uma resposta de verdade antes de confiar
+# nele (mesmo cuidado que _CAMPOS_EVENTO_HABITUALIDADE_REAL já tinha).
+_CAMPOS_ARMA_LIDOS = ("id", "type", "brand", "model", "caliber", "serie", "sigma", "grupo")
+
 # Até onde descer na estrutura. Fundo o bastante pra enxergar
 # habitualidades[grupo][arma][campo], que é o nível onde mora a dúvida.
 PROFUNDIDADE_MAXIMA = 5
@@ -270,6 +277,54 @@ def _conferir_habitualidade(cpf: str) -> None:
         print("   participações -- é o sintoma clássico de nome de campo errado.")
 
 
+def _conferir_armas(cpf: str) -> None:
+    print("=" * 68)
+    print("5. RESPOSTA DE ARMAS (estrutura, sem conteúdo)")
+    print("=" * 68)
+    print(f"   CPF consultado  : {_mascarar_cpf(cpf)}")
+    print()
+
+    try:
+        bruto = _chamar_api(f"/registers/shooters/weapon/{cpf}", {"searchBy": "cpf"})
+    except ShootingHouseIndisponivel as e:
+        print(f"   NÃO FOI POSSÍVEL CONSULTAR: {e}")
+        return
+
+    if isinstance(bruto, dict):
+        # Algumas rotas embrulham a lista em {"data": [...]} -- mesma
+        # regra de consultar_armas().
+        bruto = bruto.get("data") or []
+
+    if not isinstance(bruto, list):
+        print("   A resposta não veio como lista -- formato inesperado.")
+        return
+    if not bruto:
+        print("   Lista vazia -- este CPF não tem arma cadastrada (ou a resposta")
+        print("   real tem outro formato que este diagnóstico não reconheceu).")
+        return
+
+    print(f"   {len(bruto)} arma(s) na resposta.")
+    print()
+    print("   Forma de cada item:")
+    for linha in _descrever(bruto[0], indentacao=2):
+        print(linha)
+    print()
+
+    print("-" * 68)
+    print("6. O MAPEAMENTO DE consultar_armas() BATE COM A RESPOSTA REAL?")
+    print("-" * 68)
+    campos_vistos = set(bruto[0].keys()) if isinstance(bruto[0], dict) else set()
+    for campo in _CAMPOS_ARMA_LIDOS:
+        marca = "ok  " if campo in campos_vistos else "FALTA"
+        print(f"   [{marca}] {campo}")
+
+    faltando = campos_vistos - set(_CAMPOS_ARMA_LIDOS)
+    if faltando:
+        print()
+        print("   Campos que a API devolve e o código ignora hoje:")
+        print("   " + ", ".join(sorted(faltando)))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Confere a integração com o Shooting House sem expor dado de ninguém."
@@ -329,6 +384,8 @@ def main() -> None:
         return
 
     _conferir_habitualidade(cpf)
+    print()
+    _conferir_armas(cpf)
     print()
     print("Fim. Me mostre esta saída -- ela não contém dado de ninguém.")
 

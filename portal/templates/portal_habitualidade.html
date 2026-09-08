@@ -12,11 +12,14 @@
   .cr-meta { color: var(--steel); font-size: .85rem; }
   .cr-meta b { color: var(--ink); font-weight: 600; }
 
-  .evento-linha { display: flex; gap: 1rem; align-items: center; padding: .8rem 0; border-bottom: 1px solid var(--line); }
+  .evento-linha { display: flex; gap: 1rem; align-items: flex-start; padding: .8rem 0; border-bottom: 1px solid var(--line); }
   .evento-linha:last-child { border-bottom: none; }
-  .evento-data { flex-shrink: 0; width: 82px; font-family: 'IBM Plex Mono', monospace; font-size: .82rem; color: var(--ink); }
+  .evento-data { flex-shrink: 0; width: 88px; font-family: 'IBM Plex Mono', monospace; font-size: .82rem; color: var(--ink); }
+  .evento-hora { color: var(--steel); font-size: .75rem; }
   .evento-corpo { flex: 1; min-width: 0; font-size: .9rem; }
-  .evento-local { color: var(--steel); font-size: .8rem; }
+  .evento-modalidade { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .evento-arma { color: var(--steel); font-size: .82rem; margin-top: .15rem; }
+  .evento-local { color: var(--steel); font-size: .8rem; margin-top: .15rem; }
 </style>
 {% endblock %}
 {% block conteudo %}
@@ -64,8 +67,24 @@
   </div>
   {% endif %}
 
+  {# Mesmo número que aparece na ficha de Filiado do painel administrativo
+     (bloco "NO CLUBE" -> "Participações (12 meses)") -- mesma função de
+     contagem, ver portal/app.py::habitualidade(). Cartão em vez de linha
+     de texto porque é o dado que mais importa nesta tela: é o que decide
+     se a habitualidade legal está em dia. #}
+  <div class="stats-grid" style="margin-bottom:1.6rem;">
+    <div class="ficha stat-card">
+      <span class="stat-numero">{{ participacoes_12m if participacoes_12m is not none else 0 }}</span>
+      <span class="stat-rotulo">participações nos últimos 12 meses</span>
+    </div>
+    <div class="ficha stat-card">
+      <span class="stat-numero" style="font-size:1.3rem;">{{ ultima_participacao or "—" }}</span>
+      <span class="stat-rotulo">última participação</span>
+    </div>
+  </div>
+
   <div class="secao-titulo" style="margin-top:0;">
-    <h2>Participações registradas</h2>
+    <h2>Histórico completo</h2>
     <span style="color:var(--steel); font-size:.82rem;">{{ eventos|length }} no total</span>
   </div>
 
@@ -75,9 +94,16 @@
   <div class="ficha" style="padding: 0 1.3rem;">
     {% for ev in eventos %}
     <div class="evento-linha">
-      <div class="evento-data">{{ ev.data_participacao }}</div>
+      <div class="evento-data">
+        {{ ev.data_participacao }}
+        {% if ev.hora_participacao %}<div class="evento-hora">{{ ev.hora_participacao }}</div>{% endif %}
+      </div>
       <div class="evento-corpo">
-        <div>{{ ev.modalidade }}</div>
+        <div class="evento-modalidade">
+          <span>{{ ev.modalidade }}</span>
+          {% if ev.grupo %}<span class="badge-item badge-item--sim">{{ ev.grupo }}</span>{% endif %}
+        </div>
+        {% if ev.arma %}<div class="evento-arma mono">{{ ev.arma }}</div>{% endif %}
         <div class="evento-local">{{ ev.local }}</div>
       </div>
     </div>

@@ -96,8 +96,8 @@ def test_rota_do_portal_exige_login(banco):
     resposta = anonimo.get("/portal/casos/CAS-000001")
 
     assert resposta.status_code == 302
-    # Manda pro login (rota "/"), nunca pro conteúdo do caso.
-    assert resposta.headers["Location"] == "/"
+    # Manda pro login (rota "/portal/login"), nunca pro conteúdo do caso.
+    assert resposta.headers["Location"] == "/portal/login"
     assert "Caso da Ana" not in resposta.get_data(as_text=True)
 
 
@@ -209,5 +209,5 @@ def test_sessao_sem_empresa_nao_entra(banco):
     resposta = antigo.get("/portal/casos/CAS-000001")
 
     assert resposta.status_code == 302
-    assert resposta.headers["Location"] == "/"
+    assert resposta.headers["Location"] == "/portal/login"
     assert "Caso da Ana" not in resposta.get_data(as_text=True)

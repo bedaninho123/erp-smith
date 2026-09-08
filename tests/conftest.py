@@ -263,9 +263,10 @@ def _pasta_de_documentos_isolada(tmp_path, monkeypatch):
     gravava arquivo de verdade em atendimento/documentos_recebidos/.
     Deixar isso na mão de cada teste lembrar não é garantia nenhuma.
     """
-    from core import motor_documentos
+    from core import motor_documentos, motor_marketplace
 
     monkeypatch.setattr(motor_documentos, "PASTA_DOCUMENTOS", tmp_path / "documentos_recebidos")
+    monkeypatch.setattr(motor_marketplace, "PASTA_ANUNCIOS", tmp_path / "marketplace_fotos")
 
 
 @pytest.fixture

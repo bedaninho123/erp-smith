@@ -57,6 +57,7 @@ from core.motor_usuarios import (
 from domain.clube_tiro import (
     documentos_cac, motor_filiados, motor_indicadores_clube, motor_modalidades,
 )
+from domain.clube_tiro.categorias_marketplace import CATEGORIAS as CATEGORIAS_MARKETPLACE
 from domain.clube_tiro.motor_campeonatos import (
     atualizar_campeonato, criar_campeonato, listar_campeonatos, remover_campeonato,
 )
@@ -64,6 +65,11 @@ from domain.clube_tiro.motor_resultados import (
     atualizar_resultado, criar_resultado, listar_resultados, remover_resultado,
 )
 from core.motor_clientes import ClienteInvalido, ClienteJaExiste, criar_cliente
+from core.motor_marketplace import (
+    AnuncioInvalido, aprovar as aprovar_anuncio, editar_anuncio,
+    listar_anuncios, obter_anuncio, recusar as recusar_anuncio,
+    remover as remover_anuncio,
+)
 from integracoes.config import shooting_house_ativo
 from integracoes.shooting_house import (
     ShootingHouseIndisponivel,
@@ -234,7 +240,7 @@ def _notificar_cliente_mudanca_status(empresa_id: str, caso_id: str) -> None:
             f"Olá {destinatario['nome']},\n\n"
             "Houve uma atualização no seu atendimento. Acesse o Portal do "
             "Cliente para ver os detalhes:\n\n"
-            f"{PORTAL_URL_BASE}\n\n"
+            f"{PORTAL_URL_BASE}/portal/login\n\n"
             f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
         ),
     )
@@ -304,6 +310,7 @@ def index():
         usuario_id=session.get("usuario_id"),
         usuario_papel=session.get("papel"),
         funcoes_ativas=funcoes_ativas,
+        categorias_marketplace=CATEGORIAS_MARKETPLACE,
     )
 
 
@@ -1026,7 +1033,7 @@ def _notificar_documento_recusado(empresa_id: str, caso_id: str, item: str) -> N
             f"O documento enviado para \"{item}\" não pôde ser aceito. "
             "Acesse o Portal do Cliente para ver o motivo e enviar outro "
             "arquivo:\n\n"
-            f"{PORTAL_URL_BASE}\n\n"
+            f"{PORTAL_URL_BASE}/portal/login\n\n"
             f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
         ),
     )
@@ -1092,6 +1099,92 @@ def checklist_desmarcar(documento_checklist_id):
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True)
+
+
+@app.route("/api/marketplace")
+@login_required
+@funcao_required("marketplace")
+def marketplace_listar():
+    """Fila de moderação do Marketplace -- filtro por status vem da
+    query string; sem filtro, devolve todos (Pendente primeiro, é o que
+    a tela usa por padrão)."""
+    status = request.args.get("status") or None
+    return jsonify(listar_anuncios(empresa_atual(), status=status))
+
+
+@app.route("/api/marketplace/<anuncio_id>/editar", methods=["POST"])
+@login_required
+@funcao_required("marketplace")
+def marketplace_editar(anuncio_id):
+    """Correção de texto/preço/contato -- não mexe em status (ver
+    editar_anuncio)."""
+    corpo = request.get_json(force=True)
+    try:
+        editar_anuncio(
+            empresa_atual(), anuncio_id,
+            categoria=corpo.get("categoria", ""),
+            titulo=corpo.get("titulo", ""),
+            descricao=corpo.get("descricao"),
+            valor=corpo.get("valor"),
+            contato_telefone=corpo.get("contato_telefone"),
+            contato_email=corpo.get("contato_email"),
+        )
+    except AnuncioInvalido as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
+
+
+@app.route("/api/marketplace/<anuncio_id>/aprovar", methods=["POST"])
+@login_required
+@funcao_required("marketplace")
+def marketplace_aprovar(anuncio_id):
+    try:
+        aprovar_anuncio(empresa_atual(), anuncio_id, revisado_por=session.get("usuario_nome", "Painel administrativo"))
+    except AnuncioInvalido as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
+
+
+@app.route("/api/marketplace/<anuncio_id>/recusar", methods=["POST"])
+@login_required
+@funcao_required("marketplace")
+def marketplace_recusar(anuncio_id):
+    corpo = request.get_json(force=True)
+    motivo = (corpo.get("motivo") or "").strip()
+    try:
+        recusar_anuncio(
+            empresa_atual(), anuncio_id, motivo,
+            revisado_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except AnuncioInvalido as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
+
+
+@app.route("/api/marketplace/<anuncio_id>/remover", methods=["POST"])
+@login_required
+@funcao_required("marketplace")
+def marketplace_remover_painel(anuncio_id):
+    try:
+        remover_anuncio(empresa_atual(), anuncio_id)
+    except AnuncioInvalido as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
+
+
+@app.route("/api/marketplace/<anuncio_id>/foto/<int:indice>")
+@login_required
+@funcao_required("marketplace")
+def marketplace_foto_painel(anuncio_id, indice):
+    """Sem checagem de status -- quem modera precisa ver a foto de um
+    anúncio ainda Pendente, que é justamente o que está decidindo."""
+    anuncio = obter_anuncio(empresa_atual(), anuncio_id)
+    if not anuncio or indice < 0 or indice >= len(anuncio["fotos"]):
+        return jsonify(erro="Foto não encontrada."), 404
+    caminho = Path(anuncio["fotos"][indice])
+    if not caminho.is_file():
+        return jsonify(erro="Arquivo não encontrado no disco."), 404
+    return send_file(caminho)
 
 
 # Mesmo allowlist/limite de integracoes/gmail.py -- duplicado de propósito
@@ -1187,6 +1280,7 @@ def dossie_listar(cliente_id):
         documentos=motor_documentos.listar_dossie(empresa_id, cliente_id),
         catalogo=documentos_cac.catalogo(),
         dias_alerta=documentos_cac.DIAS_ALERTA_VALIDADE,
+        finalidades_arma=list(documentos_cac.FINALIDADES_ARMA),
     )
 
 
@@ -1212,6 +1306,7 @@ def dossie_enviar(cliente_id):
             tipo_documento=(request.form.get("tipo_documento") or "").strip(),
             data_validade=(request.form.get("data_validade") or "").strip() or None,
             referencia=(request.form.get("referencia") or "").strip() or None,
+            finalidade=(request.form.get("finalidade") or "").strip() or None,
         )
     except ValueError as e:
         return jsonify(erro=str(e)), 400

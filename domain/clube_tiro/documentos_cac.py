@@ -70,6 +70,21 @@ DOCUMENTOS = (
 # mês é o que dá tempo de tirar certidão nova sem correria.
 DIAS_ALERTA_VALIDADE = 30
 
+# A que acervo a arma do documento pertence (2026-09-01) -- pedido do
+# usuário, para separar CRAF/guia de tráfego de arma de tiro esportivo
+# das de caça e das de coleção. É a mesma ideia de `aceita_referencia`
+# acima ("de qual arma"), só que estruturada: uma pessoa pode ter armas
+# em mais de um acervo, e um CRAF é sempre de UM acervo só.
+#
+# Não confundir com a categoria da PESSOA no CR (Atirador/Caçador/
+# Colecionador) nem com `useType` da API do Shooting House (Permitido/
+# Restrito) -- conferido em 2026-09-01 contra a especificação pública, e
+# nenhum dos dois é "a que acervo esta arma pertence". Esta lista é só a
+# etiqueta que o despachante escolhe ao guardar o documento, sugestão de
+# tela como o resto deste arquivo -- o Core grava o texto sem validar
+# contra ela.
+FINALIDADES_ARMA = ("Tiro", "Caça", "Coleção")
+
 
 def catalogo() -> list:
     """A lista pronta para a tela, agrupada e na ordem definida acima --

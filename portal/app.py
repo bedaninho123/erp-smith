@@ -40,13 +40,34 @@ from core import motor_checklist, motor_documentos
 from core.conexao import conectar
 from core.configuracoes import obter_configuracoes
 from core.limitador_tentativas import excedeu_limite
+from core.motor_casos import criar_caso
+from core.motor_clientes import ClienteInvalido, ClienteJaExiste, criar_cliente
+from core.motor_marketplace import (
+    AnuncioInvalido,
+    STATUS_APROVADO,
+    STATUS_VENDIDO,
+    criar_anuncio,
+    listar_anuncios,
+    marcar_vendido,
+    obter_anuncio,
+    remover as remover_anuncio,
+)
 from core.motor_portal_auth import criar_token, localizar_cliente_por_cpf_ou_email, validar_e_consumir_token
+from domain.clube_tiro.categorias_marketplace import CATEGORIA_ARMA, CATEGORIAS
 from domain.clube_tiro.motor_campeonatos import listar_campeonatos, obter_campeonato
+from domain.clube_tiro.motor_filiados import (
+    contar_participacoes,
+    localizar_ativo_por_cpf_ou_email,
+    obter_por_cpf as obter_filiado_por_cpf,
+)
 from domain.clube_tiro.motor_resultados import listar_resultados
 from integracoes.gmail import enviar_email, gmail_configurado
 from integracoes.shooting_house import (
     ShootingHouseIndisponivel,
+    completar_arma_via_habitualidade,
+    consultar_armas,
     consultar_cr,
+    consultar_ficha_completa,
     consultar_habitualidade,
 )
 
@@ -109,6 +130,17 @@ def _data_br(data_iso: Optional[str]) -> Optional[str]:
     return datetime.strptime(data_iso[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
 
 
+def _valor_br(valor: Optional[float]) -> Optional[str]:
+    """Formata número puro (3500.0) como moeda brasileira (R$ 3.500,00)
+    -- em Python, não no template: aritmética/formatação de número nunca
+    é responsabilidade de template (mesmo princípio de datas)."""
+    if valor is None:
+        return None
+    inteiro, decimal = f"{valor:,.2f}".split(".")
+    inteiro_br = inteiro.replace(",", ".")
+    return f"R$ {inteiro_br},{decimal}"
+
+
 def _classe_selo(status: str) -> str:
     """Cor do selo de status na UI (ver portal/templates/_portal_estilo.html)
     -- puramente de apresentação, não é regra de negócio (não decide o
@@ -133,13 +165,37 @@ def cliente_login_required(f):
     return wrapper
 
 
+def filiado_ativo_required(f):
+    """Marketplace e Habitualidade são só pra quem é filiado ATIVO do
+    clube -- sempre depois de @cliente_login_required (mesma ordem de
+    login_required/gestor_required no painel). Cliente que não é filiado
+    (ex.: só fez transferência de arma) recebe 403, não 404 -- é acesso
+    negado, não "não existe"."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("e_filiado_ativo"):
+            return jsonify(erro="Este recurso é exclusivo de filiados ativos do clube."), 403
+        return f(*args, **kwargs)
+    return wrapper
+
+
 def empresa_atual() -> str:
     """Empresa do cliente logado. Só dentro de rota com
     @cliente_login_required, que é quem garante que a chave existe."""
     return session["empresa_id"]
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
+def raiz():
+    # Conveniência só pra quem digita a raiz -- em produção o Portal vive
+    # inteiro sob /portal/... (ver webapp/servir.py, o despachante de WSGI
+    # que decide entre painel e Portal pelo prefixo do caminho; um app
+    # respondendo em "/" quebraria essa decisão quando os dois dividem o
+    # mesmo domínio).
+    return redirect(url_for("login"))
+
+
+@app.route("/portal/login", methods=["GET", "POST"])
 def login():
     mensagem = None
     if request.method == "POST":
@@ -156,24 +212,74 @@ def login():
             localizar_cliente_por_cpf_ou_email(PORTAL_EMPRESA_ID, identificador)
             if identificador else None
         )
+        # Quem ainda não é cliente do despachante mas já é filiado ATIVO
+        # do clube ganha cadastro na hora (2026-09-02) -- só quando a
+        # PRÓPRIA pessoa pede o link, nunca em lote/importação. É o que
+        # abre a porta do Marketplace pros ~1450 filiados que nunca
+        # usaram nenhum serviço do despachante, sem misturar as duas
+        # populações fora desse gatilho.
+        if not cliente and identificador:
+            filiado = localizar_ativo_por_cpf_ou_email(PORTAL_EMPRESA_ID, identificador)
+            if filiado:
+                try:
+                    cliente = criar_cliente(
+                        PORTAL_EMPRESA_ID, nome=filiado["nome"], cpf=filiado["cpf"],
+                        email=filiado.get("email"),
+                        observacoes="Cadastro criado automaticamente no primeiro acesso ao Portal (filiado do clube).",
+                    )
+                except ClienteJaExiste as e:
+                    # Já existe cliente com este CPF, só sem e-mail
+                    # cadastrado (por isso a busca de cima não achou) --
+                    # usa o cadastro que já existe em vez de duplicar.
+                    con = conectar(PORTAL_EMPRESA_ID)
+                    linha = con.execute(
+                        "SELECT * FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+                        (e.cliente_id, PORTAL_EMPRESA_ID),
+                    ).fetchone()
+                    con.close()
+                    cliente = dict(linha) if linha else None
+                except ClienteInvalido:
+                    cliente = None
+            # Mesma exigência de sempre (decisão 3 do Portal): sem
+            # e-mail não tem como mandar o link, então conta como "não
+            # achou" -- nunca um 500 por tentar mandar e-mail vazio.
+            if cliente and not cliente.get("email"):
+                cliente = None
         if cliente:
             token = criar_token(PORTAL_EMPRESA_ID, cliente["cliente_id"])
-            link = f"{URL_BASE}/entrar/{token}"
+            link = f"{URL_BASE}/portal/entrar/{token}"
             if gmail_configurado():
                 config = obter_configuracoes(PORTAL_EMPRESA_ID)
                 nome_empresa = config.get("nome_empresa", "nosso escritório")
-                enviar_email(
-                    destinatario=cliente["email"],
-                    assunto=f"Acesso ao Portal do Cliente -- {nome_empresa}",
-                    corpo=(
-                        f"Olá {cliente['nome']},\n\n"
-                        "Use o link abaixo para acessar o Portal (válido por 15 minutos, "
-                        "uso único):\n\n"
-                        f"{link}\n\n"
-                        "Se você não solicitou esse acesso, é só ignorar este e-mail.\n\n"
-                        f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
-                    ),
-                )
+                try:
+                    enviar_email(
+                        destinatario=cliente["email"],
+                        assunto=f"Acesso ao Portal do Cliente -- {nome_empresa}",
+                        corpo=(
+                            f"Olá {cliente['nome']},\n\n"
+                            "Use o link abaixo para acessar o Portal (válido por 15 minutos, "
+                            "uso único):\n\n"
+                            f"{link}\n\n"
+                            "Se você não solicitou esse acesso, é só ignorar este e-mail.\n\n"
+                            f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
+                        ),
+                    )
+                except Exception:
+                    # gmail_configurado() só confere que token.json existe,
+                    # não que ele ainda é válido -- um token expirado ou
+                    # revogado do lado do Google (RefreshError) só aparece
+                    # aqui, na hora de enviar. Sem este try/except, essa
+                    # falha derrubava a rota inteira com 500 ANTES de
+                    # chegar na mensagem única de baixo -- e um 500 só
+                    # quando o CPF/e-mail existe seria um jeito novo de
+                    # descobrir se alguém está cadastrado, furando o mesmo
+                    # cuidado contra enumeração que essa mensagem protege.
+                    # O token já foi criado e ninguém vai usá-lo -- expira
+                    # sozinho em 15 minutos, sem risco. Fica só registrado
+                    # no console pra alguém notar que o Gmail parou.
+                    import traceback
+                    traceback.print_exc()
+                    print(f"[PORTAL] Falha ao enviar e-mail de acesso -- link (não entregue): {link}")
             else:
                 # Gmail ainda não autorizado nesta máquina (uso local/dev)
                 # -- imprime o link no console pra dar pra testar sem
@@ -185,7 +291,7 @@ def login():
     return render_template("portal_login.html", mensagem=mensagem)
 
 
-@app.route("/entrar/<token>")
+@app.route("/portal/entrar/<token>")
 def entrar(token):
     cliente_id = validar_e_consumir_token(PORTAL_EMPRESA_ID, token)
     if not cliente_id:
@@ -205,10 +311,23 @@ def entrar(token):
     session["cliente_id"] = cliente_id
     session["cliente_nome"] = cliente["nome"]
     session["empresa_id"] = cliente["empresa_id"]
+    # Filiação é cruzada por CPF (mesmo cruzamento que o painel já faz na
+    # ficha do Cliente, bloco "NO CLUBE") -- decide o que aparece no menu
+    # (Habitualidade, Marketplace), NÃO decide login: um cliente que
+    # nunca foi filiado (ex.: só usou transferência de arma) continua
+    # entrando normal, só não vê essas duas abas.
+    con2 = conectar(cliente["empresa_id"])
+    cpf_cliente = con2.execute(
+        "SELECT cpf FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+        (cliente_id, cliente["empresa_id"]),
+    ).fetchone()
+    con2.close()
+    filiado = obter_filiado_por_cpf(cliente["empresa_id"], cpf_cliente["cpf"] if cpf_cliente else None)
+    session["e_filiado_ativo"] = bool(filiado and filiado.get("status_filiacao") == "Ativo")
     return redirect(url_for("dashboard"))
 
 
-@app.route("/sair")
+@app.route("/portal/sair")
 def sair():
     session.clear()
     return redirect(url_for("login"))
@@ -310,6 +429,33 @@ def _resumo_habitualidade(cpf: str) -> dict:
     }
 
 
+def _resumo_filiacao(cpf: str) -> dict:
+    """Situação de anuidade (o que o usuário chama de "validade da
+    filiação") pra tela Início -- mesmo padrão de _resumo_habitualidade:
+    consulta AO VIVO (`consultar_ficha_completa`), nunca o retrato
+    guardado em `dominio.filiado` (aquele existe pro panorama do clube
+    inteiro no painel, não pra afirmação a um cliente -- ver CLAUDE.md,
+    "Panorama de habitualidade").
+
+    tem_registro=False é "não é filiado" (cliente que só fez
+    transferência de arma, por exemplo); indisponivel=True é "não
+    consegui perguntar agora" -- os dois nunca podem virar a mesma
+    mensagem na tela, senão uma falha de rede vira "você não é filiado"
+    pra um sócio de verdade."""
+    try:
+        ficha = consultar_ficha_completa(cpf)
+    except ShootingHouseIndisponivel:
+        return {"tem_registro": False, "indisponivel": True}
+    if not ficha:
+        return {"tem_registro": False, "indisponivel": False}
+    return {
+        "tem_registro": True,
+        "indisponivel": False,
+        "anuidade_em_dia": ficha.get("anuidade_em_dia"),
+        "anuidade_validade": _data_br(ficha.get("anuidade_validade")),
+    }
+
+
 @app.route("/portal")
 @cliente_login_required
 def dashboard():
@@ -349,8 +495,10 @@ def dashboard():
     proximos_campeonatos = _proximos_campeonatos(empresa_id)
 
     habitualidade_resumo = None
+    filiacao_resumo = None
     if cliente and cliente["cpf"]:
         habitualidade_resumo = _resumo_habitualidade(cliente["cpf"])
+        filiacao_resumo = _resumo_filiacao(cliente["cpf"])
 
     return render_template(
         "portal_home.html",
@@ -363,6 +511,7 @@ def dashboard():
         total_processos_em_andamento=len(processos_em_andamento),
         proximo_campeonato=proximos_campeonatos[0] if proximos_campeonatos else None,
         habitualidade_resumo=habitualidade_resumo,
+        filiacao_resumo=filiacao_resumo,
     )
 
 
@@ -401,6 +550,7 @@ def processos():
 
 @app.route("/portal/habitualidade")
 @cliente_login_required
+@filiado_ativo_required
 def habitualidade():
     cliente_id = session["cliente_id"]
     empresa_id = empresa_atual()
@@ -414,6 +564,8 @@ def habitualidade():
     cpf = cliente["cpf"] if cliente else None
     cr = None
     eventos = []
+    participacoes_12m = None
+    ultima_participacao = None
     # Tela vazia por "não consegui consultar" tem que ser visivelmente
     # diferente de tela vazia por "você não tem registro nenhum" -- ver
     # _resumo_habitualidade. Sem este aviso, uma queda da API do Shooting
@@ -429,10 +581,28 @@ def habitualidade():
         except ShootingHouseIndisponivel:
             indisponivel = True
             hab = {}
-        for modalidade, dados in (hab.get("habitualidades") or {}).items():
+        # Mesmo formato de /api/filiados/<cpf>/ficha (webapp/app.py) --
+        # `grupo` é a chave de fora de habitualidades[grupo][id_arma], e
+        # cada evento já vem com `arma` (a arma_formatada mapeada por
+        # integracoes/shooting_house.py, série incluída no texto).
+        # Legítimo mostrar aqui: é o próprio dono vendo o próprio
+        # histórico, atrás de login, e isto nunca passa perto de prompt
+        # de IA -- mesma ressalva de motor_documentos.py::salvar_no_dossie
+        # sobre número de série.
+        for grupo, dados in (hab.get("habitualidades") or {}).items():
             for ev in dados.get("eventos", []):
-                eventos.append({**ev, "modalidade_grupo": modalidade})
+                eventos.append({**ev, "grupo": grupo})
         eventos.sort(key=lambda e: datetime.strptime(e["data_participacao"], "%d/%m/%Y"), reverse=True)
+        # Mesmo número que aparece na ficha de Filiado do painel (bloco
+        # "NO CLUBE") -- mesma função, `contar_participacoes`, pra não
+        # existirem duas contas de "quantas participações em 12 meses"
+        # que podem divergir. A diferença é que ali é um retrato
+        # sincronizado (pode estar desatualizado) e aqui sai da consulta
+        # AO VIVO que acabou de rodar acima -- por isso o número aqui
+        # pode não bater com o do painel num dado momento, e é o daqui
+        # que vale (CLAUDE.md: pergunta de cliente é sempre consulta ao
+        # vivo).
+        participacoes_12m, ultima_participacao = contar_participacoes(hab)
 
     return render_template(
         "portal_habitualidade.html",
@@ -440,6 +610,62 @@ def habitualidade():
         cliente_nome=session.get("cliente_nome"),
         cr=cr,
         eventos=eventos,
+        participacoes_12m=participacoes_12m,
+        ultima_participacao=_data_br(ultima_participacao),
+        tem_cpf=bool(cpf),
+        indisponivel=indisponivel,
+    )
+
+
+@app.route("/portal/acervo")
+@cliente_login_required
+def acervo():
+    """Armas do atirador -- consulta AO VIVO o Shooting House, mesmo
+    princípio de habitualidade()/dashboard() acima: nunca guarda cópia
+    própria (CLAUDE.md, "consultar, não copiar"). Número de série e
+    grupo são legítimos aqui -- é o dono da arma vendo o próprio acervo,
+    protegido por login, e esta tela não passa perto de prompt de IA
+    nenhum (mesma ressalva de core/motor_documentos.py::salvar_no_dossie
+    sobre o dossiê)."""
+    cliente_id = session["cliente_id"]
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
+    cliente = con.execute(
+        "SELECT cpf FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+        (cliente_id, empresa_id),
+    ).fetchone()
+    con.close()
+
+    cpf = cliente["cpf"] if cliente else None
+    armas = []
+    # Mesma distinção de sempre: "não consegui consultar" (indisponivel)
+    # nunca pode aparecer como "você não tem arma nenhuma" (lista vazia
+    # depois de consulta bem-sucedida) -- ver consultar_armas() e
+    # _resumo_habitualidade() acima.
+    indisponivel = False
+    if cpf:
+        try:
+            armas = consultar_armas(cpf)
+        except ShootingHouseIndisponivel:
+            indisponivel = True
+
+        # O endpoint de armas nem sempre traz série/sigma/grupo (visto
+        # em 2026-09-02) -- completa com o que a habitualidade já tem
+        # confirmado pra mesma arma. Falha na habitualidade aqui não
+        # derruba a tela: as armas continuam aparecendo com o que
+        # consultar_armas() já trouxe, só sem o complemento.
+        if armas:
+            try:
+                habitualidade = consultar_habitualidade(cpf)
+            except ShootingHouseIndisponivel:
+                habitualidade = {}
+            armas = [completar_arma_via_habitualidade(a, habitualidade) for a in armas]
+
+    return render_template(
+        "portal_acervo.html",
+        ativo="acervo",
+        cliente_nome=session.get("cliente_nome"),
+        armas=armas,
         tem_cpf=bool(cpf),
         indisponivel=indisponivel,
     )
@@ -854,6 +1080,234 @@ def download_documento(documento_id):
     # disposição. O painel administrativo usa o mesmo parâmetro.
     inline = request.args.get("inline") == "1"
     return send_file(caminho, as_attachment=not inline, download_name=nome_sugerido)
+
+
+# ---------------------------------------------------------------------
+# MARKETPLACE (2026-09-02) -- mural de classificados entre os filiados
+# ATIVOS do clube (ver core/motor_marketplace.py e
+# domain/clube_tiro/categorias_marketplace.py). Sem pagamento: contato
+# (telefone/e-mail) vai direto no anúncio, decisão do usuário.
+# ---------------------------------------------------------------------
+
+def _servico_transferencia_arma(empresa_id: str) -> Optional[str]:
+    """O nome EXATO do serviço de Transferência de Arma no catálogo desta
+    empresa, ou None se não existir -- usado pra decidir se mostra o
+    botão "Preciso de ajuda com a documentação". Comparação em Python
+    (não SQL) porque o `lower()` do SQLite não trata acento
+    corretamente, e "Transferência" tem um.
+
+    Só "transferência" no filtro, sem "de arma" -- conferido contra o
+    banco real (2026-09-02): o serviço se chama literalmente
+    "Transferência" no catálogo migrado da planilha, não "Transferência
+    de Arma". O nome mais descritivo só existe no fixture de teste
+    (tests/conftest.py), que é escrito à mão e não reflete o dado real."""
+    con = conectar(empresa_id)
+    try:
+        linhas = con.execute(
+            "SELECT nome_servico FROM servico WHERE empresa_id = ? AND ativo = 'Sim'",
+            (empresa_id,),
+        ).fetchall()
+    finally:
+        con.close()
+    for linha in linhas:
+        if "transferência" in (linha["nome_servico"] or "").strip().lower():
+            return linha["nome_servico"]
+    return None
+
+
+@app.route("/portal/marketplace")
+@cliente_login_required
+@filiado_ativo_required
+def marketplace():
+    empresa_id = empresa_atual()
+    categoria_filtro = (request.args.get("categoria") or "").strip()
+    anuncios = listar_anuncios(empresa_id, status=STATUS_APROVADO)
+    if categoria_filtro:
+        anuncios = [a for a in anuncios if a["categoria"] == categoria_filtro]
+    for a in anuncios:
+        a["criado_em_fmt"] = _data_br(a["criado_em"])
+        a["valor_fmt"] = _valor_br(a["valor"])
+        a["e_meu"] = a["cliente_id"] == session["cliente_id"]
+
+    return render_template(
+        "portal_marketplace.html",
+        ativo="marketplace",
+        cliente_nome=session.get("cliente_nome"),
+        anuncios=anuncios,
+        categorias=CATEGORIAS,
+        categoria_filtro=categoria_filtro,
+        categoria_arma=CATEGORIA_ARMA,
+        mostra_cta_documentacao=bool(_servico_transferencia_arma(empresa_id)),
+    )
+
+
+@app.route("/portal/marketplace/meus-anuncios")
+@cliente_login_required
+@filiado_ativo_required
+def meus_anuncios():
+    empresa_id = empresa_atual()
+    cliente_id = session["cliente_id"]
+    anuncios = listar_anuncios(empresa_id, cliente_id=cliente_id)
+    for a in anuncios:
+        a["criado_em_fmt"] = _data_br(a["criado_em"])
+        a["valor_fmt"] = _valor_br(a["valor"])
+
+    con = conectar(empresa_id)
+    cliente = con.execute(
+        "SELECT telefone, email FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+        (cliente_id, empresa_id),
+    ).fetchone()
+    con.close()
+
+    return render_template(
+        "portal_marketplace_meus_anuncios.html",
+        ativo="marketplace",
+        cliente_nome=session.get("cliente_nome"),
+        anuncios=anuncios,
+        categorias=CATEGORIAS,
+        telefone_padrao=cliente["telefone"] if cliente else None,
+        email_padrao=cliente["email"] if cliente else None,
+    )
+
+
+@app.route("/portal/marketplace/publicar", methods=["POST"])
+@cliente_login_required
+@filiado_ativo_required
+def marketplace_publicar():
+    empresa_id = empresa_atual()
+    cliente_id = session["cliente_id"]
+
+    fotos = []
+    for arquivo in request.files.getlist("fotos"):
+        if not arquivo or not arquivo.filename:
+            continue
+        extensao = Path(arquivo.filename).suffix.lower()
+        if extensao not in DOCUMENTO_EXTENSOES_ACEITAS:
+            flash(f"Arquivo ignorado (formato não aceito): {arquivo.filename}", "erro")
+            continue
+        conteudo = arquivo.read()
+        if len(conteudo) > DOCUMENTO_TAMANHO_MAXIMO:
+            flash(f"Arquivo ignorado (maior que 15MB): {arquivo.filename}", "erro")
+            continue
+        fotos.append((conteudo, arquivo.filename))
+
+    # Aceita formato brasileiro (ponto de milhar, vírgula decimal) --
+    # é como o placeholder do campo instrui a pessoa a digitar.
+    valor_bruto = (request.form.get("valor") or "").strip()
+    valor = None
+    if valor_bruto:
+        try:
+            valor = float(valor_bruto.replace(".", "").replace(",", "."))
+        except ValueError:
+            flash("Valor inválido -- use só números (ex.: 3500,00).", "erro")
+            return redirect(url_for("meus_anuncios"))
+
+    try:
+        criar_anuncio(
+            empresa_id, cliente_id,
+            categoria=request.form.get("categoria", ""),
+            titulo=request.form.get("titulo", ""),
+            descricao=request.form.get("descricao"),
+            valor=valor,
+            contato_telefone=request.form.get("contato_telefone"),
+            contato_email=request.form.get("contato_email"),
+            fotos=fotos or None,
+        )
+    except AnuncioInvalido as e:
+        flash(str(e), "erro")
+        return redirect(url_for("meus_anuncios"))
+
+    flash("Anúncio enviado. Ele aparece na vitrine assim que o despachante aprovar.", "sucesso")
+    return redirect(url_for("meus_anuncios"))
+
+
+def _meu_anuncio_ou_404(empresa_id: str, anuncio_id: str) -> dict:
+    """Confere posse antes de qualquer ação de dono (marcar vendido,
+    remover) -- mesmo cuidado de sempre no Portal: ID sequencial e fácil
+    de adivinhar, quem segura é a checagem de dono, não o acaso."""
+    anuncio = obter_anuncio(empresa_id, anuncio_id)
+    if not anuncio or anuncio["cliente_id"] != session["cliente_id"]:
+        return None
+    return anuncio
+
+
+@app.route("/portal/marketplace/<anuncio_id>/vendido", methods=["POST"])
+@cliente_login_required
+@filiado_ativo_required
+def marketplace_marcar_vendido(anuncio_id):
+    empresa_id = empresa_atual()
+    if not _meu_anuncio_ou_404(empresa_id, anuncio_id):
+        return jsonify(erro="Anúncio não encontrado."), 404
+    marcar_vendido(empresa_id, anuncio_id)
+    flash("Anúncio marcado como vendido.", "sucesso")
+    return redirect(url_for("meus_anuncios"))
+
+
+@app.route("/portal/marketplace/<anuncio_id>/remover", methods=["POST"])
+@cliente_login_required
+@filiado_ativo_required
+def marketplace_remover(anuncio_id):
+    empresa_id = empresa_atual()
+    if not _meu_anuncio_ou_404(empresa_id, anuncio_id):
+        return jsonify(erro="Anúncio não encontrado."), 404
+    remover_anuncio(empresa_id, anuncio_id)
+    flash("Anúncio removido.", "sucesso")
+    return redirect(url_for("meus_anuncios"))
+
+
+@app.route("/portal/marketplace/<anuncio_id>/foto/<int:indice>")
+@cliente_login_required
+@filiado_ativo_required
+def marketplace_foto(anuncio_id, indice):
+    empresa_id = empresa_atual()
+    anuncio = obter_anuncio(empresa_id, anuncio_id)
+    # Foto de anúncio Aprovado é visível pra qualquer filiado (é vitrine
+    # pública, não documento pessoal); anúncio ainda Pendente/Recusado só
+    # o próprio dono pode pré-visualizar.
+    if not anuncio:
+        return jsonify(erro="Anúncio não encontrado."), 404
+    dono = anuncio["cliente_id"] == session["cliente_id"]
+    if anuncio["status"] != STATUS_APROVADO and not dono:
+        return jsonify(erro="Anúncio não encontrado."), 404
+    if indice < 0 or indice >= len(anuncio["fotos"]):
+        return jsonify(erro="Foto não encontrada."), 404
+    caminho = Path(anuncio["fotos"][indice])
+    if not caminho.is_file():
+        return jsonify(erro="Arquivo não encontrado no disco."), 404
+    return send_file(caminho)
+
+
+@app.route("/portal/marketplace/<anuncio_id>/documentacao", methods=["POST"])
+@cliente_login_required
+@filiado_ativo_required
+def marketplace_documentacao(anuncio_id):
+    """Botão "Preciso de ajuda com a documentação" -- abre um Caso de
+    verdade pro despachante, pelo mesmo caminho que "abrir caso à mão"
+    usa no painel (core/motor_casos.criar_caso). Pedido do usuário
+    (2026-09-02): o marketplace precisa puxar quem anuncia/compra arma
+    pra tratar da Transferência com o despachante, não só conectar
+    vendedor e comprador."""
+    empresa_id = empresa_atual()
+    anuncio = obter_anuncio(empresa_id, anuncio_id)
+    if not anuncio:
+        flash("Anúncio não encontrado.", "erro")
+        return redirect(url_for("marketplace"))
+
+    nome_servico = _servico_transferencia_arma(empresa_id)
+    if not nome_servico:
+        flash("Este serviço não está disponível nesta empresa.", "erro")
+        return redirect(url_for("marketplace"))
+
+    criar_caso(
+        empresa_id, session["cliente_id"],
+        titulo=f"Transferência de arma -- via Marketplace ({anuncio['titulo']})",
+        categoria=nome_servico,
+        origem="Portal", canal_origem="Portal",
+        criado_por=session.get("cliente_nome") or "Portal",
+        descricao=f"Aberto a partir do Marketplace, anúncio {anuncio_id}: \"{anuncio['titulo']}\".",
+    )
+    flash("Prontinho -- o despachante vai entrar em contato pra tratar a documentação.", "sucesso")
+    return redirect(url_for("marketplace"))
 
 
 if __name__ == "__main__":

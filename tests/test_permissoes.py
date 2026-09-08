@@ -96,7 +96,7 @@ def test_gestor_le_e_atualiza_permissoes_pela_rota(painel):
     assert {p["funcao"] for p in listagem} == {
         "atendimentos", "casos", "tarefas", "clientes", "aprovacoes_pendentes",
         "documentos_aprovar", "campeonatos", "resultados", "habitualidade",
-        "testar_pipeline", "status_projeto",
+        "marketplace", "testar_pipeline", "status_projeto",
     }
     assert all(p["ativo"] == "Sim" for p in listagem)
 

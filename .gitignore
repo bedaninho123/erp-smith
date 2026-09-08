@@ -16,5 +16,6 @@ core/db/backup.log
 integracoes/whatsapp_simulado.log
 atendimento/ultimo_alerta.json
 atendimento/documentos_recebidos/
+atendimento/marketplace_fotos/
 atendimento/poller.lock
 .pytest_cache/

@@ -13,8 +13,17 @@ não é uma chave simples):
      o token antigo não tem a permissão nova.
 
 Nenhum dos dois arquivos é commitado (estão no .gitignore).
+
+Sobrescrevível por ERP_GMAIL_TOKEN_PATH -- mesmo padrão (e mesmo motivo)
+de ERP_CORE_DB em core/conexao.py. Na hospedagem, o diretório do
+projeto é reconstruído do zero a cada deploy (efêmero); token.json
+precisa morar no volume persistente, senão o Portal perderia o login
+por link mágico -- e o painel, o envio de e-mail de notificação -- no
+primeiro redeploy. `_obter_credenciais()` também REESCREVE este arquivo
+ao renovar o token, então o caminho precisa ser gravável, não só legível.
 """
 import base64
+import os
 from email.mime.text import MIMEText
 from pathlib import Path
 
@@ -26,7 +35,10 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.modify",
 ]
-TOKEN_PATH = Path(__file__).resolve().parent.parent / "token.json"
+TOKEN_PATH = Path(
+    os.environ.get("ERP_GMAIL_TOKEN_PATH")
+    or (Path(__file__).resolve().parent.parent / "token.json")
+)
 
 # Processos do domínio (CR, CRAF, Aquisição, Transferência, Guia) pedem
 # documento em foto ou PDF -- essas são as extensões que tratamos como

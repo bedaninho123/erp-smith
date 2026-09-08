@@ -27,9 +27,17 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-CORE_DB = BASE_DIR / "core" / "db" / "erp_smith.db"
-DOMAIN_DB = BASE_DIR / "domain" / "clube_tiro" / "db" / "dominio_clube_tiro.db"
-DOCUMENTOS_DIR = BASE_DIR / "atendimento" / "documentos_recebidos"
+# Sobrescrevíveis por ERP_CORE_DB/ERP_DOMAIN_DB/ERP_DOCUMENTOS_DIR --
+# mesmo padrão (e mesmo motivo) de core/conexao.py e
+# core/motor_documentos.py. Sem isto, este script só sabia backupear o
+# banco local -- na hospedagem (Railway), o banco de verdade mora em
+# /data/..., e o script "funcionaria" sem erro nenhum enquanto faz
+# backup de um arquivo que não existe (CORE_DB.exists() vira False e o
+# passo simplesmente não roda -- falha silenciosa, exatamente o que este
+# módulo existe pra evitar).
+CORE_DB = Path(os.environ.get("ERP_CORE_DB") or (BASE_DIR / "core" / "db" / "erp_smith.db"))
+DOMAIN_DB = Path(os.environ.get("ERP_DOMAIN_DB") or (BASE_DIR / "domain" / "clube_tiro" / "db" / "dominio_clube_tiro.db"))
+DOCUMENTOS_DIR = Path(os.environ.get("ERP_DOCUMENTOS_DIR") or (BASE_DIR / "atendimento" / "documentos_recebidos"))
 
 # Caminho explícito, não load_dotenv() sem argumento: sem isto o módulo
 # lia só o ambiente do processo, e BACKUP_DIR no .env -- que o docstring
@@ -90,6 +98,11 @@ def _copiar_banco(origem: Path, destino: Path) -> None:
     origem_con = sqlite3.connect(str(origem))
     destino_con = sqlite3.connect(str(destino))
     try:
+        # busy_timeout aqui também (mesmo motivo de core/conexao.py):
+        # backup roda com o banco em uso por outro processo (o próprio
+        # painel), e sem isto uma escrita em andamento no instante exato
+        # da cópia vira "database is locked" em vez de só esperar.
+        origem_con.execute("PRAGMA busy_timeout = 5000")
         origem_con.backup(destino_con)
     finally:
         origem_con.close()
@@ -102,7 +115,16 @@ def _rotacionar() -> None:
         shutil.rmtree(antiga, ignore_errors=True)
 
 
-def main() -> None:
+def main(incluir_documentos: bool = True) -> None:
+    """`incluir_documentos=False` existe pro backup automático dentro do
+    Railway (ver webapp/servir.py): ali BACKUP_DIR aponta pra uma
+    subpasta do MESMO volume onde o banco já mora (não tem HD externo
+    nem Google Drive lá) -- duplicar documentos_recebidos/ e
+    marketplace_fotos/ inteiros a cada rodada, com retenção de vários
+    dias, encheria o volume rápido. O `.db` sozinho é pequeno; documento
+    de cliente pode não ser. Backup local (Tarefa Agendada do Windows)
+    continua incluindo tudo, como sempre -- lá o destino é justamente
+    pensado pra ser grande e externo."""
     _validar_destino()
 
     agora = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -115,7 +137,7 @@ def main() -> None:
     if DOMAIN_DB.exists():
         _copiar_banco(DOMAIN_DB, destino / "dominio_clube_tiro.db")
         _registrar("  + domain/clube_tiro/db/dominio_clube_tiro.db")
-    if DOCUMENTOS_DIR.exists():
+    if incluir_documentos and DOCUMENTOS_DIR.exists():
         shutil.copytree(DOCUMENTOS_DIR, destino / "documentos_recebidos")
         _registrar("  + atendimento/documentos_recebidos/")
 

@@ -562,19 +562,22 @@
             </a>
           </li>
           {% endif %}
-          {% if usuario_papel == 'Gestor' or 'campeonatos' in funcoes_ativas or 'resultados' in funcoes_ativas %}
-          <li class="nav-item">
-            <a href="#" class="nav-link" data-view="modalidades" aria-label="Modalidades">
-              <i class="nav-icon fas fa-crosshairs" aria-hidden="true"></i>
-              <p>Modalidades</p>
-            </a>
-          </li>
-          {% endif %}
           {% if usuario_papel == 'Gestor' or 'resultados' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="resultados" aria-label="Resultados">
               <i class="nav-icon fas fa-list-ol" aria-hidden="true"></i>
               <p>Resultados</p>
+            </a>
+          </li>
+          {% endif %}
+          {% if usuario_papel == 'Gestor' or 'marketplace' in funcoes_ativas %}
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-view="marketplace" aria-label="Marketplace">
+              <i class="nav-icon fas fa-store" aria-hidden="true"></i>
+              <p>
+                Marketplace
+                <span class="right badge badge-warning" id="badge-marketplace" style="display:none"></span>
+              </p>
             </a>
           </li>
           {% endif %}
@@ -1433,7 +1436,8 @@
                 <thead><tr>
                   <th>Filiado</th><th>CPF</th><th>Matrícula</th>
                   <th class="text-right">Participações (12 meses)</th>
-                  <th>Última participação</th><th>Retrato de</th>
+                  <th>Última participação</th><th>Validade da filiação</th>
+                  <th>Retrato de</th>
                 </tr></thead>
                 <tbody id="habitualidade-body"></tbody>
               </table>
@@ -1556,16 +1560,22 @@
               <h5>Adicionar documento ao dossiê</h5>
               <p class="text-muted">Documento permanente da pessoa — CR, CRAF, comprovante de residência, laudos. Não pertence a um caso: fica no cadastro dela e o próprio cliente enxerga no Portal. PDF ou foto, até 15MB.</p>
               <div class="row">
-                <div class="col-md-5">
+                <div class="col-md-4">
                   <label for="dossie-tipo">Tipo de documento</label>
                   <input id="dossie-tipo" type="text" class="form-control" list="dossie-tipos-opcoes"
                          placeholder="Ex.: CR — Certificado de Registro">
                   <datalist id="dossie-tipos-opcoes"></datalist>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                   <label for="dossie-referencia">De qual arma (quando for o caso)</label>
                   <input id="dossie-referencia" type="text" class="form-control"
                          placeholder="Ex.: Pistola .380 — TH380">
+                </div>
+                <div class="col-md-2">
+                  <label for="dossie-finalidade">Acervo</label>
+                  <select id="dossie-finalidade" class="form-control">
+                    <option value="">não informado</option>
+                  </select>
                 </div>
                 <div class="col-md-3">
                   <label for="dossie-validade">Vale até</label>
@@ -1601,28 +1611,6 @@
             </div>
             <div class="card-body" id="cliente-documentos"></div>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="view-modalidades" class="view">
-      <div class="content-header">
-        <div class="container-fluid">
-          <h1 class="m-0">Modalidades</h1>
-          <p class="text-muted mb-0" id="modalidades-nota">Carregando…</p>
-        </div>
-      </div>
-      <div class="content">
-        <div class="container-fluid">
-          <div class="card">
-            <div class="card-body">
-              <label for="busca-modalidade">Buscar modalidade ou grupo</label>
-              <input id="busca-modalidade" type="text" class="form-control"
-                     placeholder="Ex.: saque rápido, IPSC, carabina">
-              <small class="text-muted d-block mt-2" id="modalidades-contagem"></small>
-            </div>
-          </div>
-          <div id="modalidades-lista"></div>
         </div>
       </div>
     </div>
@@ -1950,6 +1938,71 @@
       </div>
     </div>
 
+    <div id="view-marketplace" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <h1 class="m-0">Marketplace</h1>
+          <p class="text-muted mb-0">Anúncios que os filiados publicaram no Portal — arma, equipamento, luneta e acessório. Todo anúncio nasce Pendente e só fica visível na vitrine depois de aprovado aqui. Recusar exige um motivo, que o filiado vê no Portal dele.</p>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
+          <div class="mb-3">
+            <select class="form-control" id="marketplace-filtro-status" style="max-width:260px; display:inline-block">
+              <option value="Pendente">Pendente</option>
+              <option value="Aprovado">Aprovado</option>
+              <option value="Recusado">Recusado</option>
+              <option value="Vendido">Vendido</option>
+              <option value="Removido">Removido</option>
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div class="card" id="marketplace-editar-card" style="display:none">
+            <div class="card-header"><h3 class="card-title">Editar anúncio (<span id="marketplace-editar-id"></span>)</h3></div>
+            <div class="card-body">
+              <input type="hidden" id="marketplace-editar-anuncio-id">
+              <div class="row">
+                <div class="col-md-3">
+                  <label for="marketplace-editar-categoria">Categoria</label>
+                  <select id="marketplace-editar-categoria" class="form-control">
+                    {% for c in categorias_marketplace %}
+                    <option value="{{ c }}">{{ c }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label for="marketplace-editar-titulo">Título</label>
+                  <input id="marketplace-editar-titulo" type="text" class="form-control">
+                </div>
+                <div class="col-md-3">
+                  <label for="marketplace-editar-valor">Valor (em branco = a combinar)</label>
+                  <input id="marketplace-editar-valor" type="text" class="form-control" placeholder="Ex.: 3500,00">
+                </div>
+              </div>
+              <div class="form-group mt-3">
+                <label for="marketplace-editar-descricao">Descrição</label>
+                <textarea id="marketplace-editar-descricao" class="form-control"></textarea>
+              </div>
+              <div class="row">
+                <div class="col-md-6">
+                  <label for="marketplace-editar-telefone">Telefone de contato</label>
+                  <input id="marketplace-editar-telefone" type="text" class="form-control">
+                </div>
+                <div class="col-md-6">
+                  <label for="marketplace-editar-email">E-mail de contato</label>
+                  <input id="marketplace-editar-email" type="text" class="form-control">
+                </div>
+              </div>
+              <button class="btn btn-primary mt-3" id="salvar-edicao-anuncio">Salvar alterações</button>
+              <button class="btn btn-outline-secondary mt-3 ml-2" id="cancelar-edicao-anuncio">Cancelar</button>
+              <span class="text-muted ml-2" id="salvar-edicao-anuncio-status"></span>
+            </div>
+          </div>
+          <div id="lista-marketplace"><p class="text-muted">Carregando…</p></div>
+        </div>
+      </div>
+    </div>
+
     <div id="view-config" class="view">
       <div class="content-header">
         <div class="container-fluid">
@@ -2154,6 +2207,7 @@ function carregarView(viewName) {
   if (viewName === "dashboard") carregarDashboard();
   if (viewName === "pendentes") carregarPendentes();
   if (viewName === "documentos") carregarDocumentosPendentes();
+  if (viewName === "marketplace") carregarMarketplace();
   if (viewName === "clientes") carregarClientesLista();
   if (viewName === "config") { carregarConfiguracoes(); carregarUsuarios(); }
   if (viewName === "campeonatos") carregarCampeonatos();
@@ -2163,7 +2217,6 @@ function carregarView(viewName) {
     // Carregadas uma vez só: o catálogo não muda no meio da sessão.
     if (!modalidadesCarregadas) carregarModalidades();
   }
-  if (viewName === "modalidades") carregarModalidades();
   if (viewName === "habitualidade") carregarHabitualidade();
   // As opções do formulário são carregadas ao ENTRAR na tela de abrir
   // caso, não ao abrir a lista: quem só veio consultar não paga por uma
@@ -3855,7 +3908,13 @@ async function removerCampeonato(campeonatoId, nome) {
 // a pior espécie de armadilha. Ficou só a de baixo.)
 
 // ====================================================================
-// MODALIDADES -- catálogo do clube, espelhado do Shooting House
+// MODALIDADES -- catálogo do clube, espelhado do Shooting House.
+//
+// Não tem tela própria (removida a pedido do usuário em 2026-09-03,
+// "não é necessário no painel ter essas informações") -- mas a rota
+// /api/modalidades continua existindo só pra alimentar a sugestão
+// (<datalist>) do campo "Modalidade/categoria" no formulário de
+// Resultados, então esta função fica, só sem UI de busca/listagem.
 //
 // Único endpoint de campeonato que responde com dado para a credencial
 // do clube: `/championship/stage` devolve vazio, então etapa e resultado
@@ -3864,57 +3923,15 @@ async function removerCampeonato(campeonatoId, nome) {
 let modalidadesCarregadas = false;
 
 async function carregarModalidades() {
-  const busca = $("#busca-modalidade").value.trim();
-  const params = new URLSearchParams();
-  if (busca) params.set("busca", busca);
-
-  const resposta = await buscarJson("/api/modalidades?" + params.toString());
-  if (!resposta.ok) {
-    if (resposta.dados && resposta.dados.erro) return;
-    $("#modalidades-lista").innerHTML = AVISO_FALHA_DE_REDE;
-    return;
-  }
+  const resposta = await buscarJson("/api/modalidades");
+  if (!resposta.ok) return;
   const d = resposta.dados;
 
-  $("#modalidades-nota").textContent = d.sincronizado_em
-    ? `${d.total} modalidades espelhadas do Shooting House em ${dataHoraBr(d.sincronizado_em)}.`
-    : "Catálogo ainda não sincronizado.";
-  $("#modalidades-contagem").textContent = busca
-    ? `${d.mostrando} de ${d.total} modalidades com "${busca}".`
-    : `${d.total} modalidades em ${d.grupos.length} grupos.`;
-
-  $("#modalidades-lista").innerHTML = d.grupos.length
-    ? d.grupos.map(g => `
-      <div class="card">
-        <div class="card-header d-flex align-items-center" style="gap: var(--e3)">
-          <h3 class="card-title">${escapeHtml(g.grupo)}</h3>
-          <span class="text-muted ml-auto" style="font-size:12px">${g.modalidades.length}</span>
-        </div>
-        <div class="card-body d-flex flex-wrap" style="gap: var(--e2)">
-          ${g.modalidades.map(m => `<span class="badge badge-light" style="font-size:12px; font-weight:400; text-transform:none; letter-spacing:0; padding:4px 10px">${escapeHtml(m.nome)}</span>`).join("")}
-        </div>
-      </div>`).join("")
-    : `<div class="card"><div class="card-body text-muted">
-        ${busca
-          ? "Nenhuma modalidade com esse texto."
-          : `Catálogo vazio. Rode <span class="mono">domain.clube_tiro.sincronizar_modalidades</span> para espelhar do Shooting House.`}
-      </div></div>`;
-
-  // A mesma resposta alimenta as sugestões do formulário de Resultados,
-  // sem uma segunda chamada: o catálogo é um só.
-  if (!busca) {
-    const nomes = [...new Set(d.grupos.flatMap(g => g.modalidades.map(m => m.nome)))].sort();
-    const lista = $("#modalidades-opcoes");
-    if (lista) lista.innerHTML = nomes.map(n => `<option value="${escapeHtml(n)}">`).join("");
-    modalidadesCarregadas = true;
-  }
+  const nomes = [...new Set(d.grupos.flatMap(g => g.modalidades.map(m => m.nome)))].sort();
+  const lista = $("#modalidades-opcoes");
+  if (lista) lista.innerHTML = nomes.map(n => `<option value="${escapeHtml(n)}">`).join("");
+  modalidadesCarregadas = true;
 }
-
-let debounceModalidade;
-$("#busca-modalidade").addEventListener("input", () => {
-  clearTimeout(debounceModalidade);
-  debounceModalidade = setTimeout(carregarModalidades, 300);
-});
 
 async function carregarCampeonatos() {
   const anoSelect = $("#campeonato-filtro-ano");
@@ -4203,9 +4220,17 @@ async function carregarHabitualidade() {
       <td class="text-monospace">${escapeHtml(f.matricula || '—')}</td>
       <td class="text-right">${participacoes}</td>
       <td class="text-monospace">${f.ultima_participacao ? dataBr(f.ultima_participacao) : '—'}</td>
+      <td class="text-monospace">
+        ${f.anuidade_validade ? dataBr(f.anuidade_validade) : '<span class="text-muted">—</span>'}
+        ${f.anuidade_em_dia === "Sim"
+          ? ' <span class="badge badge-success">em dia</span>'
+          : f.anuidade_em_dia === "Não"
+            ? ' <span class="badge badge-danger">em atraso</span>'
+            : ""}
+      </td>
       <td class="text-monospace text-muted">${f.sincronizado_em ? dataHoraBr(f.sincronizado_em) : '—'}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="6" class="text-muted">${
+  }).join("") : `<tr><td colspan="7" class="text-muted">${
     // Duas situações bem diferentes, e mandar rodar a sincronização
     // quando o problema é o filtro só confundiria.
     filtrando
@@ -4292,6 +4317,14 @@ async function abrirFiliado(cpf) {
             <dt>CPF</dt><dd class="mono">${cpfFormatado(f.cpf)}</dd>
             <dt>Situação</dt><dd>${escapeHtml(f.status_filiacao || "—")}</dd>
             <dt>Filiado desde</dt><dd class="mono">${f.filiado_desde ? dataBr(f.filiado_desde) : "—"}</dd>
+            <dt>Validade da filiação</dt><dd class="mono">
+              ${f.anuidade_validade ? dataBr(f.anuidade_validade) : "—"}
+              ${f.anuidade_em_dia === "Sim"
+                ? ' <span class="badge badge-success">em dia</span>'
+                : f.anuidade_em_dia === "Não"
+                  ? ' <span class="badge badge-danger">em atraso</span>'
+                  : ""}
+            </dd>
             <dt>Nascimento</dt><dd class="mono">${f.nascimento ? dataBr(f.nascimento) : "—"}</dd>
             <dt>E-mail</dt><dd>${escapeHtml(f.email || "—")}</dd>
             <dt>Telefone</dt><dd>${escapeHtml(f.telefone || "—")}</dd>
@@ -4828,6 +4861,14 @@ function blocoFiliado(f) {
     <dl class="ficha">
       <dt>Matrícula</dt><dd class="mono">${escapeHtml(f.matricula || '—')}</dd>
       <dt>Situação</dt><dd>${escapeHtml(f.status_filiacao || '—')}</dd>
+      <dt>Validade da filiação</dt><dd class="mono">
+        ${f.anuidade_validade ? dataBr(f.anuidade_validade) : '—'}
+        ${f.anuidade_em_dia === "Sim"
+          ? ' <span class="badge badge-success">em dia</span>'
+          : f.anuidade_em_dia === "Não"
+            ? ' <span class="badge badge-danger">em atraso</span>'
+            : ""}
+      </dd>
       <dt>Participações (12 meses)</dt><dd>${participacoes}</dd>
       <dt>Última participação</dt><dd class="mono">${f.ultima_participacao ? dataBr(f.ultima_participacao) : '—'}</dd>
       <dt>Retrato de</dt><dd class="mono">${f.sincronizado_em ? dataHoraBr(f.sincronizado_em) : '—'}</dd>
@@ -4872,6 +4913,8 @@ async function carregarDossie(clienteId) {
 
   $("#dossie-tipos-opcoes").innerHTML = d.catalogo
     .flatMap(g => g.documentos.map(doc => `<option value="${escapeHtml(doc.nome)}">`)).join("");
+  $("#dossie-finalidade").innerHTML = `<option value="">não informado</option>`
+    + d.finalidades_arma.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
 
   const vencidos = d.documentos.filter(x => x.situacao_validade === "vencido").length;
   const vencendo = d.documentos.filter(x => x.situacao_validade === "vencendo").length;
@@ -4888,6 +4931,7 @@ async function carregarDossie(clienteId) {
           <tr>
             <td>
               <b>${escapeHtml(doc.tipo_documento)}</b>
+              ${doc.finalidade ? `<span class="badge badge-light ml-1">${escapeHtml(doc.finalidade)}</span>` : ""}
               ${doc.observacoes ? `<br><small class="text-muted">${escapeHtml(doc.observacoes)}</small>` : ""}
               <br><button type="button" class="btn btn-link p-0 btn-ver-documento"
                     data-documento="${escapeHtml(doc.documento_id)}"
@@ -4949,6 +4993,7 @@ async function salvarDossie() {
   dados.append("arquivo", arquivo);
   dados.append("tipo_documento", tipo);
   dados.append("referencia", $("#dossie-referencia").value.trim());
+  dados.append("finalidade", $("#dossie-finalidade").value);
   dados.append("data_validade", $("#dossie-validade").value);
 
   botao.disabled = true;
@@ -4964,6 +5009,7 @@ async function salvarDossie() {
     $("#dossie-arquivo").value = "";
     $("#dossie-tipo").value = "";
     $("#dossie-referencia").value = "";
+    $("#dossie-finalidade").value = "";
     $("#dossie-validade").value = "";
     await carregarDossie(clienteId);
     $("#salvar-dossie-status").textContent = "Guardado.";
@@ -5721,6 +5767,174 @@ async function recusarDocumento(dck, motivo, aoTerminar) {
   await aoTerminar();
 }
 
+// ---------------------------------------------------------------------
+// MARKETPLACE (2026-09-02) -- moderação dos anúncios publicados pelos
+// filiados no Portal. Mesmo padrão de carregarDocumentosPendentes()
+// acima: fila com Aprovar/Recusar(+motivo)/Remover.
+// ---------------------------------------------------------------------
+
+const SELO_STATUS_MARKETPLACE = {
+  Pendente: "badge-warning", Aprovado: "badge-success",
+  Recusado: "badge-danger", Vendido: "badge-secondary", Removido: "badge-light",
+};
+
+async function carregarMarketplace() {
+  const status = $("#marketplace-filtro-status").value;
+  const url = status ? `/api/marketplace?status=${encodeURIComponent(status)}` : "/api/marketplace";
+  const r = await fetch(url);
+  const el = $("#lista-marketplace");
+  const badge = $("#badge-marketplace");
+  const anuncios = r.ok ? await r.json() : [];
+
+  // O selo do menu conta só Pendente, independente do filtro selecionado
+  // na tela -- é o número que decide se alguém precisa vir aqui.
+  const rPendentes = await fetch("/api/marketplace?status=Pendente");
+  const pendentes = rPendentes.ok ? await rPendentes.json() : [];
+  if (pendentes.length) {
+    badge.style.display = "inline-block";
+    badge.textContent = pendentes.length;
+  } else {
+    badge.style.display = "none";
+  }
+
+  if (anuncios.length === 0) {
+    el.innerHTML = `<p class="text-muted">Nenhum anúncio${status ? " com esse status" : ""}.</p>`;
+    return;
+  }
+
+  el.innerHTML = anuncios.map(a => `
+    <div class="card" data-anuncio='${JSON.stringify(a).replace(/'/g, "&#39;")}'>
+      <div class="card-header">
+        <h3 class="card-title">
+          ${escapeHtml(a.titulo)}
+          <span class="badge ${SELO_STATUS_MARKETPLACE[a.status] || "badge-light"}">${escapeHtml(a.status)}</span>
+        </h3>
+      </div>
+      <div class="card-body">
+        <p class="mb-1"><b>Categoria:</b> ${escapeHtml(a.categoria)} &middot; <b>Valor:</b> ${a.valor != null ? "R$ " + a.valor.toFixed(2).replace(".", ",") : "a combinar"}</p>
+        <p class="mb-1"><b>Anunciante:</b> <a href="#" onclick="abrirCliente('${escapeHtml(a.cliente_id)}'); return false;">${escapeHtml(a.cliente_id)}</a></p>
+        ${a.descricao ? `<p class="mb-1 text-muted">${escapeHtml(a.descricao)}</p>` : ""}
+        <p class="mb-1"><b>Contato:</b> ${escapeHtml(a.contato_telefone || "")} ${a.contato_telefone && a.contato_email ? "&middot;" : ""} ${escapeHtml(a.contato_email || "")}</p>
+        <p class="mb-1"><b>Publicado em:</b> <span class="mono">${dataHoraBr(a.criado_em)}</span></p>
+        ${a.motivo_recusa ? `<p class="mb-1 text-danger"><b>Motivo da recusa:</b> ${escapeHtml(a.motivo_recusa)}</p>` : ""}
+        ${(a.fotos || []).length ? `<div class="d-flex flex-wrap" style="gap:0.6rem">${a.fotos.map((_, i) =>
+          `<img src="/api/marketplace/${escapeHtml(a.anuncio_id)}/foto/${i}" style="height:90px; border-radius:4px" alt="Foto do anúncio">`
+        ).join("")}</div>` : ""}
+        ${a.status === "Pendente" ? `
+        <div class="mt-3 d-flex align-items-center flex-wrap" style="gap:0.6rem">
+          <button class="btn btn-success btn-aprovar-anuncio" data-id="${escapeHtml(a.anuncio_id)}">Aprovar</button>
+          <input type="text" class="form-control motivo-recusa-anuncio" data-id="${escapeHtml(a.anuncio_id)}"
+            placeholder="Motivo da recusa (o filiado vê este texto)" style="max-width:420px">
+          <button class="btn btn-outline-danger btn-recusar-anuncio" data-id="${escapeHtml(a.anuncio_id)}">Recusar</button>
+        </div>` : ""}
+        <div class="mt-3 d-flex align-items-center flex-wrap" style="gap:0.6rem">
+          <button class="btn btn-outline-secondary btn-editar-anuncio" data-id="${escapeHtml(a.anuncio_id)}">Editar</button>
+          <button class="btn btn-outline-danger btn-remover-anuncio" data-id="${escapeHtml(a.anuncio_id)}">Remover</button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  el.querySelectorAll(".btn-aprovar-anuncio").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const r2 = await fetch(`/api/marketplace/${btn.dataset.id}/aprovar`, { method: "POST" });
+      const d2 = await r2.json();
+      if (!r2.ok) { alert("Erro ao aprovar: " + d2.erro); return; }
+      await carregarMarketplace();
+    });
+  });
+  el.querySelectorAll(".btn-recusar-anuncio").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const campo = el.querySelector(`.motivo-recusa-anuncio[data-id="${btn.dataset.id}"]`);
+      if (!campo.value.trim()) {
+        alert("Escreva o motivo da recusa — o filiado vê esse texto.");
+        return;
+      }
+      const r2 = await fetch(`/api/marketplace/${btn.dataset.id}/recusar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: campo.value }),
+      });
+      const d2 = await r2.json();
+      if (!r2.ok) { alert("Erro ao recusar: " + d2.erro); return; }
+      await carregarMarketplace();
+    });
+  });
+  el.querySelectorAll(".btn-remover-anuncio").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Remover este anúncio? Ele some da vitrine.")) return;
+      const r2 = await fetch(`/api/marketplace/${btn.dataset.id}/remover`, { method: "POST" });
+      const d2 = await r2.json();
+      if (!r2.ok) { alert("Erro ao remover: " + d2.erro); return; }
+      await carregarMarketplace();
+    });
+  });
+  el.querySelectorAll(".btn-editar-anuncio").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const a = JSON.parse(btn.closest(".card").dataset.anuncio);
+      editarAnuncio(a);
+    });
+  });
+}
+
+function editarAnuncio(a) {
+  $("#marketplace-editar-anuncio-id").value = a.anuncio_id;
+  $("#marketplace-editar-id").textContent = a.anuncio_id;
+  $("#marketplace-editar-categoria").value = a.categoria;
+  $("#marketplace-editar-titulo").value = a.titulo;
+  $("#marketplace-editar-descricao").value = a.descricao || "";
+  $("#marketplace-editar-valor").value = a.valor != null ? String(a.valor).replace(".", ",") : "";
+  $("#marketplace-editar-telefone").value = a.contato_telefone || "";
+  $("#marketplace-editar-email").value = a.contato_email || "";
+  $("#marketplace-editar-card").style.display = "block";
+  $("#marketplace-editar-card").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function fecharEdicaoAnuncio() {
+  $("#marketplace-editar-card").style.display = "none";
+  $("#salvar-edicao-anuncio-status").textContent = "";
+}
+
+async function salvarEdicaoAnuncio() {
+  const anuncioId = $("#marketplace-editar-anuncio-id").value;
+  const valorBruto = $("#marketplace-editar-valor").value.trim();
+  const statusEl = $("#salvar-edicao-anuncio-status");
+
+  let valor = null;
+  if (valorBruto) {
+    // Mesma aceitação de formato brasileiro do Portal (ponto de milhar,
+    // vírgula decimal).
+    valor = parseFloat(valorBruto.replace(/\./g, "").replace(",", "."));
+    if (Number.isNaN(valor)) {
+      statusEl.textContent = "Valor inválido.";
+      return;
+    }
+  }
+
+  statusEl.textContent = "Salvando…";
+  const r = await fetch(`/api/marketplace/${anuncioId}/editar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      categoria: $("#marketplace-editar-categoria").value,
+      titulo: $("#marketplace-editar-titulo").value.trim(),
+      descricao: $("#marketplace-editar-descricao").value.trim(),
+      valor,
+      contato_telefone: $("#marketplace-editar-telefone").value.trim(),
+      contato_email: $("#marketplace-editar-email").value.trim(),
+    }),
+  });
+  const d = await r.json();
+  if (!r.ok) { statusEl.textContent = ""; alert("Erro ao salvar: " + d.erro); return; }
+
+  fecharEdicaoAnuncio();
+  await carregarMarketplace();
+}
+
+$("#salvar-edicao-anuncio").addEventListener("click", salvarEdicaoAnuncio);
+$("#cancelar-edicao-anuncio").addEventListener("click", fecharEdicaoAnuncio);
+$("#marketplace-filtro-status").addEventListener("change", carregarMarketplace);
+
 async function carregarPendentes() {
   const r = await fetch("/api/pendentes");
   const el = $("#lista-pendentes");
@@ -6290,6 +6504,7 @@ if (podeVer("status_projeto")) carregarStatus();
 if (podeVer("clientes")) carregarClientes();
 if (podeVer("aprovacoes_pendentes")) carregarPendentes();
 if (podeVer("documentos_aprovar")) carregarDocumentosPendentes();
+if (podeVer("marketplace")) carregarMarketplace();
 if (podeVer("casos")) { carregarCasos(); carregarOpcoesNovoCaso(); }
 if (podeVer("atendimentos")) carregarConversas();
 // Carrega já na abertura pelo badge de atrasadas no menu -- é o número

@@ -56,10 +56,31 @@
         <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="3.2"/><path d="M4 16.5c0-3 2.7-4.8 6-4.8s6 1.8 6 4.8"/></svg>
         Minha conta
       </a>
+      {# Habitualidade e Marketplace são exclusivos de FILIADO ATIVO do
+         clube (2026-09-02) -- um cliente que nunca foi filiado (ex.: só
+         fez transferência de arma) não vê os dois. `session` é injetada
+         pelo Flask em todo template automaticamente; usar direto aqui
+         evita repetir "e_filiado_ativo=session.get(...)" em toda rota
+         que renderiza este layout (dashboard, despachante, campeonatos,
+         resultados...). Acervo continua fora dessa checagem de
+         propósito: arma registrada no Shooting House não depende de
+         filiação ao clube. #}
+      {% if session.e_filiado_ativo %}
       <a href="{{ url_for('habitualidade') }}" class="{{ 'ativo' if ativo == 'habitualidade' }}">
         <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.7"/><circle cx="10" cy="10" r=".6" fill="currentColor" stroke="none"/></svg>
         Habitualidade
       </a>
+      {% endif %}
+      <a href="{{ url_for('acervo') }}" class="{{ 'ativo' if ativo == 'acervo' }}">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12.5 6.5 5h7l3.5 7.5"/><path d="M3 12.5h14v2.7a.8.8 0 0 1-.8.8H3.8a.8.8 0 0 1-.8-.8z"/><path d="M8.3 8.6h3.4"/></svg>
+        Acervo
+      </a>
+      {% if session.e_filiado_ativo %}
+      <a href="{{ url_for('marketplace') }}" class="{{ 'ativo' if ativo == 'marketplace' }}">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h14l-1 9a1.5 1.5 0 0 1-1.5 1.3h-9A1.5 1.5 0 0 1 4 16z"/><path d="M7 7V5.5a3 3 0 0 1 6 0V7"/></svg>
+        Marketplace
+      </a>
+      {% endif %}
     </nav>
     <div class="portal-sidebar-rodape">
       {{ cliente_nome }}

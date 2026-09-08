@@ -1,0 +1,86 @@
+{% extends "_portal_layout.html" %}
+{% block titulo %}Acervo{% endblock %}
+{% block estilo_extra %}
+<style>
+  .arma-card { padding: 1.1rem 1.3rem; margin-bottom: 1rem; }
+  .arma-titulo { font-size: 1.05rem; margin: 0 0 .9rem; }
+  .arma-atributos {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .9rem 1.2rem;
+  }
+  @media (min-width: 560px) {
+    .arma-atributos { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+  .arma-atributo-rotulo {
+    font-size: .72rem;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--steel);
+    margin-bottom: .2rem;
+  }
+  .arma-atributo-valor { font-size: .92rem; }
+  .arma-atributo-valor.mono { font-size: .86rem; }
+  .arma-atributo-vazio { color: var(--steel); }
+</style>
+{% endblock %}
+{% block conteudo %}
+<h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:0 0 1rem;">Acervo</h2>
+
+{% if not tem_cpf %}
+<div class="ficha estado-vazio">Não conseguimos localizar seu CPF no cadastro. Fale com a gente pra atualizar.</div>
+
+{% elif indisponivel %}
+{# Mesma distinção de sempre (ver portal_habitualidade.html): "não
+   consegui consultar" nunca pode aparecer como "você não tem arma
+   nenhuma". #}
+<div class="ficha" style="padding:1.4rem 1.5rem;">
+  <p style="margin:0 0 .6rem;"><b>Não foi possível consultar seu acervo agora.</b></p>
+  <p style="color:var(--steel); margin:0; font-size:.9rem;">
+    Isto <b>não</b> quer dizer que você está sem arma registrada — quer dizer apenas que a consulta
+    ao sistema do clube não respondeu neste momento. Tente de novo em alguns minutos ou fale com a gente.
+  </p>
+</div>
+
+{% elif not armas %}
+<div class="ficha" style="padding:1.4rem 1.5rem;">
+  <p style="margin:0 0 .6rem;"><b>Nenhuma arma registrada em seu nome.</b></p>
+  <p style="color:var(--steel); margin:0; font-size:.9rem;">
+    Se você usa outro serviço do despachante (como transferência de arma) sem ainda ter uma arma
+    registrada em seu nome, é esperado que essa tela venha vazia.
+  </p>
+</div>
+
+{% else %}
+
+<div class="secao-titulo" style="margin-top:0;">
+  <h2>Armas registradas</h2>
+  <span style="color:var(--steel); font-size:.82rem;">{{ armas|length }} no total</span>
+</div>
+
+{% for arma in armas %}
+<div class="ficha arma-card">
+  <h3 class="arma-titulo">{{ arma.type or "Arma" }}{% if arma.brand or arma.model %} — {{ [arma.brand, arma.model]|select|join(" ") }}{% endif %}</h3>
+  <div class="arma-atributos">
+    <div>
+      <div class="arma-atributo-rotulo">Calibre</div>
+      <div class="arma-atributo-valor">{{ arma.caliber if arma.caliber else "—" }}</div>
+    </div>
+    <div>
+      <div class="arma-atributo-rotulo">Série</div>
+      <div class="arma-atributo-valor mono">{{ arma.serie if arma.serie else "—" }}</div>
+    </div>
+    <div>
+      <div class="arma-atributo-rotulo">Sigma</div>
+      <div class="arma-atributo-valor mono">{{ arma.sigma if arma.sigma else "—" }}</div>
+    </div>
+    <div>
+      <div class="arma-atributo-rotulo">Grupo</div>
+      <div class="arma-atributo-valor mono">{{ arma.grupo if arma.grupo else "—" }}</div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% endif %}
+{% endblock %}
