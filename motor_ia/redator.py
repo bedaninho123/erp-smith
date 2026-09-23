@@ -180,6 +180,12 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
     for k in dados.get("conhecimento", []):
         linhas.append(f"Conhecimento institucional: {k['pergunta']} -> {k['resposta']}")
 
+    informacoes_empresa = dados.get("informacoes_empresa")
+    if informacoes_empresa:
+        linhas.append("--- Informações do clube ---")
+        for rotulo, valor in informacoes_empresa.items():
+            linhas.append(f"{rotulo}: {valor}")
+
     if dados.get("fontes_indisponiveis"):
         # Este atendimento já vai ser travado pelo freio determinístico do
         # Auditor antes de chegar ao cliente (motor_ia/auditor.py). O bloco

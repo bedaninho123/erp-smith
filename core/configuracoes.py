@@ -8,6 +8,51 @@ ligado e outra não.
 from core.conexao import conectar
 from core.motor_log_administrativo import registrar as registrar_log
 
+# Subconjunto de `configuracoes` seguro para entrar numa resposta ao
+# cliente (motor_ia/consultor.py, intenção ATENDIMENTO_GERAL) -- rótulo
+# amigável, não a chave crua. `obter_configuracoes()` devolve a tabela
+# inteira, que também guarda ajuste interno de IA (modelo_openai,
+# temperatura_ia) e o próprio freio de revisão humana
+# (revisao_humana_ativa); nunca usar aquela função direto pra isso.
+# Achado em 2026-09-23: pergunta de cliente sobre horário de
+# funcionamento caía num rascunho genérico porque nada buscava esse
+# fato -- o Classificador de propósito não tenta adivinhar esse tipo de
+# pergunta (motor_ia/prompts/classificador.md), e sem fato nenhum o
+# Redator não tem o que responder.
+CHAVES_INSTITUCIONAIS = {
+    "nome_empresa": "Nome",
+    "cidade": "Cidade",
+    "estado": "Estado",
+    "endereco": "Endereço",
+    "telefone": "Telefone",
+    "whatsapp": "WhatsApp",
+    "email_atendimento": "E-mail",
+    "site_clube": "Site do clube",
+    "site_loja": "Site da loja",
+    "instagram": "Instagram",
+    "horario_semana": "Horário (terça a sexta)",
+    "horario_sabado": "Horário de sábado",
+    "horario_domingo": "Horário de domingo",
+    "primeira_visita": "Primeira visita",
+    "processo_filiacao": "Como se filiar",
+    "valor_anuidade": "Valor da anuidade",
+    "formas_pagamento": "Formas de pagamento aceitas",
+    "estrutura_clube": "Estrutura do clube",
+    "estacionamento": "Estacionamento",
+}
+
+
+def obter_informacoes_institucionais(empresa_id: str) -> dict:
+    """Rótulo amigável -> valor, só das chaves em CHAVES_INSTITUCIONAIS
+    e só as que a empresa preencheu (chave ausente ou vazia não entra --
+    nunca afirmar 'Endereço: ' em branco)."""
+    todas = obter_configuracoes(empresa_id)
+    return {
+        rotulo: todas[chave]
+        for chave, rotulo in CHAVES_INSTITUCIONAIS.items()
+        if todas.get(chave)
+    }
+
 
 def obter_configuracoes(empresa_id: str) -> dict:
     con = conectar(empresa_id)

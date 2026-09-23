@@ -4,6 +4,7 @@ Domínio e integrações externas (Shooting House), nunca decide nada sobre
 o conteúdo."""
 from typing import Optional
 
+from core.configuracoes import obter_informacoes_institucionais
 from integracoes.shooting_house import (
     ShootingHouseIndisponivel,
     consultar_armas,
@@ -138,6 +139,13 @@ def consultar(
                         (categoria,),
                     ).fetchall()
                 resultado["conhecimento"] = [dict(r) for r in linhas]
+            elif fonte == "informacoes_empresa":
+                # Não usa `con` (Core+Domínio anexado) de propósito: é a
+                # mesma tabela `configuracoes` de sempre, mas filtrada
+                # pelo Core (core/configuracoes.py) para só o
+                # subconjunto seguro de citar ao cliente -- nunca ajuste
+                # interno de IA nem o freio de revisão humana.
+                resultado["informacoes_empresa"] = obter_informacoes_institucionais(empresa_id)
             elif fonte == "SHOOTING_HOUSE_HABITUALIDADE":
                 cpf_cliente = (resultado.get("cliente") or {}).get("cpf")
                 _buscar_externo(
