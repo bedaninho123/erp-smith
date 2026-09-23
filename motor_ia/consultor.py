@@ -144,8 +144,14 @@ def consultar(
                 # mesma tabela `configuracoes` de sempre, mas filtrada
                 # pelo Core (core/configuracoes.py) para só o
                 # subconjunto seguro de citar ao cliente -- nunca ajuste
-                # interno de IA nem o freio de revisão humana.
-                resultado["informacoes_empresa"] = obter_informacoes_institucionais(empresa_id)
+                # interno de IA nem o freio de revisão humana. E filtrada
+                # de novo pelo tópico que o Classificador identificou --
+                # sem tópico, não busca nada (mesma cautela de
+                # `conhecimento`, ver core/configuracoes.py).
+                topico = classificacao.topico_institucional if classificacao else None
+                resultado["informacoes_empresa"] = obter_informacoes_institucionais(
+                    empresa_id, topico
+                )
             elif fonte == "SHOOTING_HOUSE_HABITUALIDADE":
                 cpf_cliente = (resultado.get("cliente") or {}).get("cpf")
                 _buscar_externo(

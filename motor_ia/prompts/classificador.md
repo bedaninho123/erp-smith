@@ -30,3 +30,13 @@ Se a pergunta for genérica sobre todos os serviços (ex.: "quais serviços voc�
 {lista_categorias_conhecimento}
 
 Isso só se aplica a dúvidas sobre esses temas regulatórios em si (ex.: "o que é o CR?", "posso transferir minha arma?", "quantos treinos preciso fazer?"). Perguntas sobre horário de funcionamento, telefone, endereço, uma saudação, um agradecimento, ou qualquer outra coisa que não seja sobre esses temas — deixe categoria_conhecimento vazio. Nunca escolha uma categoria no chute só porque a intenção é ATENDIMENTO_GERAL.
+
+- se a pergunta for sobre informação institucional do próprio clube (campo topico_institucional), escolhendo **exatamente um destes valores** de acordo com o que foi perguntado:
+
+  - horario: horário de funcionamento (ex.: "que horas o clube abre?", "vocês abrem domingo?").
+  - contato: endereço, telefone, WhatsApp, e-mail, site, redes sociais (ex.: "qual o endereço de vocês?", "tem Instagram?").
+  - primeira_visita: o que levar/precisa pra treinar pela primeira vez, agendamento, estacionamento.
+  - filiacao: como virar sócio/filiado, valor de anuidade, formas de pagamento.
+  - estrutura: quantas pistas, modalidades, infraestrutura do clube.
+
+  Escolha **só um** valor, o que corresponde mais diretamente à pergunta -- não escolha vários nem o mais abrangente "por garantia". Se a mensagem pedir mais de uma coisa dessas ao mesmo tempo (ex.: "qual o horário e o endereço?"), escolha o assunto principal da mensagem. Se for uma pergunta genuinamente genérica sobre o clube como um todo (ex.: "me fala sobre o clube", "quero conhecer o Smith"), ou a pergunta não for sobre nenhum desses temas, deixe topico_institucional vazio.

@@ -41,15 +41,41 @@ CHAVES_INSTITUCIONAIS = {
     "estacionamento": "Estacionamento",
 }
 
+# Agrupa CHAVES_INSTITUCIONAIS por assunto, espelhando exatamente os
+# valores que motor_ia/prompts/classificador.md pede no campo
+# topico_institucional. Achado em 2026-09-23, na primeira resposta real:
+# sem filtro, "que horas o clube abre?" recebia as 19 chaves de uma vez
+# -- endereço, anuidade, estrutura, tudo -- e a IA respondia com um
+# catálogo institucional inteiro em vez da única coisa perguntada. Mesmo
+# erro que já tinha acontecido com VW_SERVICO e com `conhecimento`.
+TOPICOS_INSTITUCIONAIS = {
+    "horario": ["horario_semana", "horario_sabado", "horario_domingo"],
+    "contato": [
+        "endereco", "telefone", "whatsapp", "email_atendimento",
+        "site_clube", "site_loja", "instagram",
+    ],
+    "primeira_visita": ["primeira_visita", "estacionamento"],
+    "filiacao": ["processo_filiacao", "valor_anuidade", "formas_pagamento"],
+    "estrutura": ["estrutura_clube"],
+}
 
-def obter_informacoes_institucionais(empresa_id: str) -> dict:
-    """Rótulo amigável -> valor, só das chaves em CHAVES_INSTITUCIONAIS
-    e só as que a empresa preencheu (chave ausente ou vazia não entra --
-    nunca afirmar 'Endereço: ' em branco)."""
+
+def obter_informacoes_institucionais(empresa_id: str, topico: str | None = None) -> dict:
+    """Rótulo amigável -> valor, só as que a empresa preencheu (chave
+    ausente ou vazia não entra -- nunca afirmar 'Endereço: ' em branco).
+
+    `topico` filtra pra só o assunto perguntado (ver TOPICOS_INSTITUCIONAIS);
+    sem ele, ou com um valor que não bate com nenhum grupo, devolve vazio
+    -- mesma cautela de `conhecimento` (motor_ia/consultor.py): não existe
+    fallback pra 'traz tudo', porque aqui 'tudo' é um catálogo inteiro
+    despejado numa pergunta genérica ou numa simples saudação."""
+    chaves = TOPICOS_INSTITUCIONAIS.get(topico or "", [])
+    if not chaves:
+        return {}
     todas = obter_configuracoes(empresa_id)
     return {
-        rotulo: todas[chave]
-        for chave, rotulo in CHAVES_INSTITUCIONAIS.items()
+        CHAVES_INSTITUCIONAIS[chave]: todas[chave]
+        for chave in chaves
         if todas.get(chave)
     }
 

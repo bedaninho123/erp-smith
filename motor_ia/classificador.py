@@ -45,6 +45,13 @@ class ResultadoClassificacao(BaseModel):
     protocolo_mencionado: Optional[str] = None
     servico_mencionado: Optional[str] = None
     categoria_conhecimento: Optional[str] = None
+    # Mesmo espírito de categoria_conhecimento: filtra o que o Consultor
+    # busca em vez de despejar todo fato institucional (endereço,
+    # anuidade, estrutura...) numa pergunta que só queria o horário.
+    # Achado em 2026-09-23: sem isso, toda pergunta ATENDIMENTO_GERAL
+    # recebia a lista inteira de informacoes_empresa e a IA respondia com
+    # um catálogo completo em vez do único fato perguntado.
+    topico_institucional: Optional[str] = None
     precisa_humano: bool
 
 
