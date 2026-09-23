@@ -74,6 +74,43 @@ existir, e que também vale aqui. Mesma solução da habitualidade: uma
 thread de fundo, não um segundo serviço (mesma limitação de volume por
 service).
 
+POLLER DE E-MAIL EM SEGUNDO PLANO (2026-09-23): local, isso é
+`atendimento/poller.py --uma-vez` via Tarefa Agendada do Windows a cada
+2 min. Achado ao investigar por que um e-mail de teste não foi
+respondido: essa tarefa estava falhando com `invalid_grant` (token do
+Gmail expirado/revogado) desde 2026-07-30 -- quase dois meses sem
+ninguém perceber, porque o próprio alerta de falha também tenta mandar
+e-mail pelo mesmo Gmail quebrado. E mesmo com o token em dia, o Railway
+nunca chegou a checar a caixa de entrada: o Procfile só sobe este
+processo web, sem worker nenhum pro poller. Resultado: o atendimento por
+e-mail dependia inteiramente do PC do usuário estar ligado -- o ponto
+mais frágil do deploy inteiro. Mesma solução das duas rotinas acima: uma
+thread de fundo chamando direto `atendimento.poller.loop` (que já tem
+seu próprio `while True` + intervalo de 60s + try/except por rodada;
+nada aqui reimplementa esse loop).
+
+Pré-requisito que este arquivo não resolve sozinho: `ERP_GMAIL_TOKEN_PATH`
+(configurado como `/data/token.json`, ver docstring de
+`integracoes/gmail.py`) precisa apontar para um token válido DENTRO do
+volume antes do processo subir -- copiar o `token.json` local pra lá é
+operação manual de quem tem acesso ao Railway (`railway ssh`), feita uma
+vez. Sem o arquivo lá, `gmail_configurado()` volta `False` e esta thread
+só imprime "Gmail ainda não autorizado" a cada rodada, sem quebrar o
+processo.
+
+Trava de corrida que este arquivo NÃO cobre sozinho: o poller usa um
+lock de ARQUIVO local (`atendimento/poller.lock`) pra não processar o
+mesmo e-mail duas vezes se duas execuções se sobrepuserem -- isso
+protege contra corrida dentro do MESMO filesystem, mas o Windows local
+e o container do Railway são filesystems diferentes. Rodar esta thread
+aqui e deixar a Tarefa Agendada do Windows ligada ao mesmo tempo faz as
+duas caixas de entrada (a mesma conta Gmail) serem lidas por dois
+processos independentes, cada um marcando e-mail como lido e escrevendo
+num banco DIFERENTE (local vs. volume do Railway) -- por isso a Tarefa
+Agendada local precisa ser desativada
+(`atendimento\remover_tarefa_agendada.bat`) quando esta thread entrar
+em produção, não as duas ao mesmo tempo.
+
 `incluir_documentos=False` de propósito: BACKUP_DIR aqui aponta pra uma
 subpasta do MESMO volume onde o banco já mora (não tem HD externo nem
 Google Drive na hospedagem) -- isto protege contra "rodei uma migração
@@ -168,9 +205,19 @@ def _loop_backup() -> None:
         time.sleep(_INTERVALO_BACKUP_SEGUNDOS)
 
 
+def _loop_poller_email() -> None:
+    # atendimento.poller.loop() já é o loop pronto (verificar a cada 60s,
+    # try/except por rodada) -- rodar como thread aqui é só trocar QUEM
+    # chama, nunca reimplementar COMO verifica.
+    from atendimento.poller import loop as poller_loop
+
+    poller_loop()
+
+
 if __name__ == "__main__":
     threading.Thread(target=_loop_sincronizacao_habitualidade, daemon=True).start()
     threading.Thread(target=_loop_backup, daemon=True).start()
+    threading.Thread(target=_loop_poller_email, daemon=True).start()
 
     porta = int(os.environ.get("PORT", "8000"))
     print(f"Painel + Portal (produção) ouvindo em 0.0.0.0:{porta} "
