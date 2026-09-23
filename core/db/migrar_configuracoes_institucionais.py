@@ -5,13 +5,23 @@ motor_ia/consultor.py, fonte "informacoes_empresa").
 
 Achado em 2026-09-23: um cliente perguntou "que horas o clube abre
 hoje?" e caiu num rascunho genérico -- não porque a IA errou, mas
-porque nada buscava esse fato. `horario_semana`/`horario_sabado`/
-`horario_domingo` já existiam desde a migração inicial da planilha,
-mas nada os lia fora da tela de Configurações. Este script acrescenta o
-que ainda faltava (endereço, redes sociais, primeira visita, filiação,
-anuidade, forma de pagamento, estrutura, estacionamento) e corrige
-`horario_domingo`, que estava "Fechado" -- o clube abre aos domingos em
-dia de prova, segundo o dono.
+porque nada buscava esse fato. Rodando esta migração contra o banco de
+PRODUÇÃO (Railway), apareceu um problema maior: o banco de lá nunca
+recebeu a leva original de configuração que `core.db.migrate_dados_teste`
+semeia no banco local (nome da empresa, telefone, e-mail, horário,
+saudação, assinatura, ajuste de IA) -- produção foi criada por outro
+caminho, que pulou essa parte. Então este script acumulou duas coisas:
+os fatos NOVOS que o dono respondeu agora (endereço, redes sociais,
+primeira visita, filiação, anuidade, forma de pagamento, estrutura,
+estacionamento) e os fatos BÁSICOS que já existiam localmente mas nunca
+chegaram em produção -- confirmados com o dono em 2026-09-23 (telefone/
+WhatsApp continuam os mesmos; e-mail institucional é smithclube@gmail.com,
+o Gmail técnico ligado ao poller continua sendo outro, de teste, até a
+migração completa). `horario_domingo` nasce direto com o valor real
+("Aberto apenas em dia de prova") em vez de "Fechado" -- o valor antigo
+nunca existiu em produção, só localmente, e o bloco no fim de `main()`
+corrige o caso de outro ambiente que ainda tenha o valor errado (ex.:
+local, antes desta migração já ter rodado lá uma vez).
 
 Dado real de UMA empresa (o piloto), não um seed genérico -- por isso
 recebe o empresa_id por linha de comando (padrão EMP-000001, mesmo
@@ -30,6 +40,11 @@ from datetime import datetime, timezone
 from core.conexao import conectar
 from core.configuracoes import atualizar_configuracao
 from core.motor_empresas import EMPRESA_PADRAO
+
+# Valor antigo (migrado da planilha, nunca confirmado com o dono) e o
+# valor real -- o clube abre em dia de prova, não fecha todo domingo.
+HORARIO_DOMINGO_ANTIGO = "Fechado"
+HORARIO_DOMINGO_NOVO = "Aberto apenas em dia de prova"
 
 # (chave, valor, categoria, descrição) -- mesmo formato de
 # core/db/migrate_dados_teste.py, só que como correção sobre banco já em
@@ -63,12 +78,73 @@ NOVAS_CHAVES = [
      "climatizado.",
      "empresa", "Estrutura do clube"),
     ("estacionamento", "Sim", "empresa", "Tem estacionamento"),
-]
 
-# Valor antigo (migrado da planilha, nunca confirmado com o dono) e o
-# valor real -- o clube abre em dia de prova, não fecha todo domingo.
-HORARIO_DOMINGO_ANTIGO = "Fechado"
-HORARIO_DOMINGO_NOVO = "Aberto apenas em dia de prova"
+    # Básicos que já existiam no banco LOCAL (semeados por
+    # core.db.migrate_dados_teste a partir da planilha original) mas
+    # nunca chegaram em produção -- valores confirmados de novo com o
+    # dono em 2026-09-23.
+    ("nome_empresa", "Smith Clube de Tiro", "empresa",
+     "Nome utilizado nas mensagens"),
+    ("cidade", "Marília", "empresa", "Cidade da empresa"),
+    ("estado", "SP", "empresa", "Estado da empresa"),
+    ("telefone", "(14)99805-9500 / (14) 99815-7890", "contato",
+     "Telefone principal"),
+    ("whatsapp", "(14)99805-9500 / (14) 99815-7890", "contato",
+     "WhatsApp de atendimento"),
+    ("email_atendimento", "smithclube@gmail.com", "contato",
+     "E-mail de atendimento"),
+    ("horario_semana",
+     "Terça e Sexta: 9h as 18h / Quarta 14h as 21h / Quinta 13h as 20h",
+     "atendimento", "Horário de atendimento semanal"),
+    ("horario_sabado", "Sábado, das 9h às 17h", "atendimento",
+     "Horário de sábado"),
+    ("horario_domingo", HORARIO_DOMINGO_NOVO, "atendimento",
+     "Horário de domingo"),
+    ("saudacao_padrao", "Olá! Como podemos ajudar?", "mensagens",
+     "Saudação inicial"),
+    ("mensagem_fora_horario",
+     "Recebemos sua mensagem fora do nosso horário de atendimento. "
+     "Retornaremos assim que possível.", "mensagens",
+     "Resposta fora do expediente"),
+    ("mensagem_encaminhamento_humano",
+     "Sua solicitação será encaminhada para nossa equipe de atendimento.",
+     "mensagens", "Aviso de transferência"),
+    ("assinatura_email", "Equipe Smith Clube de Tiro", "mensagens",
+     "Assinatura dos e-mails"),
+    ("prazo_resposta_humano", "Em até 1 dia útil", "atendimento",
+     "Prazo estimado para resposta humana"),
+    ("mensagem_cliente_nao_encontrado",
+     "Não localizamos um cadastro com esses dados em nosso sistema. Se "
+     "você já é nosso cliente, poderia nos informar seu CPF para "
+     "localizarmos seu cadastro? Caso ainda não seja cliente, ficaremos "
+     "felizes em ajudar -- conte um pouco mais sobre o que você precisa.",
+     "mensagens",
+     "Resposta para remetente não identificado como cliente cadastrado"),
+    ("notificar_cliente_mudanca_status", "Sim", "portal",
+     "Enquanto 'Sim', o cliente recebe um e-mail genérico (sem detalhe "
+     "do novo status no corpo, só um link pro Portal) sempre que o "
+     "status de um caso ou processo dele muda pelo painel administrativo."),
+    ("moeda", "BRL", "sistema", "Moeda utilizada nos valores"),
+    ("idioma", "pt-BR", "sistema", "Idioma das respostas"),
+    ("idioma_resposta", "pt-BR", "ia", "Idioma padrão das respostas"),
+    ("nome_assistente", "Assistente Virtual Smith", "ia",
+     "Nome do atendente virtual"),
+    ("modelo_openai", "gpt-5-mini", "ia", "Modelo utilizado"),
+    ("temperatura_ia", "0.2", "ia", "Criatividade das respostas"),
+    ("max_tokens", "1200", "ia", "Máximo de tokens das respostas"),
+    ("permitir_valores_referencia", "Sim", "ia",
+     "Permite informar valores cadastrados"),
+    ("permitir_prazos_referencia", "Sim", "ia",
+     "Permite informar prazos cadastrados"),
+    ("aviso_valor",
+     "Os valores informados são referências e podem variar conforme o "
+     "serviço e as particularidades do caso.", "mensagens",
+     "Aviso utilizado junto aos valores"),
+    ("aviso_prazo",
+     "Os prazos informados são estimativas e podem variar conforme a "
+     "análise do órgão competente.", "mensagens",
+     "Aviso utilizado junto aos prazos"),
+]
 
 
 def _agora_iso() -> str:
