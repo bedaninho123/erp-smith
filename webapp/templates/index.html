@@ -428,6 +428,18 @@
      IA escreveu (ela usa parágrafos); sem isso a resposta vira um
      bloco corrido e ilegível. */
   .bolha-texto { white-space: pre-wrap; word-wrap: break-word; }
+
+  /* "?" ao lado do título de cada tela (aplicarAjudas). Círculo pequeno e
+     discreto: está ali para quem precisa, sem pedir atenção de quem não. */
+  .btn-ajuda {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; margin-left: var(--e2); padding: 0;
+    border: 1px solid #ced4da; border-radius: 50%; background: transparent;
+    color: #6c757d; font-size: 11px; vertical-align: middle; cursor: pointer;
+  }
+  .btn-ajuda:hover, .btn-ajuda[aria-expanded="true"] { border-color: var(--blue); color: var(--blue); }
+  .ajuda-tela { max-width: 70ch; font-size: 13px; }
+  .ajuda-inline summary { cursor: pointer; }
   .bolha-pendente { border: 1px dashed #C79100; background: #FFF8E1; }
 </style>
 </head>
@@ -444,6 +456,37 @@
       <li class="nav-item">
         <span class="nav-link">{{ usuario_nome }}</span>
       </li>
+      <!-- Engrenagem (2026-09-24): o que é de administração ou ferramenta
+           técnica saiu do menu lateral, que ficou só com o trabalho do dia
+           a dia. Os itens continuam com data-view -- a navegação por hash
+           e o irPara() acham o destino por esse atributo, esteja ele no
+           menu ou aqui. -->
+      {% set tem_tecnico = usuario_papel == 'Gestor' or 'status_projeto' in funcoes_ativas or 'testar_pipeline' in funcoes_ativas %}
+      {% if usuario_papel == 'Gestor' or tem_tecnico %}
+      <li class="nav-item dropdown">
+        <a class="nav-link" data-toggle="dropdown" href="#" role="button" aria-haspopup="true"
+           aria-expanded="false" aria-label="Administração e ferramentas" title="Administração e ferramentas">
+          <i class="fas fa-cog" aria-hidden="true"></i>
+        </a>
+        <div class="dropdown-menu dropdown-menu-right">
+          {% if usuario_papel == 'Gestor' %}
+          <a href="#" class="dropdown-item" data-view="dashboard"><i class="fas fa-chart-line fa-fw mr-2" aria-hidden="true"></i>Dashboard</a>
+          <a href="#" class="dropdown-item" data-view="config"><i class="fas fa-sliders-h fa-fw mr-2" aria-hidden="true"></i>Configurações</a>
+          <a href="#" class="dropdown-item" data-view="auditoria"><i class="fas fa-user-shield fa-fw mr-2" aria-hidden="true"></i>Auditoria</a>
+          {% endif %}
+          {% if usuario_papel == 'Gestor' or 'status_projeto' in funcoes_ativas or 'testar_pipeline' in funcoes_ativas %}
+          <div class="dropdown-divider"></div>
+          <h6 class="dropdown-header">Ferramentas técnicas</h6>
+          {% endif %}
+          {% if usuario_papel == 'Gestor' or 'status_projeto' in funcoes_ativas %}
+          <a href="#" class="dropdown-item" data-view="status"><i class="fas fa-server fa-fw mr-2" aria-hidden="true"></i>Status do Projeto</a>
+          {% endif %}
+          {% if usuario_papel == 'Gestor' or 'testar_pipeline' in funcoes_ativas %}
+          <a href="#" class="dropdown-item" data-view="testar"><i class="fas fa-flask fa-fw mr-2" aria-hidden="true"></i>Testar Pipeline</a>
+          {% endif %}
+        </div>
+      </li>
+      {% endif %}
       <li class="nav-item">
         <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt mr-1" aria-hidden="true"></i>Sair</a>
       </li>
@@ -470,18 +513,6 @@
               <p>Início</p>
             </a>
           </li>
-          <!-- Dashboard é do dono: faturamento estimado, produtividade e
-               evasão do clube. Só Gestor, e de propósito NÃO entra no
-               catálogo de permissões -- não existe toggle que dê isso a
-               um Atendente (mesma decisão de Configurações e Auditoria). -->
-          {% if usuario_papel == 'Gestor' %}
-          <li class="nav-item">
-            <a href="#" class="nav-link" data-view="dashboard" aria-label="Dashboard">
-              <i class="nav-icon fas fa-chart-line" aria-hidden="true"></i>
-              <p>Dashboard</p>
-            </a>
-          </li>
-          {% endif %}
           <li class="nav-header">ATENDIMENTO</li>
           {% if usuario_papel == 'Gestor' or 'atendimentos' in funcoes_ativas %}
           <li class="nav-item">
@@ -504,10 +535,10 @@
           {% endif %}
           {% if usuario_papel == 'Gestor' or 'tarefas' in funcoes_ativas %}
           <li class="nav-item">
-            <a href="#" class="nav-link" data-view="tarefas" aria-label="Tarefas e Prazos">
+            <a href="#" class="nav-link" data-view="tarefas" aria-label="Tarefas">
               <i class="nav-icon fas fa-calendar-check" aria-hidden="true"></i>
               <p>
-                Tarefas e Prazos
+                Tarefas
                 <!-- Vermelho, e só conta ATRASADA: um número que aparece
                      todo dia por qualquer motivo deixa de ser lido. -->
                 <span class="right badge badge-danger" id="badge-tarefas" style="display:none"></span>
@@ -517,30 +548,24 @@
           {% endif %}
           {% if usuario_papel == 'Gestor' or 'clientes' in funcoes_ativas %}
           <li class="nav-item">
-            <a href="#" class="nav-link" data-view="clientes" aria-label="Clientes Despachante">
+            <a href="#" class="nav-link" data-view="clientes" aria-label="Clientes">
               <i class="nav-icon fas fa-users" aria-hidden="true"></i>
-              <p>Clientes Despachante</p>
+              <p>Clientes</p>
             </a>
           </li>
           {% endif %}
-          {% if usuario_papel == 'Gestor' or 'aprovacoes_pendentes' in funcoes_ativas %}
+          <!-- Uma fila só (2026-09-24): "Aprovações Pendentes" (respostas da
+               IA) e "Documentos a Aprovar" (envios do Portal) eram dois
+               itens de menu para o mesmo gesto -- conferir antes de valer.
+               As permissões continuam separadas: cada seção da tela só
+               aparece para quem tem a função dela. -->
+          {% if usuario_papel == 'Gestor' or 'aprovacoes_pendentes' in funcoes_ativas or 'documentos_aprovar' in funcoes_ativas %}
           <li class="nav-item">
-            <a href="#" class="nav-link" data-view="pendentes" aria-label="Aprovações Pendentes">
-              <i class="nav-icon fas fa-inbox" aria-hidden="true"></i>
+            <a href="#" class="nav-link" data-view="aprovacoes" aria-label="Aprovações">
+              <i class="nav-icon fas fa-check-double" aria-hidden="true"></i>
               <p>
-                Aprovações Pendentes
-                <span class="right badge badge-danger" id="badge-pendentes" style="display:none"></span>
-              </p>
-            </a>
-          </li>
-          {% endif %}
-          {% if usuario_papel == 'Gestor' or 'documentos_aprovar' in funcoes_ativas %}
-          <li class="nav-item">
-            <a href="#" class="nav-link" data-view="documentos" aria-label="Documentos a Aprovar">
-              <i class="nav-icon fas fa-file-signature" aria-hidden="true"></i>
-              <p>
-                Documentos a Aprovar
-                <span class="right badge badge-warning" id="badge-documentos" style="display:none"></span>
+                Aprovações
+                <span class="right badge badge-warning" id="badge-aprovacoes" style="display:none"></span>
               </p>
             </a>
           </li>
@@ -562,14 +587,10 @@
             </a>
           </li>
           {% endif %}
-          {% if usuario_papel == 'Gestor' or 'resultados' in funcoes_ativas %}
-          <li class="nav-item">
-            <a href="#" class="nav-link" data-view="resultados" aria-label="Resultados">
-              <i class="nav-icon fas fa-list-ol" aria-hidden="true"></i>
-              <p>Resultados</p>
-            </a>
-          </li>
-          {% endif %}
+          <!-- Resultados saiu do menu em 2026-09-24, a pedido do usuário:
+               sem etapa e resultado na API do Shooting House, ele não lança
+               à mão. A tela (view-resultados) continua no código e volta
+               aqui quando a API liberar. -->
           {% if usuario_papel == 'Gestor' or 'marketplace' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="marketplace" aria-label="Marketplace">
@@ -578,39 +599,6 @@
                 Marketplace
                 <span class="right badge badge-warning" id="badge-marketplace" style="display:none"></span>
               </p>
-            </a>
-          </li>
-          {% endif %}
-          <li class="nav-header">SISTEMA</li>
-          {% if usuario_papel == 'Gestor' %}
-          <li class="nav-item">
-            <a href="#" class="nav-link" data-view="config" aria-label="Configurações">
-              <i class="nav-icon fas fa-cog" aria-hidden="true"></i>
-              <p>Configurações</p>
-            </a>
-          </li>
-          {% endif %}
-          {% if usuario_papel == 'Gestor' %}
-          <li class="nav-item">
-            <a href="#" class="nav-link" data-view="auditoria" aria-label="Auditoria">
-              <i class="nav-icon fas fa-user-shield" aria-hidden="true"></i>
-              <p>Auditoria</p>
-            </a>
-          </li>
-          {% endif %}
-          {% if usuario_papel == 'Gestor' or 'status_projeto' in funcoes_ativas %}
-          <li class="nav-item">
-            <a href="#" class="nav-link" data-view="status" aria-label="Status do Projeto">
-              <i class="nav-icon fas fa-server" aria-hidden="true"></i>
-              <p>Status do Projeto</p>
-            </a>
-          </li>
-          {% endif %}
-          {% if usuario_papel == 'Gestor' or 'testar_pipeline' in funcoes_ativas %}
-          <li class="nav-item">
-            <a href="#" class="nav-link" data-view="testar" aria-label="Testar Pipeline">
-              <i class="nav-icon fas fa-flask" aria-hidden="true"></i>
-              <p>Testar Pipeline</p>
             </a>
           </li>
           {% endif %}
@@ -1364,7 +1352,7 @@
           <!-- Este aviso não é decoração. Os números vêm de um retrato
                sincronizado, não de consulta ao vivo, e quem olhar a tela
                precisa saber disso antes de agir. -->
-          <div class="alert alert-info" id="habitualidade-aviso"></div>
+          <div class="text-muted small mb-3" id="habitualidade-aviso"></div>
 
           <div class="card">
             <div class="card-body">
@@ -1873,7 +1861,7 @@
       </div>
       <div class="content">
         <div class="container-fluid">
-          <div id="aviso-whatsapp" class="alert alert-warning" style="display:none">
+          <div id="aviso-whatsapp" class="alert alert-warning py-2 small" style="display:none">
             <i class="fas fa-exclamation-triangle mr-1" aria-hidden="true"></i>
             <b>WhatsApp em modo simulado.</b>
             <span id="aviso-whatsapp-texto"></span>
@@ -1918,27 +1906,30 @@
       </div>
     </div>
 
-    <div id="view-pendentes" class="view">
+    <div id="view-aprovacoes" class="view">
       <div class="content-header">
         <div class="container-fluid">
-          <h1 class="m-0">Aprovações Pendentes</h1>
-          <p class="text-muted mb-0">Respostas que a IA escreveu e estão esperando aprovação antes de sair de verdade pro cliente — porque o modo de revisão está ligado (configuracoes.revisao_humana_ativa) ou porque o Auditor encontrou uma inconsistência e pediu revisão. Pode editar o texto antes de aprovar.</p>
+          <h1 class="m-0">Aprovações</h1>
+          <p class="text-muted mb-0">Tudo que precisa do seu ok antes de valer. Respostas da IA ficam esperando aqui enquanto a revisão humana estiver ligada, ou quando o Auditor achou uma inconsistência — dá para editar o texto antes de aprovar. Documentos são arquivos que o cliente mandou pelo Portal dizendo a qual item do checklist correspondem; recusar devolve o item para "faltando" e avisa o cliente, com o motivo visível no Portal.</p>
         </div>
       </div>
       <div class="content">
-        <div class="container-fluid" id="lista-pendentes"><p class="text-muted">Carregando…</p></div>
-      </div>
-    </div>
-
-    <div id="view-documentos" class="view">
-      <div class="content-header">
         <div class="container-fluid">
-          <h1 class="m-0">Documentos a Aprovar</h1>
-          <p class="text-muted mb-0">Arquivos que o cliente enviou pelo Portal dizendo a qual item do checklist eles correspondem — quem confere se é isso mesmo é você. Enquanto não for aprovado, o item continua contando como pendente pro cliente. Recusar devolve o item pra "faltando" e avisa o cliente por e-mail, com o motivo visível no Portal dele.</p>
+          {% if usuario_papel == 'Gestor' or 'aprovacoes_pendentes' in funcoes_ativas %}
+          <section class="mb-4" aria-labelledby="titulo-aprov-respostas">
+            <h2 class="h5 mb-3" id="titulo-aprov-respostas">Respostas da IA
+              <span class="badge badge-light ml-1" id="contagem-aprov-respostas"></span></h2>
+            <div id="lista-pendentes"><p class="text-muted">Carregando…</p></div>
+          </section>
+          {% endif %}
+          {% if usuario_papel == 'Gestor' or 'documentos_aprovar' in funcoes_ativas %}
+          <section aria-labelledby="titulo-aprov-documentos">
+            <h2 class="h5 mb-3" id="titulo-aprov-documentos">Documentos enviados pelo cliente
+              <span class="badge badge-light ml-1" id="contagem-aprov-documentos"></span></h2>
+            <div id="lista-documentos-pendentes"><p class="text-muted">Carregando…</p></div>
+          </section>
+          {% endif %}
         </div>
-      </div>
-      <div class="content">
-        <div class="container-fluid" id="lista-documentos-pendentes"><p class="text-muted">Carregando…</p></div>
       </div>
     </div>
 
@@ -2209,8 +2200,10 @@ document.addEventListener("keydown", (e) => {
 function carregarView(viewName) {
   if (viewName === "inicio") carregarInicio();
   if (viewName === "dashboard") carregarDashboard();
-  if (viewName === "pendentes") carregarPendentes();
-  if (viewName === "documentos") carregarDocumentosPendentes();
+  if (viewName === "aprovacoes") {
+    if (podeVer("aprovacoes_pendentes")) carregarPendentes();
+    if (podeVer("documentos_aprovar")) carregarDocumentosPendentes();
+  }
   if (viewName === "marketplace") carregarMarketplace();
   if (viewName === "clientes") carregarClientesLista();
   if (viewName === "config") { carregarConfiguracoes(); carregarUsuarios(); }
@@ -2244,6 +2237,39 @@ document.querySelectorAll("[data-view]").forEach(btn => {
     ativarView(btn);
   });
 });
+
+// O "?" de cada tela (2026-09-24). Toda tela abria com um parágrafo
+// explicando o que ela é -- útil na primeira vez, espaço tomado nas
+// outras mil. O parágrafo continua na marcação (é lá que ele é escrito e
+// revisado), e aqui vira um botão ao lado do título que mostra e esconde.
+// Só o parágrafo SEM id: os que têm id são preenchidos por código com
+// informação viva (período do Dashboard, subtítulo da conversa) e ficam.
+function aplicarAjudas() {
+  document.querySelectorAll(".content-header h1").forEach((titulo, n) => {
+    const texto = titulo.nextElementSibling;
+    if (!texto || !texto.matches("p.text-muted:not([id])")) return;
+    texto.id = `ajuda-tela-${n}`;
+    texto.hidden = true;
+    texto.classList.add("ajuda-tela", "mt-1");
+    const botao = document.createElement("button");
+    botao.type = "button";
+    botao.className = "btn-ajuda";
+    botao.setAttribute("aria-expanded", "false");
+    botao.setAttribute("aria-controls", texto.id);
+    botao.setAttribute("aria-label", "O que é esta tela?");
+    botao.title = "O que é esta tela?";
+    botao.innerHTML = `<i class="fas fa-question" aria-hidden="true"></i>`;
+    botao.addEventListener("click", () => {
+      texto.hidden = !texto.hidden;
+      botao.setAttribute("aria-expanded", String(!texto.hidden));
+    });
+    // Ao LADO do título, não dentro: título com id (Olá, Fulano) é
+    // reescrito por textContent depois de carregar, e levaria o botão junto.
+    titulo.classList.add("d-inline-block");
+    titulo.after(botao);
+  });
+}
+aplicarAjudas();
 
 // Antes (até 2026-08-27) a tela inicial era "Casos", e havia aqui um
 // remendo: quem não tinha a função "casos" abria o painel numa tela em
@@ -3300,13 +3326,13 @@ async function carregarInicio() {
   if (d.aprovacoes_pendentes !== undefined) {
     tiles += tileAtalho({
       numero: d.aprovacoes_pendentes, label: "Respostas a aprovar", cor: "danger",
-      icone: "fa-inbox", view: "pendentes",
+      icone: "fa-inbox", view: "aprovacoes",
     });
   }
   if (d.documentos_a_conferir !== undefined) {
     tiles += tileAtalho({
       numero: d.documentos_a_conferir, label: "Documentos a conferir", cor: "warning",
-      icone: "fa-file-signature", view: "documentos",
+      icone: "fa-file-signature", view: "aprovacoes",
     });
   }
   if (d.conversas_abertas !== undefined) {
@@ -4224,11 +4250,16 @@ async function carregarHabitualidade() {
   const maisAntigo = resumo.mais_antigo
     ? `Retrato mais antigo desta tela: ${dataHoraBr(resumo.mais_antigo)}.`
     : "Nenhum filiado foi sincronizado ainda.";
-  $("#habitualidade-aviso").innerHTML =
-    `<b>Estes números são um retrato, não consulta ao vivo.</b> ${escapeHtml(maisAntigo)}
-     São contagens de participação nos últimos ${d.janela_meses} meses — o sistema
-     <b>não</b> afirma se alguém cumpriu o mínimo legal, porque isso depende do nível
-     do CR, que a integração não fornece. Para responder a um filiado, consulte ao vivo.`;
+  // Uma linha, não uma faixa (2026-09-24): a data do retrato continua
+  // SEMPRE à vista -- é regra da tela, ver CLAUDE.md --, e a explicação
+  // fica a um clique, para quem ainda não sabe o que é o retrato.
+  $("#habitualidade-aviso").innerHTML = `<details class="ajuda-inline">
+      <summary><i class="fas fa-camera mr-1" aria-hidden="true"></i>${escapeHtml(maisAntigo)}
+        Não é consulta ao vivo.</summary>
+      <p class="mb-0 mt-1">São contagens de participação nos últimos ${d.janela_meses} meses — o
+      sistema <b>não</b> afirma se alguém cumpriu o mínimo legal, porque isso depende do nível
+      do CR, que a integração não fornece. Para responder a um filiado, abra a ficha dele
+      (consulta ao vivo).</p></details>`;
 
   const cartao = (rotulo, valor, cor) => `
     <div class="col-md-3">
@@ -6083,23 +6114,35 @@ function documentosHtml(documentos) {
   `;
 }
 
+// Uma fila no menu, dois contadores por baixo: cada carregador informa o
+// seu e o badge mostra a soma. Sem isto, o último a carregar sobrescrevia
+// o número do outro.
+const contagemAprovacoes = { respostas: 0, documentos: 0 };
+function atualizarContagemAprovacoes(tipo, quantidade) {
+  contagemAprovacoes[tipo] = quantidade;
+  const secao = $(`#contagem-aprov-${tipo}`);
+  if (secao) secao.textContent = quantidade || "";
+  const total = contagemAprovacoes.respostas + contagemAprovacoes.documentos;
+  const badge = $("#badge-aprovacoes");
+  if (!badge) return;
+  badge.style.display = total ? "inline-block" : "none";
+  badge.textContent = total;
+}
+
 async function carregarDocumentosPendentes() {
   const r = await fetch("/api/documentos-pendentes");
   const el = $("#lista-documentos-pendentes");
-  const badge = $("#badge-documentos");
   // 403 (Atendente sem a função, ou a função foi desligada depois do
   // carregamento da página): trata como vazio, não deixa a Promise
   // rejeitada quebrar o resto do carregamento inicial.
   const pendentes = r.ok ? await r.json() : [];
+  atualizarContagemAprovacoes("documentos", pendentes.length);
+  if (!el) return;
 
   if (pendentes.length === 0) {
-    badge.style.display = "none";
     el.innerHTML = `<p class="text-muted">Nenhum documento esperando conferência.</p>`;
     return;
   }
-
-  badge.style.display = "inline-block";
-  badge.textContent = pendentes.length;
 
   el.innerHTML = pendentes.map(p => `
     <div class="card">
@@ -6338,17 +6381,14 @@ $("#marketplace-filtro-status").addEventListener("change", carregarMarketplace);
 async function carregarPendentes() {
   const r = await fetch("/api/pendentes");
   const el = $("#lista-pendentes");
-  const badge = $("#badge-pendentes");
   const pendentes = r.ok ? await r.json() : [];
+  atualizarContagemAprovacoes("respostas", pendentes.length);
+  if (!el) return;
 
   if (pendentes.length === 0) {
-    badge.style.display = "none";
-    el.innerHTML = `<p class="text-muted">Nenhuma aprovação pendente no momento.</p>`;
+    el.innerHTML = `<p class="text-muted">Nenhuma resposta esperando aprovação.</p>`;
     return;
   }
-
-  badge.style.display = "inline-block";
-  badge.textContent = pendentes.length;
 
   el.innerHTML = pendentes.map(p => `
     <div class="card" id="card-${p.mensagem_id}">
@@ -6659,9 +6699,7 @@ async function carregarConversas() {
   if (d.whatsapp && !d.whatsapp.configurado) {
     $("#aviso-whatsapp").style.display = "";
     $("#aviso-whatsapp-texto").textContent =
-      "Responder uma conversa de WhatsApp não envia nada para o cliente ainda — "
-      + "a mensagem é gravada no histórico e num arquivo de log. Para valer de "
-      + "verdade, o número precisa ser migrado para a Cloud API da Meta.";
+      "Respostas por WhatsApp ficam só no histórico e não chegam ao cliente.";
   } else {
     $("#aviso-whatsapp").style.display = "none";
   }
