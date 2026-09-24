@@ -89,6 +89,7 @@ SELECT
 FROM documento_exigido de
 JOIN servico s ON s.service_id = de.servico_id
 WHERE de.ativo = 'Sim' AND s.ativo = 'Sim'
+  AND de.processo_id IS NULL   -- item extra de um processo não é "o que o serviço exige"
   AND de.empresa_id = empresa_atual()
 ORDER BY de.servico_id, de.ordem;
 

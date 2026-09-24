@@ -283,9 +283,13 @@ def revisar(empresa_id: str, aplicar: bool = True) -> dict:
                 service_id = servico["service_id"]
                 if servico["nome_servico"] != nome:
                     relato["renomeado_de"] = servico["nome_servico"]
+                # Só os itens do SERVIÇO. Os extras de um processo (a
+                # segunda capacidade técnica de alguém) não são da ficha e
+                # nunca são tocados por aqui.
                 atuais = con.execute(
                     "SELECT documento_exigido_id, grupo, item FROM documento_exigido "
-                    "WHERE empresa_id = ? AND servico_id = ? AND ativo = 'Sim' ORDER BY ordem",
+                    "WHERE empresa_id = ? AND servico_id = ? AND ativo = 'Sim' "
+                    "AND processo_id IS NULL ORDER BY ordem",
                     (empresa_id, service_id),
                 ).fetchall()
                 relato["antes"] = len(atuais)

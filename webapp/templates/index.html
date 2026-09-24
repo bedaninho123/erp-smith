@@ -4884,7 +4884,18 @@ function renderChecklist(processo) {
           </div>
         </div>`;
     }
-    return cabecalho + corpo;
+    // "+ adicionar outro" (2026-09-24): o mesmo item de novo, só neste
+    // processo -- quem tem pistola, carabina e revólver precisa de uma
+    // capacidade técnica para cada. Extra sem documento marcado pode sair.
+    const acoes = `<div class="mb-2" style="margin-top:-.25rem">
+        <button type="button" class="btn btn-link btn-sm p-0 btn-item-extra" data-dex="${item.documento_exigido_id}"
+          data-nome="${escapeHtml(item.item)}">+ adicionar outro</button>
+        ${item.extra && !item.documentos.length
+          ? `<button type="button" class="btn btn-link btn-sm p-0 ml-3 text-danger btn-remover-item-extra"
+               data-dex="${item.documento_exigido_id}" data-nome="${escapeHtml(item.item)}">remover este item</button>`
+          : ""}
+      </div>`;
+    return cabecalho + corpo + acoes;
   }).join("");
 
   $("#checklist-corpo").innerHTML = linhas || `<p class="text-muted">Nenhum item de checklist cadastrado para este serviço.</p>`;
@@ -4923,6 +4934,36 @@ function renderChecklist(processo) {
     btn.addEventListener("click", () => {
       const campo = $("#checklist-corpo").querySelector(`.motivo-checklist[data-dck="${btn.dataset.dck}"]`);
       recusarDocumento(btn.dataset.dck, campo.value, recarregarTudo);
+    });
+  });
+
+  $("#checklist-corpo").querySelectorAll(".btn-item-extra").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const complemento = prompt(
+        `Adicionar outro "${btn.dataset.nome}" neste processo.\n\n` +
+        `De qual arma ou para quê? (ex.: Carabina) — pode deixar em branco.`
+      );
+      if (complemento === null) return;  // cancelou
+      const r = await fetch(`/api/processos/${processo.processo_id}/checklist/itens`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documento_exigido_id: btn.dataset.dex, complemento }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert("Erro ao adicionar: " + (d.erro || "falha desconhecida")); return; }
+      await recarregarChecklist(processo.caso_id, processo.processo_id);
+    });
+  });
+
+  $("#checklist-corpo").querySelectorAll(".btn-remover-item-extra").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm(`Remover "${btn.dataset.nome}" deste processo?`)) return;
+      const r = await fetch(
+        `/api/processos/${processo.processo_id}/checklist/itens/${encodeURIComponent(btn.dataset.dex)}/remover`,
+        { method: "POST" },
+      );
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert("Erro ao remover: " + (d.erro || "falha desconhecida")); return; }
+      await recarregarChecklist(processo.caso_id, processo.processo_id);
     });
   });
 

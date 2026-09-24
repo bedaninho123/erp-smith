@@ -749,7 +749,7 @@ def caso_detalhe(caso_id):
     # já é exigido por algum serviço" em vez de nada.
     catalogo_documentos = con.execute(
         "SELECT DISTINCT item FROM documento_exigido WHERE empresa_id = ? "
-        "AND ativo = 'Sim' ORDER BY item", (empresa_id,),
+        "AND ativo = 'Sim' AND processo_id IS NULL ORDER BY item", (empresa_id,),
     ).fetchall()
 
     con.close()
@@ -1039,6 +1039,35 @@ def checklist_marcar(processo_id):
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True, documento_checklist_id=novo_id)
+
+
+@app.route("/api/processos/<processo_id>/checklist/itens", methods=["POST"])
+@login_required
+@funcao_required("casos")
+def checklist_adicionar_item(processo_id):
+    """Mais um item igual a um existente, só neste processo -- a segunda
+    capacidade técnica de quem tem pistola e carabina."""
+    corpo = request.get_json(force=True) or {}
+    try:
+        novo_id = motor_checklist.adicionar_item_extra(
+            empresa_atual(), processo_id,
+            (corpo.get("documento_exigido_id") or "").strip(),
+            complemento=corpo.get("complemento") or "",
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True, documento_exigido_id=novo_id)
+
+
+@app.route("/api/processos/<processo_id>/checklist/itens/<documento_exigido_id>/remover", methods=["POST"])
+@login_required
+@funcao_required("casos")
+def checklist_remover_item(processo_id, documento_exigido_id):
+    try:
+        motor_checklist.remover_item_extra(empresa_atual(), processo_id, documento_exigido_id)
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
 
 
 def _notificar_documento_recusado(empresa_id: str, caso_id: str, item: str) -> None:

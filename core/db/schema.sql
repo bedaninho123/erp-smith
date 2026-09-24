@@ -128,7 +128,11 @@ CREATE TABLE documento_exigido (
     grupo                  TEXT,                          -- ex.: "Documentos Pessoais e Residenciais" (pode ser NULL)
     item                    TEXT NOT NULL,
     ordem                   INTEGER NOT NULL,
-    ativo                   TEXT NOT NULL DEFAULT 'Sim'
+    ativo                   TEXT NOT NULL DEFAULT 'Sim',
+    -- NULL = item do SERVIÇO (vale para todo processo). Preenchido = item
+    -- extra de UM processo só -- a segunda capacidade técnica de quem tem
+    -- pistola e carabina (2026-09-24, core/db/migrar_itens_por_processo.py).
+    processo_id             TEXT
 );
 
 CREATE INDEX idx_documento_exigido_empresa_id ON documento_exigido(empresa_id);

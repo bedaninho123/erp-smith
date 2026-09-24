@@ -77,10 +77,16 @@ def status_checklist(con, empresa_id: str, processo_id: str) -> list:
         raise ValueError(f"Processo não encontrado: {processo_id}")
     servico_id = linha["servico_id"]
 
+    # Itens do serviço + os extras DESTE processo (processo_id preenchido).
+    # O extra herda a `ordem` do item de que foi copiado, e o desempate
+    # põe o original primeiro e os extras logo abaixo, na ordem em que
+    # foram criados.
     itens = con.execute(
-        "SELECT documento_exigido_id, grupo, item, ordem FROM documento_exigido "
-        "WHERE servico_id = ? AND empresa_id = ? AND ativo = 'Sim' ORDER BY ordem",
-        (servico_id, empresa_id),
+        "SELECT documento_exigido_id, grupo, item, ordem, processo_id FROM documento_exigido "
+        "WHERE servico_id = ? AND empresa_id = ? AND ativo = 'Sim' "
+        "AND (processo_id IS NULL OR processo_id = ?) "
+        "ORDER BY ordem, processo_id IS NOT NULL, documento_exigido_id",
+        (servico_id, empresa_id, processo_id),
     ).fetchall()
 
     resultado = []
@@ -116,6 +122,7 @@ def status_checklist(con, empresa_id: str, processo_id: str) -> list:
             "grupo": item["grupo"],
             "item": item["item"],
             "ordem": item["ordem"],
+            "extra": item["processo_id"] is not None,
             "estado": estado,
             # `recebido` continua significando "este item está resolvido"
             # -- é o que alimenta a contagem X/Y e o anel de progresso.
@@ -130,6 +137,81 @@ def status_checklist(con, empresa_id: str, processo_id: str) -> list:
             "motivo_recusa": recusados[-1]["motivo_recusa"] if recusados and estado == "faltando" else None,
         })
     return resultado
+
+
+def adicionar_item_extra(
+    empresa_id: str, processo_id: str, documento_exigido_id: str,
+    complemento: str = "",
+) -> str:
+    """Mais um item igual a um existente, só neste processo (2026-09-24).
+
+    Pedido do usuário: quem tem pistola, carabina e revólver precisa de
+    uma capacidade técnica para cada. `complemento` diz de qual ("Carabina")
+    e vira parte do nome; sem ele, "adicional". O texto base é sempre o do
+    item de SERVIÇO -- copiar de um extra faria "X — Carabina — Revólver".
+    """
+    con = conectar(empresa_id)
+    try:
+        processo = con.execute(
+            "SELECT servico_id FROM processo WHERE processo_id = ? AND empresa_id = ?",
+            (processo_id, empresa_id),
+        ).fetchone()
+        if not processo:
+            raise ValueError(f"Processo não encontrado: {processo_id}")
+        base = con.execute(
+            "SELECT grupo, item, ordem, processo_id FROM documento_exigido "
+            "WHERE documento_exigido_id = ? AND servico_id = ? AND empresa_id = ? "
+            "AND ativo = 'Sim' AND (processo_id IS NULL OR processo_id = ?)",
+            (documento_exigido_id, processo["servico_id"], empresa_id, processo_id),
+        ).fetchone()
+        if not base:
+            raise ValueError("Este item não pertence ao checklist deste processo.")
+        texto = base["item"]
+        if base["processo_id"] is not None:
+            texto = texto.split(" — ")[0]
+        complemento = (complemento or "").strip()
+        novo_texto = f"{texto} — {complemento or 'adicional'}"
+
+        novo_id = _proximo_id(con, "documento_exigido", "documento_exigido_id", "DEX")
+        con.execute(
+            "INSERT INTO documento_exigido (documento_exigido_id, empresa_id, servico_id, "
+            "grupo, item, ordem, ativo, processo_id) VALUES (?,?,?,?,?,?,'Sim',?)",
+            (novo_id, empresa_id, processo["servico_id"], base["grupo"], novo_texto,
+             base["ordem"], processo_id),
+        )
+        con.commit()
+        return novo_id
+    finally:
+        con.close()
+
+
+def remover_item_extra(empresa_id: str, processo_id: str, documento_exigido_id: str) -> None:
+    """Tira um item extra criado por engano. Só extra deste processo, e só
+    se nenhum documento foi marcado nele -- marcação é registro de
+    conferência, e sumir com o item deixaria a marcação apontando para o
+    nada. Item do serviço nunca sai por aqui."""
+    con = conectar(empresa_id)
+    try:
+        item = con.execute(
+            "SELECT 1 FROM documento_exigido WHERE documento_exigido_id = ? "
+            "AND empresa_id = ? AND processo_id = ?",
+            (documento_exigido_id, empresa_id, processo_id),
+        ).fetchone()
+        if not item:
+            raise ValueError("Só dá para remover item adicionado a este processo.")
+        marcado = con.execute(
+            "SELECT 1 FROM documento_checklist WHERE documento_exigido_id = ? AND empresa_id = ?",
+            (documento_exigido_id, empresa_id),
+        ).fetchone()
+        if marcado:
+            raise ValueError("Este item já tem documento marcado. Desmarque antes de remover.")
+        con.execute(
+            "DELETE FROM documento_exigido WHERE documento_exigido_id = ? AND empresa_id = ?",
+            (documento_exigido_id, empresa_id),
+        )
+        con.commit()
+    finally:
+        con.close()
 
 
 def marcar_documento(
@@ -154,10 +236,13 @@ def marcar_documento(
         if not processo:
             raise ValueError(f"Processo não encontrado: {processo_id}")
 
+        # Item extra de OUTRO processo não serve aqui, mesmo sendo do
+        # mesmo serviço -- é a carabina de outra pessoa.
         existe_item = con.execute(
             "SELECT 1 FROM documento_exigido WHERE documento_exigido_id = ? "
-            "AND servico_id = ? AND empresa_id = ?",
-            (documento_exigido_id, processo["servico_id"], empresa_id),
+            "AND servico_id = ? AND empresa_id = ? "
+            "AND (processo_id IS NULL OR processo_id = ?)",
+            (documento_exigido_id, processo["servico_id"], empresa_id, processo_id),
         ).fetchone()
         if not existe_item:
             raise ValueError("Este item de checklist não pertence ao serviço deste processo.")

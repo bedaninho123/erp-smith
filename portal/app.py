@@ -979,7 +979,10 @@ def upload_documento():
             "JOIN documento_exigido dex ON dex.servico_id = p.servico_id "
             "     AND dex.empresa_id = p.empresa_id "
             "WHERE p.processo_id = ? AND p.caso_id = ? AND p.empresa_id = ? "
-            "  AND dex.documento_exigido_id = ?",
+            "  AND dex.documento_exigido_id = ? "
+            # Item extra só vale no processo a que pertence -- sem isto, o
+            # cliente poderia mandar arquivo para o item extra de outro.
+            "  AND (dex.processo_id IS NULL OR dex.processo_id = p.processo_id)",
             (processo_id, caso_id, empresa_id, documento_exigido_id),
         ).fetchone()
         con.close()
