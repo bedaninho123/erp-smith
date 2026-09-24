@@ -38,6 +38,13 @@ os.environ["ERP_DOCUMENTOS_DIR"] = str(PASTA / "documentos_recebidos")
 # gravaria no .env de verdade.
 os.environ.setdefault("WEBAPP_SECRET_KEY", "chave-de-demonstracao-nao-usar-em-producao")
 os.environ.setdefault("PORTAL_SECRET_KEY", "chave-de-demonstracao-nao-usar-em-producao")
+# Senha do gov.br: chave NOVA a cada execução, nunca a do .env -- o banco
+# da demonstração é apagado ao fechar, e usar a chave real aqui a
+# exporia a um processo que não precisa dela. `=` e não setdefault por
+# isso mesmo: o .env já pode ter trazido a de verdade.
+from cryptography.fernet import Fernet  # noqa: E402
+
+os.environ["ERP_CHAVE_SENHAS"] = Fernet.generate_key().decode()
 # Integração externa desligada: a demonstração usa o modo simulado.
 os.environ["SHOOTING_HOUSE_ATIVO"] = ""
 
@@ -225,9 +232,9 @@ def _criar_processos_demo() -> dict:
     _criar_tarefas_demo: INSERT à mão mostraria uma tela que o sistema de
     verdade não produz.
 
-    O de Renovação do CR está aqui porque é o checklist mais longo (18
-    itens) e o único onde dá pra ver a separação de 2026-08-27 entre o que
-    se COLETA (14 itens) e o que só se CONFERE (4)."""
+    O de Revalidação do CR está aqui porque é uma das fichas do clube com
+    blocos (documentos, certidões criminais, IBAMA) -- ver
+    core/db/revisar_checklist_cac.py."""
     from core.motor_processos import criar_processo
 
     criados = {}
@@ -409,8 +416,7 @@ def main() -> None:
     print(f"  Banco    : {PASTA}  (apagado ao fechar)")
     print()
     print("  Para ver o checklist: Casos -> \"Renovação de CR — Ricardo\" ->")
-    print("    processo de Renovação do CR (18 itens, separados entre o que")
-    print("    se COLETA e o que só se CONFERE).")
+    print("    processo de Revalidação do CR (ficha do clube, 18 itens).")
     print()
     print("  Shooting House em modo SIMULADO. CPFs que a busca encontra:")
     print("    529.982.247-25  -> percorre o fluxo inteiro")

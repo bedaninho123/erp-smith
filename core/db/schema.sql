@@ -616,3 +616,17 @@ CREATE INDEX idx_anuncio_cliente_id ON anuncio(cliente_id);
 -- anúncios" sempre filtra por (empresa, cliente_id) -- os dois juntos
 -- são as duas únicas formas de ler esta tabela.
 CREATE INDEX idx_anuncio_status ON anuncio(empresa_id, status);
+
+-- Senha do gov.br do cliente (2026-09-24). CIFRADA -- o valor puro nunca
+-- toca o banco; a chave vive em ERP_CHAVE_SENHAS, fora dele. Nenhuma view
+-- lê esta tabela: não chega à IA nem ao Portal. Ver
+-- core/motor_credenciais.py, que também a cria sob demanda.
+CREATE TABLE IF NOT EXISTS credencial_cliente (
+    empresa_id       TEXT NOT NULL,
+    cliente_id       TEXT NOT NULL,
+    tipo             TEXT NOT NULL,          -- 'gov.br'
+    segredo_cifrado  TEXT NOT NULL,
+    atualizado_em    TEXT NOT NULL,
+    atualizado_por   TEXT NOT NULL,
+    PRIMARY KEY (empresa_id, cliente_id, tipo)
+);

@@ -1552,6 +1552,9 @@
             <div class="card-body" id="cliente-cabecalho"></div>
           </div>
           <div class="card">
+            <div class="card-body" id="cliente-senha-govbr"></div>
+          </div>
+          <div class="card">
             <div class="card-header d-flex align-items-center" style="gap: var(--e3)">
               <h3 class="card-title">Dossiê do cliente</h3>
               <span class="text-muted ml-auto" style="font-size:12px" id="dossie-contagem"></span>
@@ -3709,6 +3712,10 @@ const ROTULOS_EVENTO = {
   "permissao_alterada": "Permissão",
   "configuracao_alterada": "Configuração",
   "ACESSO_DADO_SENSIVEL": "Acesso a dado sensível",
+  "SENHA_GOVBR_REVELADA": "Senha do gov.br exibida",
+  "SENHA_GOVBR_CADASTRADA": "Senha do gov.br cadastrada",
+  "SENHA_GOVBR_ALTERADA": "Senha do gov.br trocada",
+  "SENHA_GOVBR_REMOVIDA": "Senha do gov.br removida",
   "CONSULTA_CADASTRO_EXTERNO": "Consulta ao Shooting House",
 };
 
@@ -4544,7 +4551,9 @@ async function abrirFiliado(cpf) {
       </div>
     </div>`;
 
-  $("#filiado-ficha").innerHTML = simulado + cabecalho + blocoCr + armas + documentos + habitualidade;
+  const blocoSenha = !f ? "" : `<div class="card"><div class="card-body" id="filiado-senha-govbr"></div></div>`;
+
+  $("#filiado-ficha").innerHTML = simulado + cabecalho + blocoCr + blocoSenha + armas + documentos + habitualidade;
 
   if (f) {
     const cpfUrl = encodeURIComponent(cpf);
@@ -4554,6 +4563,7 @@ async function abrirFiliado(cpf) {
       urlEnviar: `/api/filiados/${cpfUrl}/dossie`,
     };
     carregarDossieGenerico(cfgDossie);
+    montarSenhaGov($("#filiado-senha-govbr"), `/api/filiados/${cpfUrl}/senha-govbr`);
     $("#salvar-fdossie").addEventListener("click", () => salvarDossieGenerico(cfgDossie));
 
     $("#filiado-cr-salvar").addEventListener("click", async () => {
@@ -5265,6 +5275,97 @@ async function salvarDossieGenerico(cfg) {
   }
 }
 
+// Senha do gov.br (2026-09-24). A MESMA senha aparece na ficha do
+// cliente e na do filiado -- `base` é a URL de um dos dois lados. O valor
+// nunca vem na carga da tela: só com "Mostrar", que o servidor registra
+// na Auditoria, e some sozinho depois de 30s para não ficar exposto numa
+// tela esquecida aberta. `autocomplete="new-password"` impede o navegador
+// de oferecer guardar a senha do CLIENTE como se fosse do usuário.
+async function montarSenhaGov(container, base) {
+  container.innerHTML = `<p class="text-muted mb-0">Carregando…</p>`;
+  const resposta = await buscarJson(base);
+  if (!resposta.ok) {
+    container.innerHTML = `<p class="text-muted mb-0">${escapeHtml((resposta.dados || {}).erro || "Não foi possível carregar a senha do gov.br.")}</p>`;
+    return;
+  }
+  const d = resposta.dados;
+  const formulario = (rotuloBotao) => `
+    <div class="d-flex flex-wrap align-items-end mt-2" style="gap:var(--e2)">
+      <div>
+        <label class="sr-only" for="senha-govbr-campo">Senha do gov.br</label>
+        <input id="senha-govbr-campo" type="password" class="form-control" autocomplete="new-password"
+               placeholder="Senha do gov.br do cliente" style="min-width:240px">
+      </div>
+      <button type="button" class="btn btn-primary" data-acao="salvar">${rotuloBotao}</button>
+      ${d.cadastrada ? `<button type="button" class="btn btn-outline-secondary" data-acao="cancelar">Cancelar</button>` : ""}
+    </div>`;
+
+  container.innerHTML = `
+    <h5 class="mb-1">Senha do gov.br</h5>
+    <p class="text-muted mb-2" style="font-size:.85rem">Guardada criptografada. Cada vez que alguém clica em
+      "Mostrar", fica registrado na Auditoria quem viu e quando.</p>
+    ${d.cadastrada ? `
+      <div class="d-flex flex-wrap align-items-center" style="gap:var(--e2)">
+        <span class="mono" id="senha-govbr-valor">••••••••</span>
+        <button type="button" class="btn btn-outline-primary btn-sm" data-acao="mostrar">Mostrar</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-acao="trocar">Trocar</button>
+        <button type="button" class="btn btn-outline-danger btn-sm" data-acao="remover">Remover</button>
+      </div>
+      <small class="text-muted d-block mt-1">Cadastrada por ${escapeHtml(d.atualizado_por || "—")} em ${dataHoraBr(d.atualizado_em)}.</small>
+      <div data-area="trocar"></div>`
+      : `<p class="mb-0">Não cadastrada.</p>${formulario("Guardar senha")}`}
+    <span class="text-muted" data-area="status" aria-live="polite"></span>`;
+
+  const status = container.querySelector('[data-area="status"]');
+  const postar = async (sufixo, corpo) => {
+    const r = await fetch(base + sufixo, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo || {}),
+    });
+    const dados = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(dados.erro || `erro ${r.status}`);
+    return dados;
+  };
+
+  // onclick, e não addEventListener: o bloco se redesenha a cada ação, e
+  // cada redesenho empilharia mais um listener no mesmo container.
+  container.onclick = async (ev) => {
+    const botao = ev.target.closest("button[data-acao]");
+    if (!botao) return;
+    const acao = botao.dataset.acao;
+    try {
+      if (acao === "mostrar") {
+        const dados = await postar("/revelar");
+        const alvo = container.querySelector("#senha-govbr-valor");
+        alvo.textContent = dados.senha || "(vazia)";
+        setTimeout(() => { if (alvo.isConnected) alvo.textContent = "••••••••"; }, 30000);
+      } else if (acao === "trocar") {
+        container.querySelector('[data-area="trocar"]').innerHTML = formulario("Guardar nova senha");
+        container.querySelector("#senha-govbr-campo").focus();
+      } else if (acao === "cancelar") {
+        container.querySelector('[data-area="trocar"]').innerHTML = "";
+      } else if (acao === "remover") {
+        if (!confirm("Remover a senha do gov.br deste cliente?")) return;
+        await postar("/remover");
+        await montarSenhaGov(container, base);
+      } else if (acao === "salvar") {
+        const campo = container.querySelector("#senha-govbr-campo");
+        if (!campo.value) { status.textContent = "Digite a senha."; campo.focus(); return; }
+        botao.disabled = true;
+        const dados = await postar("", { senha: campo.value });
+        campo.value = "";
+        await montarSenhaGov(container, base);
+        container.querySelector('[data-area="status"]').textContent = dados.cadastro_criado
+          ? "Senha guardada. Esta pessoa ainda não era cliente do despachante — o cadastro foi criado agora."
+          : "Senha guardada.";
+      }
+    } catch (e) {
+      botao.disabled = false;
+      alert("Não foi possível: " + e.message);
+    }
+  };
+}
+
 // Ficha do cliente: o dossiê dela, pelo cliente_id.
 let dossieClienteCfg = null;
 function carregarDossie(clienteId) {
@@ -5285,6 +5386,7 @@ async function abrirCliente(clienteId) {
   const resposta = await buscarJson(`/api/clientes/${clienteId}`);
   const d = resposta.dados;
   carregarDossie(clienteId);
+  montarSenhaGov($("#cliente-senha-govbr"), `/api/clientes/${encodeURIComponent(clienteId)}/senha-govbr`);
   if (!resposta.ok) {
     $("#cliente-cabecalho").innerHTML = resposta.falhou
       ? AVISO_FALHA_DE_REDE

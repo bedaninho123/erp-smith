@@ -81,10 +81,11 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.migrate_dados_teste        # cria EMP-000001 + dado migrado da planilha
 .venv\Scripts\python.exe -m core.db.gerar_clientes_ficticios   # aceita um empresa_id como argumento
 .venv\Scripts\python.exe -m core.db.popular_documentos_exigidos
-# Revisao das listas de documento por servico (2026-08-27): separa o que se
-# COLETA do que se CONFERE, completa Guia de Trafego e Apostilamento.
-# Idempotente -- apaga o checklist antigo do servico e insere o revisado.
+# Listas de documento por servico = as FICHAS DO CLUBE (2026-09-24). Sem
+# --aplicar so MOSTRA o que mudaria. Item antigo com documento marcado e
+# desativado, nunca apagado; rodar de novo nao mexe em nada.
 .venv\Scripts\python.exe -m core.db.revisar_checklist_cac
+.venv\Scripts\python.exe -m core.db.revisar_checklist_cac --aplicar
 .venv\Scripts\python.exe -m core.db.migrar_aprovacao_documentos  # idempotente, roda sobre banco em uso
 .venv\Scripts\python.exe -m core.db.migrar_papeis_usuario         # idempotente, normaliza usuario.papel para Gestor/Atendente
 .venv\Scripts\python.exe -m core.db.migrar_permissoes_usuario     # idempotente, cria a tabela usuario_permissao
@@ -648,6 +649,25 @@ Três listas controladas entraram junto, em `core/motor_casos.py`:
 
 `criar_caso` ganhou `prioridade` e `responsavel_id`, com os padrões
 antigos preservados -- o orquestrador continua chamando sem eles.
+
+### Senha do gov.br do cliente: cifrada, revelada com rastro
+
+(2026-09-24.) Pedido do usuário: guardar a senha do gov.br junto do
+cadastro do cliente e do filiado (o despachante faz a revalidação do CR
+entrando por ela). É o dado mais perigoso do sistema -- não é dado SOBRE
+a pessoa, é a chave da vida digital dela. `core/motor_credenciais.py`:
+
+- **Cifrada** (Fernet) com a chave de `ERP_CHAVE_SENHAS`, que vive no
+  ambiente e nunca no banco. Sem a chave, gravar e revelar recusam (503)
+  -- falha fechado. **Perder a chave é perder todas as senhas**, inclusive
+  as de um backup restaurado.
+- O valor só sai por `/revelar`, com `Cache-Control: no-store`, e todo
+  revelar grava `SENHA_GOVBR_REVELADA` no `log_administrativo` ANTES de
+  devolver. A tela esconde de novo depois de 30s.
+- Nenhum módulo de `motor_ia/`, `portal/` ou `atendimento/` importa o
+  motor -- `tests/test_senha_govbr.py` confere lendo o código.
+- A senha é do CLIENTE; pela ficha do filiado, quem ainda não é cliente
+  ganha cadastro ao ter a senha guardada (mesma regra do dossiê).
 
 ### webapp/ é o painel administrativo real, não uma ferramenta descartável
 

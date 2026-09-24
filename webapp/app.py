@@ -43,7 +43,7 @@ from core.motor_identidade import mascarar_cpf
 from core.conexao import conectar
 from core.configuracoes import atualizar_configuracao, obter_configuracoes
 from core.limitador_tentativas import excedeu_limite
-from core import motor_indicadores
+from core import motor_credenciais, motor_indicadores
 from core.motor_casos import (
     CANAIS_ORIGEM, PRIORIDADES_VALIDAS, STATUS_VALIDOS, atualizar_descricao,
     atualizar_responsavel, atualizar_status, criar_caso,
@@ -2121,6 +2121,22 @@ def _cliente_do_filiado(empresa_id: str, cpf: str):
     return _clientes_por_cpf(empresa_id).get(cpf)
 
 
+def _garantir_cliente_do_filiado(empresa_id: str, filiado: dict, motivo: str):
+    """(cliente_id, criado_agora). Filiado que ainda não é cliente ganha
+    cadastro -- só num gesto sobre AQUELA pessoa (guardar documento,
+    cadastrar senha), nunca em lote. Levanta ClienteInvalido."""
+    cliente_id = _cliente_do_filiado(empresa_id, filiado["cpf"])
+    if cliente_id:
+        return cliente_id, False
+    try:
+        return criar_cliente(
+            empresa_id, nome=filiado["nome"], cpf=filiado["cpf"], email=filiado.get("email"),
+            observacoes=f"Cadastro criado {motivo}.",
+        )["cliente_id"], True
+    except ClienteJaExiste as e:
+        return e.cliente_id, False
+
+
 @app.route("/api/filiados/<cpf>/dossie")
 @login_required
 @funcao_required("habitualidade")
@@ -2167,19 +2183,12 @@ def filiado_dossie_enviar(cpf):
     if len(conteudo) > DOCUMENTO_TAMANHO_MAXIMO:
         return jsonify(erro="Arquivo maior que 15MB."), 400
 
-    cliente_id = _cliente_do_filiado(empresa_id, digitos)
-    cadastro_criado = False
-    if not cliente_id:
-        try:
-            cliente_id = criar_cliente(
-                empresa_id, nome=filiado["nome"], cpf=digitos, email=filiado.get("email"),
-                observacoes="Cadastro criado ao guardar o primeiro documento pela tela de Filiados.",
-            )["cliente_id"]
-            cadastro_criado = True
-        except ClienteJaExiste as e:
-            cliente_id = e.cliente_id
-        except ClienteInvalido as e:
-            return jsonify(erro=f"Não foi possível criar o cadastro: {e}"), 400
+    try:
+        cliente_id, cadastro_criado = _garantir_cliente_do_filiado(
+            empresa_id, filiado, "ao guardar o primeiro documento pela tela de Filiados",
+        )
+    except ClienteInvalido as e:
+        return jsonify(erro=f"Não foi possível criar o cadastro: {e}"), 400
 
     try:
         documento_id = motor_documentos.salvar_no_dossie(
@@ -2193,6 +2202,142 @@ def filiado_dossie_enviar(cpf):
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True, documento_id=documento_id, cliente_id=cliente_id,
                    cadastro_criado=cadastro_criado)
+
+
+# ---------------------------------------------------------------------
+# Senha do gov.br (2026-09-24) -- ver core/motor_credenciais.py.
+#
+# Dois caminhos para a MESMA senha, como o dossiê: pela ficha do cliente
+# e pela do filiado. A senha é do CLIENTE; o filiado que ainda não é
+# cliente ganha cadastro ao ter a senha guardada. O valor só sai pela
+# rota /revelar, que registra quem pediu, e com Cache-Control: no-store
+# para o navegador não guardar a resposta em disco.
+# ---------------------------------------------------------------------
+
+def _resposta_senha(fn):
+    try:
+        return fn()
+    except motor_credenciais.ChaveNaoConfigurada as e:
+        return jsonify(erro=str(e)), 503
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+
+
+def _senha_revelada(empresa_id: str, cliente_id: str):
+    senha = motor_credenciais.revelar(
+        empresa_id, cliente_id, session.get("usuario_nome", "Painel administrativo"),
+    )
+    resposta = jsonify(senha=senha)
+    resposta.headers["Cache-Control"] = "no-store"
+    return resposta
+
+
+@app.route("/api/clientes/<cliente_id>/senha-govbr")
+@login_required
+@funcao_required("clientes")
+def cliente_senha_situacao(cliente_id):
+    return jsonify(motor_credenciais.situacao(empresa_atual(), cliente_id))
+
+
+@app.route("/api/clientes/<cliente_id>/senha-govbr", methods=["POST"])
+@login_required
+@funcao_required("clientes")
+def cliente_senha_salvar(cliente_id):
+    senha = (request.get_json(force=True) or {}).get("senha") or ""
+    def salvar():
+        motor_credenciais.salvar(empresa_atual(), cliente_id, senha,
+                                 session.get("usuario_nome", "Painel administrativo"))
+        return jsonify(ok=True)
+    return _resposta_senha(salvar)
+
+
+@app.route("/api/clientes/<cliente_id>/senha-govbr/revelar", methods=["POST"])
+@login_required
+@funcao_required("clientes")
+def cliente_senha_revelar(cliente_id):
+    return _resposta_senha(lambda: _senha_revelada(empresa_atual(), cliente_id))
+
+
+@app.route("/api/clientes/<cliente_id>/senha-govbr/remover", methods=["POST"])
+@login_required
+@funcao_required("clientes")
+def cliente_senha_remover(cliente_id):
+    return _resposta_senha(lambda: jsonify(ok=motor_credenciais.remover(
+        empresa_atual(), cliente_id, session.get("usuario_nome", "Painel administrativo"))))
+
+
+def _filiado_da_rota(cpf: str):
+    digitos = _cpf_da_rota(cpf)
+    return motor_filiados.obter_por_cpf(empresa_atual(), digitos) if digitos else None
+
+
+@app.route("/api/filiados/<cpf>/senha-govbr")
+@login_required
+@funcao_required("habitualidade")
+def filiado_senha_situacao(cpf):
+    filiado = _filiado_da_rota(cpf)
+    if not filiado:
+        return jsonify(erro="Filiado não encontrado."), 404
+    empresa_id = empresa_atual()
+    return jsonify(motor_credenciais.situacao(
+        empresa_id, _cliente_do_filiado(empresa_id, filiado["cpf"])))
+
+
+@app.route("/api/filiados/<cpf>/senha-govbr", methods=["POST"])
+@login_required
+@funcao_required("habitualidade")
+def filiado_senha_salvar(cpf):
+    filiado = _filiado_da_rota(cpf)
+    if not filiado:
+        return jsonify(erro="Filiado não encontrado."), 404
+    senha = (request.get_json(force=True) or {}).get("senha") or ""
+    empresa_id = empresa_atual()
+
+    def salvar():
+        # Confere a chave ANTES de criar cadastro: sem ela a senha seria
+        # recusada, e o cliente teria nascido à toa.
+        motor_credenciais._fernet()
+        if not senha.strip():
+            raise ValueError("Digite a senha.")
+        try:
+            cliente_id, criado = _garantir_cliente_do_filiado(
+                empresa_id, filiado, "ao cadastrar a senha do gov.br pela tela de Filiados",
+            )
+        except ClienteInvalido as e:
+            raise ValueError(f"Não foi possível criar o cadastro: {e}") from None
+        motor_credenciais.salvar(empresa_id, cliente_id, senha,
+                                 session.get("usuario_nome", "Painel administrativo"))
+        return jsonify(ok=True, cadastro_criado=criado)
+    return _resposta_senha(salvar)
+
+
+@app.route("/api/filiados/<cpf>/senha-govbr/revelar", methods=["POST"])
+@login_required
+@funcao_required("habitualidade")
+def filiado_senha_revelar(cpf):
+    filiado = _filiado_da_rota(cpf)
+    if not filiado:
+        return jsonify(erro="Filiado não encontrado."), 404
+    empresa_id = empresa_atual()
+    cliente_id = _cliente_do_filiado(empresa_id, filiado["cpf"])
+    if not cliente_id:
+        return jsonify(senha=None)
+    return _resposta_senha(lambda: _senha_revelada(empresa_id, cliente_id))
+
+
+@app.route("/api/filiados/<cpf>/senha-govbr/remover", methods=["POST"])
+@login_required
+@funcao_required("habitualidade")
+def filiado_senha_remover(cpf):
+    filiado = _filiado_da_rota(cpf)
+    if not filiado:
+        return jsonify(erro="Filiado não encontrado."), 404
+    empresa_id = empresa_atual()
+    cliente_id = _cliente_do_filiado(empresa_id, filiado["cpf"])
+    if not cliente_id:
+        return jsonify(ok=False)
+    return _resposta_senha(lambda: jsonify(ok=motor_credenciais.remover(
+        empresa_id, cliente_id, session.get("usuario_nome", "Painel administrativo"))))
 
 
 @app.route("/api/clientes/shooting-house/<cpf>")
