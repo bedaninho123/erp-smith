@@ -339,7 +339,7 @@ def listar_panorama(
         sql = (
             "SELECT filiado_id, nome, cpf, matricula, status_filiacao, "
             "participacoes_12m, ultima_participacao, sincronizado_em, "
-            "sincronizacao_erro, anuidade_em_dia, anuidade_validade "
+            "sincronizacao_erro, anuidade_em_dia, anuidade_validade, cr_validade "
             "FROM filiado WHERE empresa_id = ?"
         )
         parametros = [empresa_id]

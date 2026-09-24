@@ -40,6 +40,10 @@ DOCUMENTOS = (
     ("identidade", "Documento de identidade (RG ou CNH)", "Pessoais", None, False),
     ("cpf", "CPF", "Pessoais", None, False),
     ("comprovante_residencia", "Comprovante de residência", "Pessoais", 3, False),
+    # Quem guarda acervo em mais de um endereço precisa comprovar o
+    # segundo também -- é outro documento, não uma segunda via do primeiro.
+    ("comprovante_segundo_endereco", "Comprovante do segundo endereço de acervo",
+     "Pessoais", 3, False),
     ("foto", "Foto 3x4", "Pessoais", None, False),
 
     # --- Laudos ------------------------------------------------------

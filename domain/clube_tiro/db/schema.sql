@@ -261,3 +261,31 @@ CREATE INDEX idx_filiado_cpf ON filiado(cpf);
 -- A sincronização varre por "quem foi sincronizado há mais tempo",
 -- então este índice é o que faz uma rodada limitada ser barata.
 CREATE INDEX idx_filiado_sincronizado ON filiado(empresa_id, sincronizado_em);
+
+-- ---------------------------------------------------------------------
+-- O que o despachante sabe do filiado e o Shooting House não diz
+-- (2026-09-24): datas do CR, e SIGMA/acervo de cada arma. Tabelas à
+-- parte de `filiado` porque aquela é espelho reescrito pela
+-- sincronização -- dado digitado por gente não mora ali. O motor
+-- (domain/clube_tiro/motor_anotacoes_filiado.py) também as cria sob
+-- demanda, então banco em uso não precisa de migração.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS filiado_cr (
+    empresa_id       TEXT NOT NULL,
+    cpf              TEXT NOT NULL,
+    data_expedicao   TEXT,
+    data_vencimento  TEXT,
+    atualizado_em    TEXT NOT NULL,
+    atualizado_por   TEXT,
+    PRIMARY KEY (empresa_id, cpf)
+);
+CREATE TABLE IF NOT EXISTS arma_anotacao (
+    empresa_id       TEXT NOT NULL,
+    cpf              TEXT NOT NULL,
+    arma_id          TEXT NOT NULL,         -- `id` da arma no Shooting House, nunca a série
+    sigma            TEXT,
+    acervo           TEXT,                  -- 'Tiro' | 'Caça' | 'Coleção'
+    atualizado_em    TEXT NOT NULL,
+    atualizado_por   TEXT,
+    PRIMARY KEY (empresa_id, cpf, arma_id)
+);

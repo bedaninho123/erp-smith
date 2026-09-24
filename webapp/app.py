@@ -55,7 +55,8 @@ from core.motor_usuarios import (
     criar_usuario, listar_permissoes, listar_usuarios, tem_permissao,
 )
 from domain.clube_tiro import (
-    documentos_cac, motor_filiados, motor_indicadores_clube, motor_modalidades,
+    documentos_cac, motor_anotacoes_filiado, motor_filiados, motor_indicadores_clube,
+    motor_modalidades,
 )
 from domain.clube_tiro.categorias_marketplace import CATEGORIAS as CATEGORIAS_MARKETPLACE
 from domain.clube_tiro.motor_campeonatos import (
@@ -73,6 +74,7 @@ from core.motor_marketplace import (
 from integracoes.config import shooting_house_ativo
 from integracoes.shooting_house import (
     ShootingHouseIndisponivel,
+    completar_arma_via_habitualidade,
     consultar_armas,
     consultar_cadastro,
     consultar_ficha_completa,
@@ -224,7 +226,21 @@ def _notificar_cliente_mudanca_status(empresa_id: str, caso_id: str) -> None:
     atendimento dele, com link pro Portal. Silencioso quando a
     notificação está desligada, o cliente não tem e-mail cadastrado, ou
     o Gmail ainda não foi autorizado nesta máquina -- nenhum desses
-    casos deve impedir a mudança de status em si de ter acontecido."""
+    casos deve impedir a mudança de status em si de ter acontecido.
+
+    Nem uma FALHA do Gmail (2026-09-24). Antes, token revogado
+    (`invalid_grant`, que já aconteceu) virava HTTP 500 DEPOIS de o
+    status estar gravado: o banco mudava, a tela recebia erro em HTML, o
+    `r.json()` estourava e ela ficava parada em "Salvando…" mostrando o
+    status antigo. Para quem usa, "o status não muda". Mesmo cuidado que
+    a recusa de documento já tinha (ver documento_recusar)."""
+    try:
+        _enviar_notificacao_mudanca_status(empresa_id, caso_id)
+    except Exception:
+        traceback.print_exc()
+
+
+def _enviar_notificacao_mudanca_status(empresa_id: str, caso_id: str) -> None:
     destinatario = destinatario_para_notificar(empresa_id, caso_id)
     if not destinatario or not gmail_configurado():
         return
@@ -755,6 +771,16 @@ def caso_detalhe(caso_id):
         usuarios=[dict(r) for r in usuarios],
         servicos=[dict(r) for r in servicos],
         catalogo_documentos=[r["item"] for r in catalogo_documentos],
+        # Botão "Ver filiado" (2026-09-24): só o CPF, e só se a pessoa
+        # passou pelo clube E quem está logado pode abrir a tela de
+        # Filiados -- sem a segunda condição o botão levaria a um 403.
+        filiado_cpf=(
+            caso["cliente_cpf"]
+            if _pode("habitualidade")
+            and motor_filiados.obter_por_cpf(empresa_id, caso["cliente_cpf"])
+            else None
+        ),
+        pode_ver_cliente=_pode("clientes"),
     )
 
 
@@ -1315,7 +1341,7 @@ def dossie_enviar(cliente_id):
 
 @app.route("/api/dossie/<documento_id>/remover", methods=["POST"])
 @login_required
-@funcao_required("clientes")
+@funcao_required("clientes", "habitualidade")
 def dossie_remover(documento_id):
     """Tira um documento do dossiê -- linha e arquivo.
 
@@ -1919,8 +1945,17 @@ def filiados_panorama():
     # mas quando são a mesma pessoa o sistema tem que mostrar tudo que
     # sabe dela -- e a ponte é o CPF.
     clientes = _clientes_por_cpf(empresa_id)
+    # Vencimento do CR: o que o despachante cadastrou vale; sem isso, a
+    # data do Shooting House, marcada como tal -- ela não é
+    # confirmadamente o vencimento (ver motor_anotacoes_filiado).
+    vencimentos = motor_anotacoes_filiado.vencimentos_cr_por_cpf(empresa_id)
     for filiado in filiados:
         filiado["cliente_id"] = clientes.get(filiado["cpf"])
+        manual = vencimentos.get(filiado["cpf"])
+        filiado["cr_vencimento"] = manual or filiado.get("cr_validade")
+        filiado["cr_vencimento_origem"] = (
+            "manual" if manual else ("api" if filiado.get("cr_validade") else None)
+        )
 
     return jsonify(
         # O resumo é do CLUBE inteiro, de propósito -- ele não acompanha
@@ -2002,9 +2037,25 @@ def filiado_ficha(cpf):
         if habitualidade else {"treinos": 0, "provas": 0, "total": 0}
     )
 
+    # SIGMA e acervo (2026-09-24). A API quase nunca devolve o SIGMA por
+    # esta rota; a habitualidade já consultada acima recupera o de quem
+    # usou a arma num lançamento (mesmo caminho do Portal), e o que
+    # continuar faltando o despachante digita. Acervo não existe na API.
+    if armas is not None:
+        if habitualidade:
+            armas = [completar_arma_via_habitualidade(a, habitualidade) for a in armas]
+        armas = motor_anotacoes_filiado.mesclar_armas(
+            armas, motor_anotacoes_filiado.anotacoes_armas(empresa_id, digitos),
+        )
+
     return jsonify(
         ficha=ficha,
         armas=armas,
+        acervos=list(documentos_cac.FINALIDADES_ARMA),
+        # Datas do CR como o despachante cadastrou -- a API não tem a de
+        # expedição, e a dela de "expiração" não é confirmadamente o
+        # vencimento. A tela mostra a da API ao lado, só como referência.
+        cr_cadastrado=motor_anotacoes_filiado.obter_cr(empresa_id, digitos),
         eventos=eventos,
         total_participacoes=len(eventos),
         treinos_provas_12m=treinos_provas,
@@ -2013,6 +2064,135 @@ def filiado_ficha(cpf):
         indisponivel={"ficha": erro_ficha, "armas": erro_armas, "habitualidade": erro_hab},
         simulado=bool((ficha or {}).get("simulado") or (habitualidade or {}).get("simulado")),
     )
+
+
+def _cpf_da_rota(cpf: str) -> str:
+    digitos = re.sub(r"\D", "", cpf or "")
+    return digitos if len(digitos) == 11 else ""
+
+
+@app.route("/api/filiados/<cpf>/cr", methods=["POST"])
+@login_required
+@funcao_required("habitualidade")
+def filiado_salvar_cr(cpf):
+    """Expedição e vencimento do CR, digitados pelo despachante."""
+    digitos = _cpf_da_rota(cpf)
+    empresa_id = empresa_atual()
+    # Só de quem passou pelo clube DESTA empresa -- sem isso a rota
+    # aceitaria anotar qualquer CPF digitado na URL.
+    if not digitos or not motor_filiados.obter_por_cpf(empresa_id, digitos):
+        return jsonify(erro="Filiado não encontrado."), 404
+    corpo = request.get_json(force=True) or {}
+    try:
+        cr = motor_anotacoes_filiado.salvar_cr(
+            empresa_id, digitos,
+            data_expedicao=corpo.get("data_expedicao"),
+            data_vencimento=corpo.get("data_vencimento"),
+            atualizado_por=session.get("usuario_nome"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True, cr=cr)
+
+
+@app.route("/api/filiados/<cpf>/armas/<arma_id>", methods=["POST"])
+@login_required
+@funcao_required("habitualidade")
+def filiado_salvar_arma(cpf, arma_id):
+    """SIGMA (quando a API não trouxe) e acervo de uma arma."""
+    digitos = _cpf_da_rota(cpf)
+    empresa_id = empresa_atual()
+    if not digitos or not motor_filiados.obter_por_cpf(empresa_id, digitos):
+        return jsonify(erro="Filiado não encontrado."), 404
+    corpo = request.get_json(force=True) or {}
+    try:
+        arma = motor_anotacoes_filiado.salvar_arma(
+            empresa_id, digitos, arma_id,
+            sigma=corpo.get("sigma"), acervo=corpo.get("acervo"),
+            atualizado_por=session.get("usuario_nome"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True, arma=arma)
+
+
+def _cliente_do_filiado(empresa_id: str, cpf: str):
+    """O cliente_id da pessoa, ou None se ela ainda não é cliente."""
+    return _clientes_por_cpf(empresa_id).get(cpf)
+
+
+@app.route("/api/filiados/<cpf>/dossie")
+@login_required
+@funcao_required("habitualidade")
+def filiado_dossie_listar(cpf):
+    """Os documentos do filiado (2026-09-24).
+
+    Não é um segundo lugar de guardar arquivo: é o MESMO dossiê da ficha
+    do cliente, visto da tela de Filiados. Dois depósitos para a mesma
+    pessoa seriam o CR dela em um e o CRAF no outro, e ninguém saberia
+    onde procurar. Quem ainda não é cliente ganha cadastro no primeiro
+    documento guardado (ver filiado_dossie_enviar)."""
+    digitos = _cpf_da_rota(cpf)
+    empresa_id = empresa_atual()
+    if not digitos or not motor_filiados.obter_por_cpf(empresa_id, digitos):
+        return jsonify(erro="Filiado não encontrado."), 404
+    cliente_id = _cliente_do_filiado(empresa_id, digitos)
+    return jsonify(
+        cliente_id=cliente_id,
+        documentos=motor_documentos.listar_dossie(empresa_id, cliente_id) if cliente_id else [],
+        catalogo=documentos_cac.catalogo(),
+        dias_alerta=documentos_cac.DIAS_ALERTA_VALIDADE,
+        finalidades_arma=list(documentos_cac.FINALIDADES_ARMA),
+    )
+
+
+@app.route("/api/filiados/<cpf>/dossie", methods=["POST"])
+@login_required
+@funcao_required("habitualidade")
+def filiado_dossie_enviar(cpf):
+    """Guarda um documento do filiado. Se ele ainda não é cliente do
+    despachante, o cadastro nasce aqui -- mesma regra do Portal
+    (2026-09-02): só quando há um gesto sobre AQUELA pessoa, nunca em
+    lote. Ter documento guardado já é ser atendido."""
+    digitos = _cpf_da_rota(cpf)
+    empresa_id = empresa_atual()
+    filiado = motor_filiados.obter_por_cpf(empresa_id, digitos) if digitos else None
+    if not filiado:
+        return jsonify(erro="Filiado não encontrado."), 404
+
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        return jsonify(erro="Selecione um arquivo."), 400
+    conteudo = arquivo.read()
+    if len(conteudo) > DOCUMENTO_TAMANHO_MAXIMO:
+        return jsonify(erro="Arquivo maior que 15MB."), 400
+
+    cliente_id = _cliente_do_filiado(empresa_id, digitos)
+    cadastro_criado = False
+    if not cliente_id:
+        try:
+            cliente_id = criar_cliente(
+                empresa_id, nome=filiado["nome"], cpf=digitos, email=filiado.get("email"),
+                observacoes="Cadastro criado ao guardar o primeiro documento pela tela de Filiados.",
+            )["cliente_id"]
+            cadastro_criado = True
+        except ClienteJaExiste as e:
+            cliente_id = e.cliente_id
+        except ClienteInvalido as e:
+            return jsonify(erro=f"Não foi possível criar o cadastro: {e}"), 400
+
+    try:
+        documento_id = motor_documentos.salvar_no_dossie(
+            empresa_id, cliente_id, conteudo, arquivo.filename,
+            tipo_documento=(request.form.get("tipo_documento") or "").strip(),
+            data_validade=(request.form.get("data_validade") or "").strip() or None,
+            referencia=(request.form.get("referencia") or "").strip() or None,
+            finalidade=(request.form.get("finalidade") or "").strip() or None,
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True, documento_id=documento_id, cliente_id=cliente_id,
+                   cadastro_criado=cadastro_criado)
 
 
 @app.route("/api/clientes/shooting-house/<cpf>")

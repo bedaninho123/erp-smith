@@ -1437,6 +1437,7 @@
                   <th>Filiado</th><th>CPF</th><th>Matrícula</th>
                   <th class="text-right">Participações (12 meses)</th>
                   <th>Última participação</th><th>Validade da filiação</th>
+                  <th>Vencimento do CR</th>
                   <th>Retrato de</th>
                 </tr></thead>
                 <tbody id="habitualidade-body"></tbody>
@@ -2567,7 +2568,12 @@ async function abrirCaso(casoId) {
       <span class="badge badge-light">Prioridade ${escapeHtml(c.prioridade)}</span>
     </p>
     <dl class="ficha">
-      <dt>Cliente</dt><dd>${escapeHtml(c.cliente_nome)} <span class="mono text-muted">${escapeHtml(c.cliente_id)}</span></dd>
+      <dt>Cliente</dt><dd>${escapeHtml(c.cliente_nome)} <span class="mono text-muted">${escapeHtml(c.cliente_id)}</span>
+        <span class="d-inline-flex flex-wrap ml-2" style="gap:var(--e2)">
+          ${d.pode_ver_cliente ? `<button type="button" class="btn btn-outline-secondary btn-sm" id="caso-ver-cliente">Ver cliente</button>` : ""}
+          ${d.filiado_cpf ? `<button type="button" class="btn btn-outline-primary btn-sm" id="caso-ver-filiado"
+              title="Ficha do clube: armas, CR, habitualidade e documentos">Ver filiado</button>` : ""}
+        </span></dd>
       <dt>CPF</dt><dd class="mono">${c.cliente_cpf ? cpfFormatado(c.cliente_cpf) : 'não informado'}</dd>
       <dt>E-mail</dt><dd>${escapeHtml(c.cliente_email || 'sem e-mail')}</dd>
       <dt>Responsável</dt><dd>${escapeHtml(c.responsavel_nome || 'não atribuído')}</dd>
@@ -2577,6 +2583,9 @@ async function abrirCaso(casoId) {
       ${c.observacoes ? `<dt>Observações</dt><dd>${escapeHtml(c.observacoes)}</dd>` : ''}
     </dl>
   `;
+
+  if (d.pode_ver_cliente) $("#caso-ver-cliente").addEventListener("click", () => abrirCliente(c.cliente_id));
+  if (d.filiado_cpf) $("#caso-ver-filiado").addEventListener("click", () => abrirFiliado(d.filiado_cpf));
 
   casoDocumentosAtuais = d.documentos;
   casoProcessosAtuais = d.processos;
@@ -2658,6 +2667,25 @@ async function abrirCaso(casoId) {
 
   $("#documento-processo").innerHTML = `<option value="">não vincular a um processo específico</option>` +
     d.processos.map(p => `<option value="${p.processo_id}">${escapeHtml(p.nome_servico)} (${p.processo_id})</option>`).join("");
+  // Processo em foco (2026-09-24, pedido do usuário): todo salvar/enviar
+  // redesenha esta tela inteira, e o campo voltava para "não vincular"
+  // -- era preciso escolher o mesmo processo de novo a cada documento.
+  // Agora ele lembra o último processo mexido NESTE caso; caso com um
+  // processo só já nasce com ele escolhido.
+  const focoValido = processoEmFoco.casoId === casoId
+    && d.processos.some(p => p.processo_id === processoEmFoco.processoId);
+  const processoEscolhido = focoValido
+    ? processoEmFoco.processoId
+    : (d.processos.length === 1 ? d.processos[0].processo_id : "");
+  $("#documento-processo").value = processoEscolhido;
+  processoEmFoco = { casoId, processoId: processoEscolhido };
+  // Quem estava editando um processo continua editando o mesmo depois
+  // de salvar, já com os dados atualizados -- em vez de o formulário
+  // voltar para "Adicionar processo".
+  if (processoEmEdicao.casoId === casoId) {
+    const emEdicao = d.processos.find(p => p.processo_id === processoEmEdicao.processoId);
+    if (emEdicao) editarProcesso(emEdicao, { rolar: false });
+  }
   $("#documento-arquivo").value = "";
   $("#documento-tipo").value = "Anexo enviado pelo painel";
   $("#documento-observacoes").value = "";
@@ -2731,16 +2759,30 @@ async function salvarCasoEdicao() {
   statusEl.textContent = "Salvando…";
   botao.disabled = true;
   try {
-    const respostas = await Promise.all(chamadas);
-    for (const r of respostas) {
-      if (!r.ok) {
-        const d = await r.json();
-        statusEl.textContent = "";
-        alert("Erro ao salvar: " + d.erro);
-        return;
+    // Resposta que não é JSON (erro 500 em HTML, sessão expirada) não
+    // pode travar a tela em "Salvando…": era isso que fazia parecer que
+    // o status "não muda" -- o banco já tinha mudado, e a tela nunca
+    // recarregava para mostrar. Com ou sem erro, recarrega o caso: o que
+    // aparece depois é sempre o que está gravado.
+    let erro = null;
+    try {
+      const respostas = await Promise.all(chamadas);
+      for (const r of respostas) {
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          erro = d.erro || `o servidor respondeu com erro (${r.status})`;
+          break;
+        }
       }
+    } catch (e) {
+      erro = "o painel não respondeu — confira a conexão";
     }
     await abrirCaso(casoId);
+    if (erro) {
+      statusEl.textContent = "";
+      alert("Erro ao salvar: " + erro);
+      return;
+    }
     statusEl.textContent = "Salvo.";
   } finally {
     botao.disabled = false;
@@ -3762,7 +3804,21 @@ function resetFormularioProcesso(casoId) {
   $("#salvar-processo-status").textContent = "";
 }
 
-function editarProcesso(p) {
+// O processo que a pessoa está mexendo, por caso -- ver abrirCaso().
+let processoEmFoco = { casoId: null, processoId: "" };
+let processoEmEdicao = { casoId: null, processoId: null };
+
+function focarProcesso(p) {
+  processoEmFoco = { casoId: p.caso_id, processoId: p.processo_id };
+  if ($("#documento-processo").value !== p.processo_id) {
+    $("#documento-processo").value = p.processo_id;
+    atualizarOpcoesTipoDocumento();
+  }
+}
+
+function editarProcesso(p, { rolar = true } = {}) {
+  processoEmEdicao = { casoId: p.caso_id, processoId: p.processo_id };
+  focarProcesso(p);
   // O formulário abaixo nasce recolhido (ver a marcação em
   // view-caso-detalhe) -- sem abrir aqui, clicar "Editar" numa linha
   // preencheria os campos escondidos e pareceria que o clique não fez
@@ -3780,7 +3836,7 @@ function editarProcesso(p) {
   $("#salvar-processo").textContent = "Salvar alterações";
   $("#salvar-processo").dataset.processoId = p.processo_id;
   $("#salvar-processo-status").textContent = "";
-  $("#processo-servico").scrollIntoView({ behavior: "smooth", block: "center" });
+  if (rolar) $("#processo-servico").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 async function salvarProcesso() {
@@ -3807,10 +3863,11 @@ async function salvarProcesso() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(corpo),
     });
-    const d = await r.json();
+    const d = await r.json().catch(() => ({}));
     if (!r.ok) {
       statusEl.textContent = "";
-      alert("Erro ao salvar: " + d.erro);
+      await abrirCaso(casoId);
+      alert("Erro ao salvar: " + (d.erro || `o servidor respondeu com erro (${r.status})`));
       return;
     }
     await abrirCaso(casoId);
@@ -3822,6 +3879,7 @@ async function salvarProcesso() {
 
 $("#salvar-processo").addEventListener("click", salvarProcesso);
 $("#cancelar-edicao-processo").addEventListener("click", () => {
+  processoEmEdicao = { casoId: null, processoId: null };
   resetFormularioProcesso($("#salvar-processo").dataset.casoId);
   $("#processo-form-detalhes").open = false;
 });
@@ -4228,9 +4286,13 @@ async function carregarHabitualidade() {
             ? ' <span class="badge badge-danger">em atraso</span>'
             : ""}
       </td>
+      <td class="text-monospace">${f.cr_vencimento
+        ? dataBr(f.cr_vencimento) + (f.cr_vencimento_origem === "api"
+            ? ' <span class="text-muted" title="Data do Shooting House, não conferida pelo despachante">(SH)</span>' : "")
+        : '<span class="text-muted">—</span>'}</td>
       <td class="text-monospace text-muted">${f.sincronizado_em ? dataHoraBr(f.sincronizado_em) : '—'}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="7" class="text-muted">${
+  }).join("") : `<tr><td colspan="8" class="text-muted">${
     // Duas situações bem diferentes, e mandar rodar a sincronização
     // quando o problema é o filtro só confundiria.
     filtrando
@@ -4335,25 +4397,63 @@ async function abrirFiliado(cpf) {
                   .filter(Boolean).join(", ") || "—")}</dd>` : ""}
             ${f.cr ? `<dt>CR</dt><dd class="mono">${escapeHtml(f.cr.numero || "—")}</dd>` : ""}
           </dl>
-          ${f.cr ? `<p class="text-muted mb-0" style="font-size:.85rem">
-            A situação documental vem como está no sistema do clube. O CR do atirador
-            desportivo não tem prazo fixo que expira sozinho — não trate a data como
-            vencimento sem conferir.</p>` : ""}
         </div></div>`;
+
+  // Datas do CR (2026-09-24). A API não tem expedição, e a "expiração"
+  // dela não é confirmadamente o vencimento -- então o que vale é o que
+  // o despachante cadastra aqui, e a data da API aparece só como
+  // referência, dizendo de onde veio.
+  const crCad = d.cr_cadastrado || {};
+  const crApi = f && f.cr && f.cr.data_expiracao_bruta;
+  const blocoCr = !f ? "" : `<div class="card"><div class="card-body">
+      <h5>CR — expedição e vencimento</h5>
+      <div class="row">
+        <div class="col-md-4">
+          <label for="filiado-cr-expedicao">Data da expedição</label>
+          <input id="filiado-cr-expedicao" type="date" class="form-control" value="${escapeHtml(crCad.data_expedicao || "")}">
+        </div>
+        <div class="col-md-4">
+          <label for="filiado-cr-vencimento">Data do vencimento</label>
+          <input id="filiado-cr-vencimento" type="date" class="form-control" value="${escapeHtml(crCad.data_vencimento || "")}">
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <button class="btn btn-primary" id="filiado-cr-salvar">Salvar datas do CR</button>
+        </div>
+      </div>
+      <p class="text-muted mt-2 mb-0" style="font-size:.85rem" id="filiado-cr-status">
+        ${crApi ? `No Shooting House consta validade ${dataBr(crApi)} — referência, não conferida.` : "O Shooting House não informa data para este CR."}
+        ${crCad.atualizado_em ? ` Datas acima cadastradas por ${escapeHtml(crCad.atualizado_por || "—")} em ${dataHoraBr(crCad.atualizado_em)}.` : ""}
+      </p>
+    </div></div>`;
 
   const armas = d.indisponivel.armas
     ? aviso(d.indisponivel.armas)
     : `<div class="card"><div class="card-body">
         <h5>Armas registradas</h5>
-        ${(d.armas || []).length ? `<table class="table table-sm">
-          <thead><tr><th>Tipo</th><th>Marca</th><th>Modelo</th><th>Calibre</th><th>Série</th></tr></thead>
-          <tbody>${d.armas.map(a => `<tr>
+        ${(d.armas || []).length ? `<div class="table-responsive"><table class="table table-sm">
+          <thead><tr><th>Tipo</th><th>Marca</th><th>Modelo</th><th>Calibre</th><th>Série</th>
+            <th>Nº SIGMA</th><th>Acervo</th><th></th></tr></thead>
+          <tbody>${d.armas.map(a => `<tr data-arma="${escapeHtml(String(a.id ?? ""))}">
             <td>${escapeHtml(a.type || "—")}</td>
             <td>${escapeHtml(a.brand || "—")}</td>
             <td>${escapeHtml(a.model || "—")}</td>
             <td>${escapeHtml(String(a.caliber ?? "—"))}</td>
             <td class="text-monospace">${escapeHtml(a.serie || "—")}</td>
-          </tr>`).join("")}</tbody></table>`
+            <td>${a.sigma_origem === "api"
+              ? `<span class="text-monospace" title="Informado pelo Shooting House">${escapeHtml(a.sigma)}</span>`
+              : `<input type="text" class="form-control form-control-sm arma-sigma text-monospace"
+                   style="min-width:110px" placeholder="digitar" value="${escapeHtml(a.sigma_manual || "")}"
+                   aria-label="Número SIGMA">`}</td>
+            <td><select class="form-control form-control-sm arma-acervo" style="min-width:110px" aria-label="Acervo">
+              <option value="">não informado</option>
+              ${(d.acervos || []).map(x => `<option value="${escapeHtml(x)}"${x === a.acervo ? " selected" : ""}>${escapeHtml(x)}</option>`).join("")}
+            </select></td>
+            <td class="text-nowrap">${a.id != null
+              ? `<button type="button" class="btn btn-outline-primary btn-sm btn-salvar-arma">Salvar</button>`
+              : ""}</td>
+          </tr>`).join("")}</tbody></table></div>
+          <p class="text-muted mb-0" style="font-size:.85rem">SIGMA digitado e acervo ficam guardados só aqui no
+            Smith — nada é gravado no Shooting House. SIGMA sem campo de edição veio do próprio Shooting House.</p>`
           : `<p class="text-muted mb-0">Nenhuma arma registrada para este atirador.</p>`}
       </div></div>`;
 
@@ -4401,7 +4501,100 @@ async function abrirFiliado(cpf) {
     : `<p class="text-muted" style="font-size:.85rem">Consultado ao vivo no Shooting
        House agora — não é o retrato guardado que aparece na lista.</p>`;
 
-  $("#filiado-ficha").innerHTML = simulado + cabecalho + armas + habitualidade;
+  // Documentos do filiado: o MESMO dossiê da ficha do cliente (ver
+  // carregarDossieGenerico). Quem ainda não é cliente ganha o cadastro
+  // no primeiro documento guardado.
+  const documentos = !f ? "" : `<div class="card">
+      <div class="card-header d-flex align-items-center" style="gap: var(--e3)">
+        <h3 class="card-title">Documentos do filiado</h3>
+        <span class="text-muted ml-auto" style="font-size:12px" id="fdossie-contagem"></span>
+      </div>
+      <div class="card-body" id="fdossie-lista"><p class="text-muted mb-0">Carregando…</p></div>
+      <div class="card-body border-top">
+        <h5>Guardar documento</h5>
+        <p class="text-muted">CRAF das armas, guias, CR, RG e outros. É o mesmo dossiê que aparece na ficha
+          do cliente — se esta pessoa ainda não é cliente do despachante, o cadastro é criado ao guardar o
+          primeiro documento. PDF ou foto, até 15MB.</p>
+        <div class="row">
+          <div class="col-md-4">
+            <label for="fdossie-tipo">Tipo de documento</label>
+            <input id="fdossie-tipo" type="text" class="form-control" list="fdossie-tipos-opcoes"
+                   placeholder="Ex.: CRAF — Certificado de Registro de Arma de Fogo">
+            <datalist id="fdossie-tipos-opcoes"></datalist>
+          </div>
+          <div class="col-md-3">
+            <label for="fdossie-referencia">De qual arma (quando for o caso)</label>
+            <input id="fdossie-referencia" type="text" class="form-control" placeholder="Ex.: Pistola .380 — TH380">
+          </div>
+          <div class="col-md-2">
+            <label for="fdossie-finalidade">Acervo</label>
+            <select id="fdossie-finalidade" class="form-control"><option value="">não informado</option></select>
+          </div>
+          <div class="col-md-3">
+            <label for="fdossie-validade">Vale até</label>
+            <input id="fdossie-validade" type="date" class="form-control">
+          </div>
+        </div>
+        <div class="form-group mt-3">
+          <label for="fdossie-arquivo">Arquivo</label>
+          <input id="fdossie-arquivo" type="file" class="form-control-file" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp">
+        </div>
+        <button class="btn btn-primary" id="salvar-fdossie">Guardar documento</button>
+        <span class="text-muted ml-2" id="salvar-fdossie-status" aria-live="polite"></span>
+      </div>
+    </div>`;
+
+  $("#filiado-ficha").innerHTML = simulado + cabecalho + blocoCr + armas + documentos + habitualidade;
+
+  if (f) {
+    const cpfUrl = encodeURIComponent(cpf);
+    const cfgDossie = {
+      prefixo: "fdossie",
+      urlListar: `/api/filiados/${cpfUrl}/dossie`,
+      urlEnviar: `/api/filiados/${cpfUrl}/dossie`,
+    };
+    carregarDossieGenerico(cfgDossie);
+    $("#salvar-fdossie").addEventListener("click", () => salvarDossieGenerico(cfgDossie));
+
+    $("#filiado-cr-salvar").addEventListener("click", async () => {
+      const botao = $("#filiado-cr-salvar");
+      botao.disabled = true;
+      try {
+        const r = await fetch(`/api/filiados/${cpfUrl}/cr`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            data_expedicao: $("#filiado-cr-expedicao").value,
+            data_vencimento: $("#filiado-cr-vencimento").value,
+          }),
+        });
+        const resposta = await r.json().catch(() => ({}));
+        if (!r.ok) { alert("Erro ao salvar: " + (resposta.erro || "falha desconhecida")); return; }
+        $("#filiado-cr-status").textContent = "Datas do CR salvas.";
+      } finally {
+        botao.disabled = false;
+      }
+    });
+
+    $("#filiado-ficha").querySelectorAll(".btn-salvar-arma").forEach(botao => {
+      botao.addEventListener("click", async () => {
+        const tr = botao.closest("tr[data-arma]");
+        const sigma = tr.querySelector(".arma-sigma");
+        botao.disabled = true;
+        try {
+          const r = await fetch(`/api/filiados/${cpfUrl}/armas/${encodeURIComponent(tr.dataset.arma)}`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sigma: sigma ? sigma.value : "", acervo: tr.querySelector(".arma-acervo").value }),
+          });
+          const resposta = await r.json().catch(() => ({}));
+          if (!r.ok) { alert("Erro ao salvar: " + (resposta.erro || "falha desconhecida")); return; }
+          botao.textContent = "Salvo";
+          setTimeout(() => { botao.textContent = "Salvar"; }, 1500);
+        } finally {
+          botao.disabled = false;
+        }
+      });
+    });
+  }
 
   // Filtro Todos/Treinos/Provas: só mostra/esconde linha já renderizada,
   // nada de buscar de novo -- o dado inteiro já está na tela.
@@ -4619,6 +4812,7 @@ function documentosBadge(checklist) {
 }
 
 function abrirChecklist(processo) {
+  focarProcesso(processo);
   $("#card-checklist").style.display = "";
   $("#checklist-titulo").textContent = `Checklist de documentos — ${processo.nome_servico} (${processo.processo_id})`;
   renderChecklist(processo);
@@ -4820,9 +5014,13 @@ function atualizarOpcoesTipoDocumento() {
   });
 }
 
-$("#documento-processo").addEventListener("change", atualizarOpcoesTipoDocumento);
+$("#documento-processo").addEventListener("change", () => {
+  processoEmFoco = { casoId: $("#salvar-documento").dataset.casoId, processoId: $("#documento-processo").value };
+  atualizarOpcoesTipoDocumento();
+});
 
 $("#voltar-casos").addEventListener("click", () => {
+  processoEmEdicao = { casoId: null, processoId: null };
   mostrarView("casos");
   definirHash("/casos");
   carregarCasos();
@@ -4937,30 +5135,46 @@ function seloValidade(documento) {
   return `<span class="badge ${selo.classe}">${selo.texto} — ${dataBr(documento.data_validade)}</span>`;
 }
 
-async function carregarDossie(clienteId) {
-  const resposta = await buscarJson(`/api/clientes/${clienteId}/dossie`);
+// O dossiê aparece em DUAS telas -- ficha do cliente e ficha do filiado
+// (2026-09-24) -- e é o MESMO dossiê nas duas. Um desenho só, com o
+// prefixo dos ids e as URLs como parâmetro: uma segunda cópia deste
+// código divergiria no selo de validade, que é justamente a parte que
+// não pode mentir.
+//
+//   cfg.prefixo     "dossie" (cliente) ou "fdossie" (filiado)
+//   cfg.urlListar   GET  -> {documentos, catalogo, finalidades_arma, dias_alerta}
+//   cfg.urlEnviar   POST (FormData)
+function idDossie(cfg, nome) {
+  if (nome === "salvar") return `#salvar-${cfg.prefixo}`;
+  if (nome === "status") return `#salvar-${cfg.prefixo}-status`;
+  return `#${cfg.prefixo}-${nome}`;
+}
+
+async function carregarDossieGenerico(cfg) {
+  const el = nome => $(idDossie(cfg, nome));
+  const resposta = await buscarJson(cfg.urlListar);
   if (!resposta.ok) {
-    $("#dossie-lista").innerHTML = resposta.falhou
+    el("lista").innerHTML = resposta.falhou
       ? AVISO_FALHA_DE_REDE
       : `<p class="text-muted mb-0">${escapeHtml((resposta.dados || {}).erro || "Não foi possível carregar.")}</p>`;
     return;
   }
   const d = resposta.dados;
 
-  $("#dossie-tipos-opcoes").innerHTML = d.catalogo
+  el("tipos-opcoes").innerHTML = d.catalogo
     .flatMap(g => g.documentos.map(doc => `<option value="${escapeHtml(doc.nome)}">`)).join("");
-  $("#dossie-finalidade").innerHTML = `<option value="">não informado</option>`
+  el("finalidade").innerHTML = `<option value="">não informado</option>`
     + d.finalidades_arma.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
 
   const vencidos = d.documentos.filter(x => x.situacao_validade === "vencido").length;
   const vencendo = d.documentos.filter(x => x.situacao_validade === "vencendo").length;
-  $("#dossie-contagem").textContent = d.documentos.length
+  el("contagem").textContent = d.documentos.length
     ? `${d.documentos.length} documento(s)`
       + (vencidos ? ` — ${vencidos} vencido(s)` : "")
       + (vencendo ? ` — ${vencendo} vencendo em ${d.dias_alerta} dias` : "")
     : "";
 
-  $("#dossie-lista").innerHTML = d.documentos.length
+  el("lista").innerHTML = d.documentos.length
     ? `<table class="table table-hover mb-0">
         <thead><tr><th>Documento</th><th>Validade</th><th>Guardado em</th><th></th></tr></thead>
         <tbody>${d.documentos.map(doc => `
@@ -4987,37 +5201,36 @@ async function carregarDossie(clienteId) {
             </td>
           </tr>`).join("")}</tbody>
       </table>`
-    : `<p class="text-muted mb-0">Nenhum documento no dossiê ainda.</p>`;
+    : `<p class="text-muted mb-0">Nenhum documento guardado ainda.</p>`;
 
-  ligarBotoesVerDocumento($("#dossie-lista"));
-  $("#dossie-lista").querySelectorAll(".btn-remover-dossie").forEach(botao => {
+  ligarBotoesVerDocumento(el("lista"));
+  el("lista").querySelectorAll(".btn-remover-dossie").forEach(botao => {
     botao.addEventListener("click", async () => {
       if (!confirm(`Remover "${botao.dataset.tipo}" do dossiê? O arquivo é apagado.`)) return;
       const r = await fetch(`/api/dossie/${encodeURIComponent(botao.dataset.documento)}/remover`,
                             { method: "POST" });
       if (!r.ok) {
-        const erro = await r.json();
+        const erro = await r.json().catch(() => ({}));
         alert("Erro ao remover: " + (erro.erro || "falha desconhecida"));
         return;
       }
-      carregarDossie(clienteId);
+      carregarDossieGenerico(cfg);
     });
   });
 
-  $("#salvar-dossie").dataset.clienteId = clienteId;
-  $("#salvar-dossie-status").textContent = "";
+  el("status").textContent = "";
 }
 
-async function salvarDossie() {
-  const botao = $("#salvar-dossie");
-  const statusEl = $("#salvar-dossie-status");
-  const clienteId = botao.dataset.clienteId;
-  const arquivo = $("#dossie-arquivo").files[0];
-  const tipo = $("#dossie-tipo").value.trim();
+async function salvarDossieGenerico(cfg) {
+  const el = nome => $(idDossie(cfg, nome));
+  const botao = el("salvar");
+  const statusEl = el("status");
+  const arquivo = el("arquivo").files[0];
+  const tipo = el("tipo").value.trim();
 
   if (!tipo) {
     statusEl.textContent = "Informe o tipo do documento.";
-    $("#dossie-tipo").focus();
+    el("tipo").focus();
     return;
   }
   if (!arquivo) {
@@ -5028,33 +5241,41 @@ async function salvarDossie() {
   const dados = new FormData();
   dados.append("arquivo", arquivo);
   dados.append("tipo_documento", tipo);
-  dados.append("referencia", $("#dossie-referencia").value.trim());
-  dados.append("finalidade", $("#dossie-finalidade").value);
-  dados.append("data_validade", $("#dossie-validade").value);
+  dados.append("referencia", el("referencia").value.trim());
+  dados.append("finalidade", el("finalidade").value);
+  dados.append("data_validade", el("validade").value);
 
   botao.disabled = true;
   statusEl.textContent = "Guardando…";
   try {
-    const r = await fetch(`/api/clientes/${clienteId}/dossie`, { method: "POST", body: dados });
-    const resposta = await r.json();
+    const r = await fetch(cfg.urlEnviar, { method: "POST", body: dados });
+    const resposta = await r.json().catch(() => ({}));
     if (!r.ok) {
       statusEl.textContent = "";
       alert("Erro ao guardar: " + (resposta.erro || "falha desconhecida"));
       return;
     }
-    $("#dossie-arquivo").value = "";
-    $("#dossie-tipo").value = "";
-    $("#dossie-referencia").value = "";
-    $("#dossie-finalidade").value = "";
-    $("#dossie-validade").value = "";
-    await carregarDossie(clienteId);
-    $("#salvar-dossie-status").textContent = "Guardado.";
+    ["arquivo", "tipo", "referencia", "finalidade", "validade"].forEach(n => { el(n).value = ""; });
+    await carregarDossieGenerico(cfg);
+    statusEl.textContent = resposta.cadastro_criado
+      ? "Guardado. Esta pessoa ainda não era cliente do despachante — o cadastro foi criado agora."
+      : "Guardado.";
   } finally {
     botao.disabled = false;
   }
 }
 
-$("#salvar-dossie").addEventListener("click", salvarDossie);
+// Ficha do cliente: o dossiê dela, pelo cliente_id.
+let dossieClienteCfg = null;
+function carregarDossie(clienteId) {
+  dossieClienteCfg = {
+    prefixo: "dossie",
+    urlListar: `/api/clientes/${clienteId}/dossie`,
+    urlEnviar: `/api/clientes/${clienteId}/dossie`,
+  };
+  return carregarDossieGenerico(dossieClienteCfg);
+}
+$("#salvar-dossie").addEventListener("click", () => salvarDossieGenerico(dossieClienteCfg));
 
 async function abrirCliente(clienteId) {
   mostrarView("cliente-detalhe");
