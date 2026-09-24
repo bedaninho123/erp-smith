@@ -4373,9 +4373,15 @@ async function abrirFiliado(cpf) {
           Últimos 12 meses: <b>${tp.treinos}</b> treino(s) e <b>${tp.provas}</b> prova(s)
           (${tp.total} no total).
         </p>
-        ${d.eventos.length ? `<table class="table table-sm">
+        ${d.eventos.length ? `
+        <div class="btn-group btn-group-sm mb-2" id="filiado-filtro-tipo" role="group">
+          <button type="button" class="btn btn-outline-secondary active" data-filtro="todos">Todos (${d.eventos.length})</button>
+          <button type="button" class="btn btn-outline-secondary" data-filtro="treino">Treinos (${d.eventos.filter(ehTreino).length})</button>
+          <button type="button" class="btn btn-outline-secondary" data-filtro="prova">Provas (${d.eventos.filter(e => !ehTreino(e)).length})</button>
+        </div>
+        <table class="table table-sm">
           <thead><tr><th>Data</th><th>Tipo</th><th>Grupo</th><th>Modalidade</th><th>Arma</th><th>Local</th></tr></thead>
-          <tbody>${d.eventos.map(e => `<tr>
+          <tbody>${d.eventos.map(e => `<tr data-tipo="${ehTreino(e) ? "treino" : "prova"}">
             <td class="text-monospace">${escapeHtml(e.data_participacao || "—")}${
               e.hora_participacao ? ` <span class="text-muted">${escapeHtml(e.hora_participacao)}</span>` : ""}</td>
             <td>${ehTreino(e)
@@ -4396,6 +4402,21 @@ async function abrirFiliado(cpf) {
        House agora — não é o retrato guardado que aparece na lista.</p>`;
 
   $("#filiado-ficha").innerHTML = simulado + cabecalho + armas + habitualidade;
+
+  // Filtro Todos/Treinos/Provas: só mostra/esconde linha já renderizada,
+  // nada de buscar de novo -- o dado inteiro já está na tela.
+  const filtroGrupo = $("#filiado-filtro-tipo");
+  if (filtroGrupo) {
+    filtroGrupo.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-filtro]");
+      if (!btn) return;
+      filtroGrupo.querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn));
+      const filtro = btn.dataset.filtro;
+      document.querySelectorAll('#filiado-ficha table tbody tr[data-tipo]').forEach(tr => {
+        tr.hidden = filtro !== "todos" && tr.dataset.tipo !== filtro;
+      });
+    });
+  }
 }
 
 // ---------------------------------------------------------------
