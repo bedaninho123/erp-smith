@@ -118,9 +118,19 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
                 # "Competição: None" antes desta correção.
                 # `arma` aqui vem de arma_formatada, que traz o número de
                 # série embutido no texto -- limpo antes de entrar no bloco.
+                #
+                # `competicao` na API real NÃO é "nome da prova ou vazio" --
+                # num treino comum ela vem com o texto literal "TREINO"
+                # (ver domain/clube_tiro/motor_filiados.py::_e_treino).
+                # Sem este filtro extra, o `if v` acima deixa passar e a
+                # IA recebe "competicao: TREINO", que pode fraseiar como
+                # "Competição: TREINO" -- confuso, um treino não é uma
+                # competição chamada "TREINO". Só entra no bloco quando é
+                # o nome de verdade de uma prova.
                 partes = [
                     f"{k}: {_arma_sem_serie(v) if k == 'arma' else v}"
                     for k, v in evento.items() if v
+                    and not (k == "competicao" and str(v).strip().upper() == "TREINO")
                 ]
                 linhas.append("  - " + "; ".join(partes))
 

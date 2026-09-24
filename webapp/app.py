@@ -1993,11 +1993,21 @@ def filiado_ficha(cpf):
             return datetime.min
     eventos.sort(key=_quando, reverse=True)
 
+    # Treino x prova, janela de 12 meses (pedido do usuário, 2026-09-23):
+    # "tudo que é lançado como treino é treino, todas as outras são
+    # provas". Conta em Python sobre o mesmo `habitualidade` já
+    # consultado acima -- nunca uma segunda chamada à API.
+    treinos_provas = (
+        motor_filiados.contar_treinos_e_provas(habitualidade)
+        if habitualidade else {"treinos": 0, "provas": 0, "total": 0}
+    )
+
     return jsonify(
         ficha=ficha,
         armas=armas,
         eventos=eventos,
         total_participacoes=len(eventos),
+        treinos_provas_12m=treinos_provas,
         # Um por bloco: a tela mostra "não foi possível consultar" só na
         # parte que falhou, e nunca como se fosse "não tem".
         indisponivel={"ficha": erro_ficha, "armas": erro_armas, "habitualidade": erro_hab},

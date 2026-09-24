@@ -78,6 +78,14 @@
       <span class="stat-rotulo">participações nos últimos 12 meses</span>
     </div>
     <div class="ficha stat-card">
+      <span class="stat-numero">{{ treinos_provas_12m.treinos }}</span>
+      <span class="stat-rotulo">treinos nos últimos 12 meses</span>
+    </div>
+    <div class="ficha stat-card">
+      <span class="stat-numero">{{ treinos_provas_12m.provas }}</span>
+      <span class="stat-rotulo">provas nos últimos 12 meses</span>
+    </div>
+    <div class="ficha stat-card">
       <span class="stat-numero" style="font-size:1.3rem;">{{ ultima_participacao or "—" }}</span>
       <span class="stat-rotulo">última participação</span>
     </div>
@@ -102,6 +110,11 @@
         <div class="evento-modalidade">
           <span>{{ ev.modalidade }}</span>
           {% if ev.grupo %}<span class="badge-item badge-item--sim">{{ ev.grupo }}</span>{% endif %}
+          {% if ev.competicao and ev.competicao.strip().upper() != "TREINO" %}
+            <span class="badge-item badge-item--sim" title="{{ ev.competicao }}">Prova</span>
+          {% else %}
+            <span class="badge-item badge-item--nao">Treino</span>
+          {% endif %}
         </div>
         {% if ev.arma %}<div class="evento-arma mono">{{ ev.arma }}</div>{% endif %}
         <div class="evento-local">{{ ev.local }}</div>

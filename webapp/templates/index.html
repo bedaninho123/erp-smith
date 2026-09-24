@@ -4357,15 +4357,30 @@ async function abrirFiliado(cpf) {
           : `<p class="text-muted mb-0">Nenhuma arma registrada para este atirador.</p>`}
       </div></div>`;
 
+  // Treino x prova: mesmo critério do backend (domain/clube_tiro/
+  // motor_filiados.py::_e_treino) -- "TREINO" ou vazio é treino,
+  // qualquer outro texto em `competicao` é o nome da prova. Repetido
+  // aqui só pra pintar o selo de cada linha; quem decide o NÚMERO
+  // (janela de 12 meses) é sempre o backend, nunca esta função.
+  const ehTreino = e => !e.competicao || e.competicao.trim().toUpperCase() === "TREINO";
+  const tp = d.treinos_provas_12m || { treinos: 0, provas: 0, total: 0 };
+
   const habitualidade = d.indisponivel.habitualidade
     ? aviso(d.indisponivel.habitualidade)
     : `<div class="card"><div class="card-body">
         <h5>Participações — ${d.total_participacoes} registro(s)</h5>
+        <p class="text-muted" style="margin-top:-.3rem">
+          Últimos 12 meses: <b>${tp.treinos}</b> treino(s) e <b>${tp.provas}</b> prova(s)
+          (${tp.total} no total).
+        </p>
         ${d.eventos.length ? `<table class="table table-sm">
-          <thead><tr><th>Data</th><th>Grupo</th><th>Modalidade</th><th>Arma</th><th>Local</th></tr></thead>
+          <thead><tr><th>Data</th><th>Tipo</th><th>Grupo</th><th>Modalidade</th><th>Arma</th><th>Local</th></tr></thead>
           <tbody>${d.eventos.map(e => `<tr>
             <td class="text-monospace">${escapeHtml(e.data_participacao || "—")}${
               e.hora_participacao ? ` <span class="text-muted">${escapeHtml(e.hora_participacao)}</span>` : ""}</td>
+            <td>${ehTreino(e)
+              ? `<span class="badge badge-secondary">Treino</span>`
+              : `<span class="badge badge-info" title="${escapeHtml(e.competicao)}">Prova</span>`}</td>
             <td>${escapeHtml(e.grupo || "—")}</td>
             <td>${escapeHtml(e.modalidade || "—")}</td>
             <td>${escapeHtml(e.arma || "—")}</td>

@@ -57,6 +57,7 @@ from domain.clube_tiro.categorias_marketplace import CATEGORIA_ARMA, CATEGORIAS
 from domain.clube_tiro.motor_campeonatos import listar_campeonatos, obter_campeonato
 from domain.clube_tiro.motor_filiados import (
     contar_participacoes,
+    contar_treinos_e_provas,
     localizar_ativo_por_cpf_ou_email,
     obter_por_cpf as obter_filiado_por_cpf,
 )
@@ -603,6 +604,9 @@ def habitualidade():
         # que vale (CLAUDE.md: pergunta de cliente é sempre consulta ao
         # vivo).
         participacoes_12m, ultima_participacao = contar_participacoes(hab)
+        treinos_provas_12m = contar_treinos_e_provas(hab)
+    else:
+        treinos_provas_12m = {"treinos": 0, "provas": 0, "total": 0}
 
     return render_template(
         "portal_habitualidade.html",
@@ -611,6 +615,7 @@ def habitualidade():
         cr=cr,
         eventos=eventos,
         participacoes_12m=participacoes_12m,
+        treinos_provas_12m=treinos_provas_12m,
         ultima_participacao=_data_br(ultima_participacao),
         tem_cpf=bool(cpf),
         indisponivel=indisponivel,

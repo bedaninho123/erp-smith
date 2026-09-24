@@ -239,6 +239,46 @@ def contar_participacoes(habitualidade: dict, hoje=None) -> tuple[int, Optional[
     return len(dentro), max(datas).strftime("%Y-%m-%d")
 
 
+def _e_treino(evento: dict) -> bool:
+    """O campo `competicao` do Shooting House já decide isso -- não
+    inventamos critério por modalidade. Num treino comum ele vem com o
+    texto literal "TREINO"; numa prova, vem com o nome dela (ex.:
+    "Copa Regional de Tiro Prático"). Dado simulado (integracoes/
+    shooting_house.py) nunca preenche esse campo -- por isso None também
+    conta como treino, senão todo evento de teste viraria "prova" sem
+    nome nenhum."""
+    competicao = (evento.get("competicao") or "").strip()
+    return not competicao or competicao.upper() == "TREINO"
+
+
+def contar_treinos_e_provas(habitualidade: dict, hoje=None) -> dict:
+    """Mesma janela de 12 meses de `contar_participacoes`, mas separando
+    treino de prova em vez de só somar tudo -- pedido do usuário
+    (2026-09-23): "tudo que é lançado como treino é treino, todas as
+    outras são provas" (arma longa, arma curta, silhueta metálica...).
+    Conta em Python, nunca na IA -- mesmo motivo de `contar_participacoes`."""
+    hoje = hoje or datetime.now().date()
+    limite = hoje - timedelta(days=365 * JANELA_MESES // 12)
+
+    treinos = provas = 0
+    for grupo in (habitualidade.get("habitualidades") or {}).values():
+        for evento in grupo.get("eventos", []):
+            bruto = evento.get("data_participacao")
+            if not bruto:
+                continue
+            try:
+                data = datetime.strptime(bruto, "%d/%m/%Y").date()
+            except ValueError:
+                continue
+            if data < limite:
+                continue
+            if _e_treino(evento):
+                treinos += 1
+            else:
+                provas += 1
+    return {"treinos": treinos, "provas": provas, "total": treinos + provas}
+
+
 def datas_participacao(habitualidade: dict, hoje=None) -> list:
     """As datas das participações dentro da janela, em 'AAAA-MM-DD'.
 
