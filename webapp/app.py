@@ -20,6 +20,7 @@ import secrets
 import sqlite3
 import subprocess
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
@@ -2003,13 +2004,20 @@ def filiado_ficha(cpf):
     if len(digitos) != 11:
         return jsonify(erro="CPF inválido."), 400
 
-    ficha, erro_ficha = _consultar_ou_indisponivel(
-        lambda: consultar_ficha_completa(digitos)
-    )
-    habitualidade, erro_hab = _consultar_ou_indisponivel(
-        lambda: consultar_habitualidade(digitos)
-    )
-    armas, erro_armas = _consultar_ou_indisponivel(lambda: consultar_armas(digitos))
+    # As três consultas saem AO MESMO TEMPO (2026-09-24). Em sequência, a
+    # ficha esperava a soma das três -- e do Railway (Amsterdã) cada
+    # chamada ao Shooting House leva 1,3 a 2,2s, contra 0,4s daqui do
+    # Brasil (medido com /checkAuth, sem CPF). Eram ~6s por clique; em
+    # paralelo, é a mais lenta das três. Nenhuma depende da outra, e
+    # nenhuma lê `session` -- por isso rodam fora do contexto da
+    # requisição sem problema.
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        f_ficha = executor.submit(_consultar_ou_indisponivel, lambda: consultar_ficha_completa(digitos))
+        f_hab = executor.submit(_consultar_ou_indisponivel, lambda: consultar_habitualidade(digitos))
+        f_armas = executor.submit(_consultar_ou_indisponivel, lambda: consultar_armas(digitos))
+        ficha, erro_ficha = f_ficha.result()
+        habitualidade, erro_hab = f_hab.result()
+        armas, erro_armas = f_armas.result()
 
     # Consulta ao vivo de dado de arma e habitualidade de uma pessoa,
     # por CPF -- deixa rastro, como todo acesso a dado sensível aqui.
