@@ -9,9 +9,12 @@ from dataclasses import dataclass
 from motor_ia.classificador import Intencao, ResultadoClassificacao
 
 # Quais fontes o Consultor deve buscar para cada intenção. VW_* são as
-# views do Core (core/db/views.sql); "conhecimento" é a tabela de Domínio
-# (domain/clube_tiro/db/schema.sql); "SHOOTING_HOUSE_*" são fontes
-# externas (integracoes/shooting_house.py), não um banco nosso.
+# views do Core (core/db/views.sql); "conhecimento" e "campeonatos" são
+# do Domínio (domain/clube_tiro/db/schema.sql -- campeonatos via
+# domain/clube_tiro/motor_campeonatos.py, calendário digitado à mão);
+# "informacoes_empresa" é a tabela configuracoes do Core, filtrada
+# (core/configuracoes.py); "SHOOTING_HOUSE_*" são fontes externas
+# (integracoes/shooting_house.py), não um banco nosso.
 #
 # SHOOTING_HOUSE_ARMAS entra junto de SHOOTING_HOUSE_HABITUALIDADE porque
 # o prompt do Classificador já trata "pergunta sobre armas registradas"
@@ -24,6 +27,7 @@ FONTES_POR_INTENCAO: dict[Intencao, list[str]] = {
     "CONSULTA_HABITUALIDADE": ["SHOOTING_HOUSE_HABITUALIDADE", "SHOOTING_HOUSE_ARMAS"],
     "CONSULTA_CR": ["SHOOTING_HOUSE_CR"],
     "CONSULTA_DOCUMENTOS_VENCIMENTO": ["SHOOTING_HOUSE_DOCUMENTOS_VENCIMENTO"],
+    "CONSULTA_CAMPEONATOS": ["campeonatos"],
     "ATENDIMENTO_GERAL": ["conhecimento", "informacoes_empresa"],
     "ATENDIMENTO_HUMANO": [],
 }

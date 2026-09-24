@@ -4,6 +4,7 @@ Prompt em motor_ia/prompts/redator_email.md (arquivo, não hardcoded).
 """
 import re
 import time
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -40,6 +41,19 @@ def _arma_sem_serie(texto: Optional[str]) -> str:
     O número continua existindo no dado (o Portal, com login, mostra pro
     dono); o que muda é só o que atravessa a rede até a OpenAI."""
     return _SERIE_NO_TEXTO_DA_ARMA.sub("", texto or "").strip()
+
+
+def _data_br(iso: str) -> str:
+    return date.fromisoformat(iso).strftime("%d/%m/%Y")
+
+
+def _formatar_periodo(data_inicio: str, data_fim: str) -> str:
+    """dd/mm/aaaa, ou 'de X a Y' quando a prova passa de um dia -- só
+    formatação, nenhuma conta de data (isso já foi decidido em Python no
+    Consultor; aqui é só deixar legível)."""
+    if data_inicio == data_fim:
+        return _data_br(data_inicio)
+    return f"de {_data_br(data_inicio)} a {_data_br(data_fim)}"
 
 
 def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
@@ -185,6 +199,22 @@ def montar_bloco_dados(dados: dict, cliente_nome: str, config: dict) -> str:
         linhas.append("--- Informações do clube ---")
         for rotulo, valor in informacoes_empresa.items():
             linhas.append(f"{rotulo}: {valor}")
+
+    if "campeonatos" in dados:
+        campeonatos = dados["campeonatos"]
+        linhas.append("--- Calendário de provas (só as que ainda vão acontecer) ---")
+        if not campeonatos:
+            linhas.append("Nenhuma prova cadastrada no calendário a partir de hoje.")
+        else:
+            for c in campeonatos:
+                # Data já formatada em Python (dd/mm/aaaa) -- o Redator só
+                # reproduz o texto, nunca calcula nem reordena por conta
+                # própria.
+                periodo = _formatar_periodo(c["data_inicio"], c["data_fim"])
+                linha = f"  - {c['nome']}: {periodo}"
+                if c.get("local"):
+                    linha += f", em {c['local']}"
+                linhas.append(linha)
 
     if dados.get("fontes_indisponiveis"):
         # Este atendimento já vai ser travado pelo freio determinístico do

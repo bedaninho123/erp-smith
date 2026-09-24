@@ -1,10 +1,13 @@
 """Busca de fato os dados que o Planejador apontou como necessários
-(plano.fontes) -- só consulta as views do Core, a tabela conhecimento do
-Domínio e integrações externas (Shooting House), nunca decide nada sobre
-o conteúdo."""
+(plano.fontes) -- views do Core, tabelas do Domínio (conhecimento,
+campeonatos), o subconjunto seguro de configuracoes do Core e
+integrações externas (Shooting House). Nunca decide nada sobre o
+conteúdo, só busca e devolve."""
+from datetime import date
 from typing import Optional
 
 from core.configuracoes import obter_informacoes_institucionais
+from domain.clube_tiro.motor_campeonatos import listar_campeonatos
 from integracoes.shooting_house import (
     ShootingHouseIndisponivel,
     consultar_armas,
@@ -151,6 +154,20 @@ def consultar(
                 topico = classificacao.topico_institucional if classificacao else None
                 resultado["informacoes_empresa"] = obter_informacoes_institucionais(
                     empresa_id, topico
+                )
+            elif fonte == "campeonatos":
+                # Data de "hoje" calculada em Python (date.today(), hora
+                # local da máquina) -- nunca deixar o Redator decidir
+                # sozinho quais provas já passaram (CLAUDE.md: "Datas e
+                # contas nunca são feitas pela IA"). Sem filtro de ano de
+                # propósito: um calendário virando de dezembro pra
+                # janeiro não pode sumir a prova de 5/jan só porque caiu
+                # no ano seguinte.
+                hoje = date.today().isoformat()
+                todos = listar_campeonatos(empresa_id, apenas_ativos=True)
+                resultado["campeonatos"] = sorted(
+                    (c for c in todos if c["data_fim"] >= hoje),
+                    key=lambda c: c["data_inicio"],
                 )
             elif fonte == "SHOOTING_HOUSE_HABITUALIDADE":
                 cpf_cliente = (resultado.get("cliente") or {}).get("cpf")

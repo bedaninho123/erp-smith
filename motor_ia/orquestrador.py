@@ -38,6 +38,7 @@ _CATEGORIA_POR_INTENCAO = {
     "ATENDIMENTO_HUMANO": "Consulta",
     "CONSULTA_PROCESSO": "Consulta",
     "CONSULTA_DOCUMENTOS_VENCIMENTO": "Consulta",
+    "CONSULTA_CAMPEONATOS": "Consulta",
 }
 
 # Intenções que só fazem sentido responder sabendo quem é o cliente --
