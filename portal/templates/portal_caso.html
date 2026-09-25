@@ -17,7 +17,7 @@
   .checklist { display: flex; gap: .9rem; align-items: flex-start; margin-top: .8rem; }
   .checklist-itens { flex: 1; min-width: 0; }
   .checklist-contagem { font-size: .74rem; color: var(--steel); text-align: center; margin-top: .2rem; }
-  .checklist-grupo { font-size: .74rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--steel); margin: .5rem 0 .2rem; }
+  .checklist-grupo { font-size: .74rem; font-weight: 600;  color: var(--steel); margin: .5rem 0 .2rem; }
   .checklist-grupo:first-child { margin-top: 0; }
   .checklist-item { font-size: .87rem; margin-bottom: .25rem; }
   .checklist-recusa {
@@ -97,7 +97,7 @@
   {% endfor %}
 </div>
 
-<h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:2.2rem 0 .8rem;">Enviar um documento</h2>
+<h2 class="titulo-secao" style="margin:2.2rem 0 .8rem;">Enviar um documento</h2>
 <div class="ficha ficha-form">
   <form method="post" action="{{ url_for('upload_documento') }}" enctype="multipart/form-data">
     <input type="hidden" name="caso_id" value="{{ caso.caso_id }}">
@@ -144,7 +144,7 @@
   </form>
 </div>
 
-<h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:2.2rem 0 .8rem;">Documentos já enviados</h2>
+<h2 class="titulo-secao" style="margin:2.2rem 0 .8rem;">Documentos já enviados</h2>
 <div class="ficha ficha-tabela">
   <table>
     <thead><tr><th>Tipo</th><th>Arquivo</th><th>Status</th><th>Enviado em</th></tr></thead>

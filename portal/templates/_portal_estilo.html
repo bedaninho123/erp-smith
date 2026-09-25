@@ -490,6 +490,85 @@
   .pill--nivel1 { background: var(--blue-soft); color: var(--blue-deep); }
   .pill--nivel2 { background: var(--blue); color: #fff; }
   .pill--nivel3 { background: var(--blue-deep); color: #fff; }
+
+  /* ==================================================================
+     TEMA 2026-09 -- o mesmo do painel (webapp/templates/index.html,
+     bloco "TEMA 2026-09"), pedido do usuário ao revisar o sistema
+     inteiro: simples, moderno, prático. Fica no fim para sobrescrever
+     sem apagar o desenho acima.
+
+     O que NÃO mudou, de propósito: o "alvo" de progresso e a "folhinha"
+     -- são a identidade do Portal e não pesam na leitura. O que mudou:
+     - mesma paleta do painel (os dois apps são o mesmo sistema);
+     - nada em MAIÚSCULAS: botão, selo, cabeçalho de tabela, eyebrow;
+     - sombra pesada sai, fica a borda fina;
+     - o selo continua carimbo (moldura dupla), mas reto e sem a batida
+       animada -- ela chamava atenção toda vez que a tela abria, mesmo
+       quando nada tinha mudado.
+     ================================================================== */
+  :root {
+    --paper: #F4F5F3;
+    --line: #E3E6E8;
+    --ink: #16181D;
+    --ink-deep: #16181D;
+    --steel: #5B6470;
+    --blue: #2F5FA7;
+    --blue-deep: #244A85;
+    --blue-soft: #E8EEF8;
+    --signal: #C0392B;
+    --signal-soft: #FBEDEB;
+    --radius: 10px;
+  }
+  .ficha { box-shadow: none; }
+
+  .selo {
+    transform: none; animation: none;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-weight: 600;
+    font-size: .78rem; letter-spacing: 0; text-transform: none;
+    border-width: 1px; min-width: 0; padding: .25rem .75rem;
+  }
+
+  .botao {
+    background: var(--blue);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-weight: 600;
+    font-size: .92rem; letter-spacing: 0; text-transform: none;
+    padding: .6rem 1.1rem;
+  }
+  .botao:hover { background: var(--blue-deep); }
+
+  input[type=text], input[type=email], input[type=file], select, textarea {
+    background: #fff; border-color: #D5D9DD;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); outline: none;
+  }
+
+  th { font-size: .78rem; letter-spacing: 0; text-transform: none; font-weight: 600; }
+  .badge-item {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: .74rem; font-weight: 600;
+    letter-spacing: 0; text-transform: none; border-radius: 6px; padding: .1rem .5rem;
+  }
+  .destaque-mini-eyebrow { letter-spacing: 0; text-transform: none; font-size: .75rem; }
+  .pill--contagem { text-transform: none; }
+
+  .portal-sidebar { background: var(--ink-deep); }
+  .portal-nav a.ativo { background: rgba(255,255,255,.10); border-left-color: #6E9BE0; }
+  .aviso, .msg-flash { border-radius: var(--radius); }
+  .folhinha { box-shadow: 0 1px 2px rgba(22,24,29,.12); }
+
+  /* Título de cada página do Portal. Era um h2 pequeno, cinza e em
+     maiúsculas escrito à mão em dez telas -- parecia rótulo, não
+     título. Agora é classe, no mesmo tom dos títulos do painel. */
+  .titulo-pagina {
+    font-family: 'Big Shoulders', system-ui, sans-serif; font-weight: 700;
+    font-size: 1.9rem; line-height: 1.05; color: var(--ink);
+  }
+  /* Seção dentro de uma página (ex.: "Enviar um documento" no caso):
+     menor que o título do que ela está dentro. */
+  .titulo-secao {
+    font-family: 'Big Shoulders', system-ui, sans-serif; font-weight: 700;
+    font-size: 1.35rem; line-height: 1.1; color: var(--ink);
+  }
 </style>
 <!--
   Notas de decisão (skill frontend-design, revisão 2026-07-25):

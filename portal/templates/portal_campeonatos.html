@@ -5,7 +5,7 @@
 <div class="msg-flash msg-flash--{{ categoria }}">{{ mensagem }}</div>
 {% endfor %}
 
-<h2 style="font-size:1rem; letter-spacing:.05em; text-transform:uppercase; color:var(--steel); margin:0 0 1rem;">Calendário de campeonatos</h2>
+<h2 class="titulo-pagina" style="margin:0 0 1rem;">Calendário de campeonatos</h2>
 
 {% if not proximo %}
 <div class="ficha estado-vazio">Nenhum campeonato programado no momento — volte mais tarde.</div>
@@ -29,7 +29,7 @@
 </div>
 
 {% for grupo in meses_grupos %}
-<h4 style="font-family:'Big Shoulders',system-ui,sans-serif; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--steel); font-size:.82rem; margin:1.8rem 0 .3rem; padding-bottom:.4rem; border-bottom:1px solid var(--line);">{{ grupo.nome }}</h4>
+<h4 style="font-family:'Big Shoulders',system-ui,sans-serif; font-weight:700; color:var(--steel); font-size:1rem; margin:1.8rem 0 .3rem; padding-bottom:.4rem; border-bottom:1px solid var(--line);">{{ grupo.nome }}</h4>
 {% for c in grupo.eventos %}
 <div class="lista-linha" style="align-items:center;">
   <div class="folhinha">
