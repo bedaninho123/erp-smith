@@ -440,6 +440,39 @@
   .btn-ajuda:hover, .btn-ajuda[aria-expanded="true"] { border-color: var(--blue); color: var(--blue); }
   .ajuda-tela { max-width: 70ch; font-size: 13px; }
   .ajuda-inline summary { cursor: pointer; }
+
+  /* Ficha do Caso (Fase 2, 2026-09-24) */
+  .rotulo-leve { display: block; margin-bottom: 2px; font-size: 12px; font-weight: 600;
+                 color: #6c757d; text-transform: none; letter-spacing: 0; }
+  .caso-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2) var(--e4);
+               font-size: 14px; color: #495057; }
+  .abas-caso { flex-wrap: nowrap; overflow-x: auto; }
+  .abas-caso .nav-link { border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+                         background: none; color: #6c757d; font-weight: 600; font-size: 14px;
+                         padding: 12px 16px; white-space: nowrap; height: auto; text-transform: none; }
+  .abas-caso .nav-link:hover { color: #212529; }
+  .abas-caso .nav-link.active { color: var(--blue); border-bottom-color: var(--blue); }
+  .contagem-aba:not(:empty) { margin-left: 4px; padding: 0 7px; border-radius: 10px;
+                              background: #f1f3f5; color: #495057; font-size: 12px; }
+  .processo-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e3);
+                   padding: var(--e3); border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: var(--e2); }
+  .processo-item.ativo { border-color: var(--blue); background: var(--blue-soft); }
+  .progresso-fino { height: 6px; border-radius: 3px; }
+  /* "+ adicionar outro" só aparece ao passar o mouse no item (ou ao focar
+     pelo teclado) -- visível em todos os 18 itens ao mesmo tempo, era o
+     texto mais repetido da ficha. Em tela de toque não existe "passar o
+     mouse", então lá continua sempre à vista. */
+  @media (hover: hover) {
+    /* No canto da linha do item, fora do fluxo: escondido, ele ainda
+       ocupava uma linha inteira e deixava um vão embaixo de cada item. */
+    .item-checklist { position: relative; }
+    .item-checklist > .acoes-item { position: absolute; top: 0; right: 0; margin: 0 !important; }
+    .item-checklist .btn-item-extra { opacity: 0; transition: opacity .12s; }
+    .item-checklist:hover .btn-item-extra, .item-checklist .btn-item-extra:focus { opacity: 1; }
+  }
+  .resumo-acao { cursor: pointer; font-weight: 600; color: var(--blue); }
+  [data-painel] > details { padding: var(--e4); }
+  [data-painel] > details.border-top { border-top: 1px solid #dee2e6; }
   .bolha-pendente { border: 1px dashed #C79100; background: #FFF8E1; }
 </style>
 </head>
@@ -968,100 +1001,59 @@
       </div>
     </div>
 
+    <!-- Ficha do Caso, redesenhada em 2026-09-24 (Fase 2 da revisão visual).
+         Antes: 8 blocos empilhados, três telas de rolagem, formulário de
+         status sempre aberto e o checklist escondido atrás de um botão.
+         Agora: cabeçalho compacto com status/responsável que salvam ao
+         escolher, e abas. Os ids são os mesmos de antes, de propósito --
+         todo o JS que salva, marca checklist e envia documento continua
+         apontando para eles. -->
     <div id="view-caso-detalhe" class="view">
-      <div class="content-header">
+      <div class="content-header pb-1">
         <div class="container-fluid">
-          <button class="btn btn-outline-secondary btn-sm" id="voltar-casos"><i class="fas fa-arrow-left mr-1" aria-hidden="true"></i>Voltar para Casos</button>
+          <button class="btn btn-link btn-sm px-0" id="voltar-casos"><i class="fas fa-arrow-left mr-1" aria-hidden="true"></i>Casos</button>
         </div>
       </div>
       <div class="content">
         <div class="container-fluid">
           <div class="card">
-            <div class="card-body" id="caso-cabecalho"></div>
-          </div>
-
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Atualizar caso</h3></div>
             <div class="card-body">
               <div class="row">
-                <div class="col-md-6">
-                  <label for="editar-status">Status</label>
-                  <select id="editar-status" class="form-control"></select>
-                </div>
-                <div class="col-md-6">
-                  <label for="editar-responsavel">Responsável</label>
+                <div class="col-lg-8" id="caso-cabecalho"></div>
+                <div class="col-lg-4 mt-3 mt-lg-0">
+                  <label for="editar-status" class="rotulo-leve">Status</label>
+                  <select id="editar-status" class="form-control mb-2"></select>
+                  <label for="editar-responsavel" class="rotulo-leve">Responsável</label>
                   <select id="editar-responsavel" class="form-control"><option value="">não atribuído</option></select>
+                  <small class="text-muted d-block mt-1" id="salvar-caso-status" aria-live="polite"></small>
                 </div>
               </div>
-              <div class="form-group mt-3">
-                <label for="editar-motivo">Motivo da mudança de status (opcional)</label>
-                <input id="editar-motivo" type="text" class="form-control" placeholder="Ex.: Cliente enviou os documentos pendentes">
+              <div id="caso-descricao-editor" class="mt-3" hidden>
+                <label for="editar-descricao" class="rotulo-leve">Descrição</label>
+                <textarea id="editar-descricao" class="form-control" rows="2" placeholder="O que o cliente precisa neste caso"></textarea>
+                <button class="btn btn-primary btn-sm mt-2" id="salvar-caso">Salvar descrição</button>
+                <button class="btn btn-outline-secondary btn-sm mt-2 ml-1" id="cancelar-descricao">Cancelar</button>
               </div>
-              <div class="form-group">
-                <label for="editar-descricao">Descrição</label>
-                <textarea id="editar-descricao" class="form-control" placeholder="O que o cliente precisa neste caso"></textarea>
-              </div>
-              <button class="btn btn-primary" id="salvar-caso">Salvar</button>
-              <span class="text-muted ml-2" id="salvar-caso-status"></span>
             </div>
           </div>
 
           <div class="card">
-            <div class="card-header"><h3 class="card-title">Tarefas</h3></div>
-            <div class="card-body table-responsive p-0">
-              <table class="table table-hover">
-                <thead><tr><th>Prazo</th><th>Tarefa</th><th>Responsável</th><th>Prioridade</th><th>Situação</th><th></th></tr></thead>
-                <tbody id="caso-tarefas-body"></tbody>
-              </table>
+            <div class="card-header p-0">
+              <ul class="nav abas-caso" role="tablist">
+                <li class="nav-item"><button type="button" class="nav-link active" role="tab" data-aba="processo" aria-selected="true">Processo e checklist</button></li>
+                <li class="nav-item"><button type="button" class="nav-link" role="tab" data-aba="documentos" aria-selected="false">Documentos <span class="contagem-aba" id="aba-contagem-documentos"></span></button></li>
+                <li class="nav-item"><button type="button" class="nav-link" role="tab" data-aba="tarefas" aria-selected="false">Tarefas <span class="contagem-aba" id="aba-contagem-tarefas"></span></button></li>
+                <li class="nav-item"><button type="button" class="nav-link" role="tab" data-aba="conversa" aria-selected="false">Conversa <span class="contagem-aba" id="aba-contagem-conversa"></span></button></li>
+                <li class="nav-item"><button type="button" class="nav-link" role="tab" data-aba="historico" aria-selected="false">Histórico</button></li>
+              </ul>
             </div>
-            <!-- Recolhido por padrão: criar tarefa é mais raro do que ler
-                 a lista acima, e um formulário inteiro sempre aberto só
-                 pra isso empurrava o resto da ficha pra baixo. -->
-            <details class="card-body border-top">
-              <summary class="h5 cursor-pointer">+ Nova tarefa neste caso</summary>
-              <div class="row mt-3">
-                <div class="col-md-4">
-                  <label for="caso-tarefa-tipo">Tipo</label>
-                  <input id="caso-tarefa-tipo" type="text" class="form-control" list="caso-tarefa-tipos-opcoes"
-                         placeholder="Ex.: Cobrar documento">
-                  <datalist id="caso-tarefa-tipos-opcoes"></datalist>
-                </div>
-                <div class="col-md-3">
-                  <label for="caso-tarefa-prazo">Prazo</label>
-                  <input id="caso-tarefa-prazo" type="date" class="form-control">
-                </div>
-                <div class="col-md-2">
-                  <label for="caso-tarefa-prioridade">Prioridade</label>
-                  <select id="caso-tarefa-prioridade" class="form-control"></select>
-                </div>
-                <div class="col-md-3">
-                  <label for="caso-tarefa-responsavel">Responsável</label>
-                  <select id="caso-tarefa-responsavel" class="form-control"><option value="">não atribuído</option></select>
-                </div>
-              </div>
-              <div class="form-group mt-3">
-                <label for="caso-tarefa-descricao">Descrição</label>
-                <input id="caso-tarefa-descricao" type="text" class="form-control"
-                       placeholder="O que precisa ser feito">
-              </div>
-              <button class="btn btn-primary" id="salvar-caso-tarefa">Adicionar tarefa</button>
-              <span class="text-muted ml-2" id="salvar-caso-tarefa-status" aria-live="polite"></span>
-            </details>
-          </div>
 
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Processos</h3></div>
-            <div class="card-body table-responsive p-0">
-              <table class="table table-hover text-nowrap">
-                <thead><tr><th>Serviço</th><th>Protocolo</th><th>Status</th><th>Prazo estimado</th><th>Próxima ação</th><th>Documentos</th><th></th></tr></thead>
-                <tbody id="caso-processos-body"></tbody>
-              </table>
-            </div>
-            <!-- Recolhido por padrão (ver comentário junto de "Nova
-                 tarefa neste caso" acima); abre sozinho quando alguém
-                 clica "Editar" numa linha (editarProcesso()). -->
-            <details class="card-body border-top" id="processo-form-detalhes">
-              <summary class="h5 cursor-pointer" id="processo-form-titulo">Adicionar processo</summary>
+            <div class="card-body" data-painel="processo" role="tabpanel">
+              <div id="caso-processos-body"></div>
+              <!-- Logo abaixo do processo, e não depois do checklist: quem clica
+                   Editar no cartão não deveria rolar 18 itens para achar o formulário. -->
+            <details class="mt-2 mb-3" id="processo-form-detalhes">
+              <summary class="resumo-acao" id="processo-form-titulo">Adicionar processo</summary>
               <div class="row mt-3">
                 <div class="col-md-6">
                   <label for="processo-servico">Serviço</label>
@@ -1105,23 +1097,22 @@
               <button class="btn btn-outline-secondary ml-2" id="cancelar-edicao-processo">Cancelar</button>
               <span class="text-muted ml-2" id="salvar-processo-status"></span>
             </details>
-          </div>
+              <div id="card-checklist" class="mt-3" style="display:none">
+                <div id="checklist-titulo" class="mb-3"></div>
+                <div id="checklist-corpo"></div>
+              </div>
 
-          <div class="card" id="card-checklist" style="display:none">
-            <div class="card-header"><h3 class="card-title" id="checklist-titulo">Checklist de documentos</h3></div>
-            <div class="card-body" id="checklist-corpo"></div>
-          </div>
-
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Documentos</h3></div>
-            <div class="card-body table-responsive p-0">
-              <table class="table table-hover text-nowrap">
-                <thead><tr><th>Tipo</th><th>Arquivo</th><th>Status</th><th>Enviado em</th><th></th></tr></thead>
-                <tbody id="caso-documentos-body"></tbody>
-              </table>
             </div>
+
+            <div data-painel="documentos" role="tabpanel" hidden>
+              <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                  <thead><tr><th>Documento</th><th>Situação</th><th>Enviado em</th><th></th></tr></thead>
+                  <tbody id="caso-documentos-body"></tbody>
+                </table>
+              </div>
             <details class="card-body border-top">
-              <summary class="h5 cursor-pointer">+ Adicionar documento</summary>
+              <summary class="resumo-acao">+ Adicionar documento</summary>
               <p class="text-muted mt-3">Para quando o cliente traz o documento pessoalmente ou por outro canal, em vez de mandar por e-mail. PDF ou foto, até 15MB.</p>
               <div class="row">
                 <div class="col-md-6">
@@ -1163,16 +1154,52 @@
                    avisado de que salvou (ou de que falhou). -->
               <span class="text-muted ml-2" id="salvar-documento-status" aria-live="polite"></span>
             </details>
-          </div>
+            </div>
 
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Mensagens</h3></div>
-            <div class="card-body" id="caso-mensagens"></div>
-          </div>
+            <div data-painel="tarefas" role="tabpanel" hidden>
+              <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                  <thead><tr><th>Prazo</th><th>Tarefa</th><th>Responsável</th><th>Prioridade</th><th>Situação</th><th></th></tr></thead>
+                  <tbody id="caso-tarefas-body"></tbody>
+                </table>
+              </div>
+            <details class="card-body border-top">
+              <summary class="resumo-acao">+ Nova tarefa</summary>
+              <div class="row mt-3">
+                <div class="col-md-4">
+                  <label for="caso-tarefa-tipo">Tipo</label>
+                  <input id="caso-tarefa-tipo" type="text" class="form-control" list="caso-tarefa-tipos-opcoes"
+                         placeholder="Ex.: Cobrar documento">
+                  <datalist id="caso-tarefa-tipos-opcoes"></datalist>
+                </div>
+                <div class="col-md-3">
+                  <label for="caso-tarefa-prazo">Prazo</label>
+                  <input id="caso-tarefa-prazo" type="date" class="form-control">
+                </div>
+                <div class="col-md-2">
+                  <label for="caso-tarefa-prioridade">Prioridade</label>
+                  <select id="caso-tarefa-prioridade" class="form-control"></select>
+                </div>
+                <div class="col-md-3">
+                  <label for="caso-tarefa-responsavel">Responsável</label>
+                  <select id="caso-tarefa-responsavel" class="form-control"><option value="">não atribuído</option></select>
+                </div>
+              </div>
+              <div class="form-group mt-3">
+                <label for="caso-tarefa-descricao">Descrição</label>
+                <input id="caso-tarefa-descricao" type="text" class="form-control"
+                       placeholder="O que precisa ser feito">
+              </div>
+              <button class="btn btn-primary" id="salvar-caso-tarefa">Adicionar tarefa</button>
+              <span class="text-muted ml-2" id="salvar-caso-tarefa-status" aria-live="polite"></span>
+            </details>
+            </div>
 
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Histórico</h3></div>
-            <div class="card-body p-0">
+            <div class="card-body" data-painel="conversa" role="tabpanel" hidden>
+              <div id="caso-mensagens"></div>
+            </div>
+
+            <div data-painel="historico" role="tabpanel" hidden>
               <ul class="list-group list-group-flush" id="caso-historico"></ul>
             </div>
           </div>
@@ -2588,33 +2615,49 @@ async function abrirCaso(casoId) {
   }
 
   const c = d.caso;
+  // Aba: ao abrir OUTRO caso, volta para a primeira; ao recarregar o
+  // mesmo (depois de salvar algo), fica onde a pessoa estava.
+  if (ultimoCasoAberto !== casoId) abaCaso = "processo";
+  ultimoCasoAberto = casoId;
+  mostrarAbaCaso(abaCaso);
+
+  // Prioridade só aparece quando foge do normal: um selo "Prioridade
+  // Normal" em todo caso é informação que ninguém lê.
   $("#caso-cabecalho").innerHTML = `
-    <p class="ficha-id">${escapeHtml(c.caso_id)}</p>
-    <h3 class="ficha-titulo">${escapeHtml(c.titulo)}</h3>
-    <p class="mb-3 d-flex flex-wrap" style="gap:var(--e2)">
-      <span class="badge ${badgesStatus[c.status] || 'badge-secondary'}">${escapeHtml(c.status)}</span>
+    <div class="d-flex flex-wrap align-items-center" style="gap:var(--e2)">
+      <span class="ficha-id mb-0">${escapeHtml(c.caso_id)}</span>
       <span class="badge badge-light">${escapeHtml(c.categoria)}</span>
-      <span class="badge badge-light">Prioridade ${escapeHtml(c.prioridade)}</span>
+      ${c.prioridade && c.prioridade !== "Normal"
+        ? `<span class="badge ${badgesPrioridade[c.prioridade] || "badge-light"}">Prioridade ${escapeHtml(c.prioridade)}</span>` : ""}
+    </div>
+    <h3 class="ficha-titulo mb-2">${escapeHtml(c.titulo)}</h3>
+    <div class="caso-meta">
+      <span><i class="fas fa-user mr-1 text-muted" aria-hidden="true"></i>${escapeHtml(c.cliente_nome)}</span>
+      ${c.cliente_cpf ? `<span class="mono">${cpfFormatado(c.cliente_cpf)}</span>` : ""}
+      ${c.cliente_email ? `<span>${escapeHtml(c.cliente_email)}</span>` : ""}
+      ${d.pode_ver_cliente ? `<button type="button" class="btn btn-outline-secondary btn-sm" id="caso-ver-cliente">Ver cliente</button>` : ""}
+      ${d.filiado_cpf ? `<button type="button" class="btn btn-outline-primary btn-sm" id="caso-ver-filiado"
+          title="Ficha do clube: armas, CR, habitualidade e documentos">Ver filiado</button>` : ""}
+    </div>
+    <p class="mb-1 mt-2">
+      ${c.descricao ? escapeHtml(c.descricao) : `<span class="text-muted">Sem descrição.</span>`}
+      <button type="button" class="btn btn-link btn-sm p-0 ml-1 align-baseline" id="caso-editar-descricao">editar</button>
     </p>
-    <dl class="ficha">
-      <dt>Cliente</dt><dd>${escapeHtml(c.cliente_nome)} <span class="mono text-muted">${escapeHtml(c.cliente_id)}</span>
-        <span class="d-inline-flex flex-wrap ml-2" style="gap:var(--e2)">
-          ${d.pode_ver_cliente ? `<button type="button" class="btn btn-outline-secondary btn-sm" id="caso-ver-cliente">Ver cliente</button>` : ""}
-          ${d.filiado_cpf ? `<button type="button" class="btn btn-outline-primary btn-sm" id="caso-ver-filiado"
-              title="Ficha do clube: armas, CR, habitualidade e documentos">Ver filiado</button>` : ""}
-        </span></dd>
-      <dt>CPF</dt><dd class="mono">${c.cliente_cpf ? cpfFormatado(c.cliente_cpf) : 'não informado'}</dd>
-      <dt>E-mail</dt><dd>${escapeHtml(c.cliente_email || 'sem e-mail')}</dd>
-      <dt>Responsável</dt><dd>${escapeHtml(c.responsavel_nome || 'não atribuído')}</dd>
-      ${c.descricao ? `<dt>Descrição</dt><dd>${escapeHtml(c.descricao)}</dd>` : ''}
-      <dt>Criado</dt><dd class="mono">${dataHoraBr(c.criado_em)}</dd>
-      <dt>Atualizado</dt><dd class="mono">${dataHoraBr(c.atualizado_em)}</dd>
-      ${c.observacoes ? `<dt>Observações</dt><dd>${escapeHtml(c.observacoes)}</dd>` : ''}
-    </dl>
+    ${c.observacoes ? `<p class="text-muted small mb-1">${escapeHtml(c.observacoes)}</p>` : ""}
+    <small class="text-muted">Aberto em ${dataHoraBr(c.criado_em)} · atualizado em ${dataHoraBr(c.atualizado_em)}</small>
   `;
 
   if (d.pode_ver_cliente) $("#caso-ver-cliente").addEventListener("click", () => abrirCliente(c.cliente_id));
   if (d.filiado_cpf) $("#caso-ver-filiado").addEventListener("click", () => abrirFiliado(d.filiado_cpf));
+  $("#caso-descricao-editor").hidden = true;
+  $("#caso-editar-descricao").addEventListener("click", () => {
+    $("#caso-descricao-editor").hidden = false;
+    $("#editar-descricao").focus();
+  });
+
+  $("#aba-contagem-documentos").textContent = d.documentos.length || "";
+  $("#aba-contagem-tarefas").textContent = d.tarefas.filter(t => TAREFA_EM_ABERTO.includes(t.status)).length || "";
+  $("#aba-contagem-conversa").textContent = d.mensagens.length || "";
 
   casoDocumentosAtuais = d.documentos;
   casoProcessosAtuais = d.processos;
@@ -2622,19 +2665,27 @@ async function abrirCaso(casoId) {
   $("#card-checklist").style.display = "none";
 
   $("#caso-processos-body").innerHTML = d.processos.length ? d.processos.map(p => `
-    <tr class="linha-processo" data-processo='${JSON.stringify(p).replace(/'/g, "&#39;")}'>
-      <td>${escapeHtml(p.nome_servico)}</td>
-      <td class="text-monospace">${escapeHtml(p.protocolo) || '—'}</td>
-      <td><span class="badge ${badgesStatus[p.status] || 'badge-secondary'}">${escapeHtml(p.status)}</span></td>
-      <td class="text-monospace">${dataBr(p.prazo_estimado) || '—'}</td>
-      <td>${escapeHtml(p.proxima_acao || '—')}</td>
-      <td>${documentosBadge(p.checklist)}</td>
-      <td>
-        <button class="btn btn-outline-secondary btn-sm btn-editar-processo">Editar</button>
-        ${p.checklist.length ? '<button class="btn btn-outline-primary btn-sm btn-checklist-processo ml-1">Checklist</button>' : ''}
-      </td>
-    </tr>
-  `).join("") : `<tr><td colspan="7" class="text-muted">Nenhum processo neste caso.</td></tr>`;
+    <div class="linha-processo processo-item" data-processo-id="${escapeHtml(p.processo_id)}"
+         data-processo='${JSON.stringify(p).replace(/'/g, "&#39;")}'>
+      <div class="flex-grow-1">
+        <div class="d-flex flex-wrap align-items-center" style="gap:var(--e2)">
+          <b>${escapeHtml(p.nome_servico)}</b>
+          <span class="badge ${badgesStatus[p.status] || 'badge-secondary'}">${escapeHtml(p.status)}</span>
+          ${documentosBadge(p.checklist)}
+        </div>
+        <small class="text-muted d-block mt-1">
+          ${[p.protocolo ? `Protocolo <span class="mono">${escapeHtml(p.protocolo)}</span>` : "",
+             p.prazo_estimado ? `prazo ${dataBr(p.prazo_estimado)}` : "",
+             p.proxima_acao ? escapeHtml(p.proxima_acao) : ""].filter(Boolean).join(" · ") || "Sem protocolo nem próxima ação."}
+        </small>
+      </div>
+      <div class="text-nowrap">
+        ${d.processos.length > 1 && p.checklist.length
+          ? '<button class="btn btn-outline-primary btn-sm btn-checklist-processo">Ver checklist</button>' : ''}
+        <button class="btn btn-outline-secondary btn-sm btn-editar-processo ml-1">Editar</button>
+      </div>
+    </div>
+  `).join("") : `<p class="text-muted mb-0">Nenhum processo neste caso ainda. Adicione abaixo o serviço que o cliente contratou.</p>`;
 
   $("#caso-processos-body").querySelectorAll(".btn-editar-processo").forEach(btn => {
     btn.addEventListener("click", (ev) => {
@@ -2657,18 +2708,17 @@ async function abrirCaso(casoId) {
 
   $("#caso-documentos-body").innerHTML = d.documentos.length ? d.documentos.map(doc => `
     <tr>
-      <td>${escapeHtml(doc.tipo_documento)}</td>
-      <td>${doc.link_arquivo
-        ? `<button type="button" class="btn btn-link p-0 btn-ver-documento"
-             data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(doc.nome_arquivo || '')}">${escapeHtml(doc.nome_arquivo || 'arquivo')}</button>
-           <a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo" class="btn btn-outline-secondary btn-sm ml-2"
+      <td><b class="d-block">${escapeHtml(doc.tipo_documento)}</b>${doc.link_arquivo
+        ? `<button type="button" class="btn btn-link btn-sm p-0 btn-ver-documento"
+             data-documento="${escapeHtml(doc.documento_id)}" data-nome="${escapeHtml(doc.nome_arquivo || '')}">${escapeHtml(doc.nome_arquivo || 'arquivo')}</button>`
+        : `<small class="text-muted">${escapeHtml(doc.nome_arquivo || '—')}</small>`}</td>
+      <td>${escapeHtml(doc.status)}</td>
+      <td class="text-monospace text-nowrap">${dataBr(doc.data_envio) || '—'}</td>
+      <td class="text-nowrap text-right">
+        ${doc.link_arquivo ? `<a href="/api/documentos/${encodeURIComponent(doc.documento_id)}/arquivo" class="btn btn-outline-secondary btn-sm"
               title="Baixar o arquivo" aria-label="Baixar ${escapeHtml(doc.nome_arquivo || 'o arquivo')}">
              <i class="fas fa-download" aria-hidden="true"></i>
-           </a>`
-        : escapeHtml(doc.nome_arquivo || '—')}</td>
-      <td>${escapeHtml(doc.status)}</td>
-      <td class="text-monospace">${dataHoraBr(doc.data_envio) || '—'}</td>
-      <td class="text-nowrap">
+           </a>` : ""}
         <button type="button" class="btn btn-outline-danger btn-sm btn-excluir-documento"
                 data-documento="${escapeHtml(doc.documento_id)}" data-tipo="${escapeHtml(doc.tipo_documento)}"
                 aria-label="Excluir ${escapeHtml(doc.tipo_documento)}">
@@ -2676,7 +2726,7 @@ async function abrirCaso(casoId) {
         </button>
       </td>
     </tr>
-  `).join("") : `<tr><td colspan="5" class="text-muted">Nenhum documento neste caso.</td></tr>`;
+  `).join("") : `<tr><td colspan="4" class="text-muted">Nenhum documento neste caso.</td></tr>`;
 
   ligarBotoesVerDocumento($("#caso-documentos-body"));
   $("#caso-documentos-body").querySelectorAll(".btn-excluir-documento").forEach(botao => {
@@ -2715,6 +2765,11 @@ async function abrirCaso(casoId) {
     const emEdicao = d.processos.find(p => p.processo_id === processoEmEdicao.processoId);
     if (emEdicao) editarProcesso(emEdicao, { rolar: false });
   }
+  // O checklist é o coração da ficha: abre sozinho, no processo em foco
+  // ou no primeiro que tiver checklist -- antes ficava atrás de um botão.
+  const processoDoChecklist = d.processos.find(p => p.processo_id === processoEscolhido && p.checklist.length)
+    || d.processos.find(p => p.checklist.length);
+  if (processoDoChecklist) abrirChecklist(processoDoChecklist, { rolar: false });
   $("#documento-arquivo").value = "";
   $("#documento-tipo").value = "Anexo enviado pelo painel";
   $("#documento-observacoes").value = "";
@@ -2740,7 +2795,6 @@ async function abrirCaso(casoId) {
 
   $("#editar-status").innerHTML = d.status_validos.map(s => `<option value="${s}"${s === c.status ? ' selected' : ''}>${s}</option>`).join("");
   $("#editar-responsavel").innerHTML = `<option value="">não atribuído</option>` + d.usuarios.map(u => `<option value="${u.usuario_id}"${u.usuario_id === c.responsavel_id ? ' selected' : ''}>${escapeHtml(u.nome)}</option>`).join("");
-  $("#editar-motivo").value = "";
   $("#editar-descricao").value = c.descricao || "";
   $("#salvar-caso-status").textContent = "";
   $("#salvar-caso").dataset.casoId = casoId;
@@ -2758,7 +2812,10 @@ async function salvarCasoEdicao() {
   const novoStatus = $("#editar-status").value;
   const novoResponsavel = $("#editar-responsavel").value;
   const novaDescricao = $("#editar-descricao").value.trim();
-  const motivo = $("#editar-motivo").value.trim();
+  // Sem campo de motivo desde 2026-09-24: o histórico já registra "de X
+  // para Y", e um campo opcional sempre à vista era o que mais ocupava a
+  // ficha. Quem precisa explicar escreve na descrição ou numa tarefa.
+  const motivo = "";
   const statusEl = $("#salvar-caso-status");
 
   const chamadas = [];
@@ -2819,6 +2876,32 @@ async function salvarCasoEdicao() {
 }
 
 $("#salvar-caso").addEventListener("click", salvarCasoEdicao);
+// Status e responsável salvam ao escolher -- era um formulário inteiro,
+// sempre aberto, para o gesto mais comum da ficha.
+$("#editar-status").addEventListener("change", salvarCasoEdicao);
+$("#editar-responsavel").addEventListener("change", salvarCasoEdicao);
+$("#cancelar-descricao").addEventListener("click", () => {
+  $("#editar-descricao").value = $("#salvar-caso").dataset.descricaoAtual || "";
+  $("#caso-descricao-editor").hidden = true;
+});
+
+// Abas da ficha do Caso.
+let abaCaso = "processo";
+let ultimoCasoAberto = null;
+function mostrarAbaCaso(nome) {
+  abaCaso = nome;
+  document.querySelectorAll("#view-caso-detalhe [data-aba]").forEach(b => {
+    const ativa = b.dataset.aba === nome;
+    b.classList.toggle("active", ativa);
+    b.setAttribute("aria-selected", String(ativa));
+  });
+  document.querySelectorAll("#view-caso-detalhe [data-painel]").forEach(painel => {
+    painel.hidden = painel.dataset.painel !== nome;
+  });
+}
+document.querySelectorAll("#view-caso-detalhe [data-aba]").forEach(b => {
+  b.addEventListener("click", () => mostrarAbaCaso(b.dataset.aba));
+});
 
 // ====================================================================
 // DASHBOARD (Gestor)
@@ -3851,6 +3934,7 @@ function focarProcesso(p) {
 
 function editarProcesso(p, { rolar = true } = {}) {
   processoEmEdicao = { casoId: p.caso_id, processoId: p.processo_id };
+  if (rolar) mostrarAbaCaso("processo");
   focarProcesso(p);
   // O formulário abaixo nasce recolhido (ver a marcação em
   // view-caso-detalhe) -- sem abrir aqui, clicar "Editar" numa linha
@@ -4852,12 +4936,30 @@ function documentosBadge(checklist) {
   return `<span class="badge ${cor}">${recebidos}/${checklist.length}</span>`;
 }
 
-function abrirChecklist(processo) {
+// `rolar` é também "a pessoa pediu": só aí a ficha troca de aba. Quando
+// é a própria ficha reabrindo o checklist depois de salvar algo, quem
+// estava na aba Documentos continua nela.
+function abrirChecklist(processo, { rolar = true } = {}) {
   focarProcesso(processo);
+  if (rolar) mostrarAbaCaso("processo");
+  document.querySelectorAll("#caso-processos-body .processo-item").forEach(el => {
+    el.classList.toggle("ativo", el.dataset.processoId === processo.processo_id);
+  });
   $("#card-checklist").style.display = "";
-  $("#checklist-titulo").textContent = `Checklist de documentos — ${processo.nome_servico} (${processo.processo_id})`;
+  const total = processo.checklist.length;
+  const recebidos = processo.checklist.filter(i => i.recebido).length;
+  const pct = total ? Math.round(100 * recebidos / total) : 0;
+  $("#checklist-titulo").innerHTML = `
+    <div class="d-flex justify-content-between align-items-baseline flex-wrap" style="gap:var(--e2)">
+      <h4 class="h6 mb-0">Checklist — ${escapeHtml(processo.nome_servico)}</h4>
+      <small class="text-muted">${recebidos} de ${total} recebidos</small>
+    </div>
+    <div class="progress progresso-fino mt-2" role="progressbar" aria-valuenow="${pct}"
+         aria-valuemin="0" aria-valuemax="100" aria-label="Documentos recebidos">
+      <div class="progress-bar ${pct === 100 ? "bg-success" : ""}" style="width:${pct}%"></div>
+    </div>`;
   renderChecklist(processo);
-  $("#card-checklist").scrollIntoView({ behavior: "smooth", block: "center" });
+  if (rolar) $("#card-checklist").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function renderChecklist(processo) {
@@ -4918,7 +5020,7 @@ function renderChecklist(processo) {
     // "+ adicionar outro" (2026-09-24): o mesmo item de novo, só neste
     // processo -- quem tem pistola, carabina e revólver precisa de uma
     // capacidade técnica para cada. Extra sem documento marcado pode sair.
-    const acoes = `<div class="mb-2" style="margin-top:-.25rem">
+    const acoes = `<div class="acoes-item mb-2" style="margin-top:-.25rem">
         <button type="button" class="btn btn-link btn-sm p-0 btn-item-extra" data-dex="${item.documento_exigido_id}"
           data-nome="${escapeHtml(item.item)}">+ adicionar outro</button>
         ${item.extra && !item.documentos.length
@@ -4926,7 +5028,7 @@ function renderChecklist(processo) {
                data-dex="${item.documento_exigido_id}" data-nome="${escapeHtml(item.item)}">remover este item</button>`
           : ""}
       </div>`;
-    return cabecalho + corpo + acoes;
+    return cabecalho + `<div class="item-checklist">${corpo}${acoes}</div>`;
   }).join("");
 
   $("#checklist-corpo").innerHTML = linhas || `<p class="text-muted">Nenhum item de checklist cadastrado para este serviço.</p>`;
@@ -5013,7 +5115,7 @@ async function recarregarChecklist(casoId, processoId) {
   const tr = [...document.querySelectorAll(".linha-processo")].find(
     el => JSON.parse(el.dataset.processo).processo_id === processoId
   );
-  if (tr) abrirChecklist(JSON.parse(tr.dataset.processo));
+  if (tr) abrirChecklist(JSON.parse(tr.dataset.processo), { rolar: false });
 }
 
 async function enviarDocumento() {
