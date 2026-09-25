@@ -473,6 +473,159 @@
   .resumo-acao { cursor: pointer; font-weight: 600; color: var(--blue); }
   [data-painel] > details { padding: var(--e4); }
   [data-painel] > details.border-top { border-top: 1px solid #dee2e6; }
+
+  /* ==================================================================
+     TEMA 2026-09 (Fase 3 da revisão visual, pedido do usuário: "simples,
+     sem muita informação, bonito, moderno e prático").
+
+     Fica no FIM do <style> de propósito: sobrescreve o visual acima sem
+     apagar a régua dele (duas alturas de controle, espaçamento --e1..e6),
+     que continua valendo. O que muda é só a pele.
+
+     Três decisões que valem para qualquer tela nova:
+     1. Cor forte só no que pede ação. O resto é tinta, aço e papel.
+        Atrasado é vermelho; zero nunca é colorido.
+     2. Nada em MAIÚSCULAS. Título, rótulo, cabeçalho de tabela e selo em
+        caixa normal -- maiúscula em tudo era o que fazia a tela "gritar".
+     3. Selo de status é o "carimbo": moldura fina, fundo levemente
+        tingido. É o único elemento com personalidade; o resto fica quieto.
+     ================================================================== */
+  :root {
+    --tinta: #16181D;      /* texto e menu */
+    --papel: #F4F5F3;      /* fundo da área de trabalho */
+    --aco: #5B6470;        /* texto de apoio, rótulo */
+    --linha: #E3E6E8;      /* bordas e divisórias */
+    --blue: #2F5FA7; --blue-deep: #244A85; --blue-soft: #E8EEF8;
+    --ink-deep: #16181D;
+    --perigo: #C0392B; --perigo-soft: #FBEDEB;
+    --alerta: #B26B00; --alerta-soft: #FDF3E1;
+    --ok: #2E7D4F;     --ok-soft: #E8F4EC;
+    --neutro-soft: #EEF0F2;
+    --raio: 10px;
+  }
+
+  body { color: var(--tinta); }
+  .content-wrapper, .main-footer { background-color: var(--papel); }
+  .main-footer { border-top: 0; color: var(--aco); font-size: 12px; }
+
+  /* --- Tipografia: caixa normal em tudo ---------------------------- */
+  .content-header { padding-top: var(--e5); }
+  .content-header h1, .ficha-titulo {
+    text-transform: none; letter-spacing: 0; font-size: 32px; line-height: 1.05;
+  }
+  label, .rotulo, table th, .ficha dt {
+    text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; color: var(--aco);
+  }
+  a { color: var(--blue); }
+  a:hover { color: var(--blue-deep); }
+
+  /* --- Topo claro, menu escuro -------------------------------------
+     Topo e menu escuros juntos pesavam: a moldura inteira da tela era
+     preta. O menu fica escuro (é onde mora o logo branco); o topo vira
+     parte da área de trabalho. */
+  .main-header.navbar {
+    background-color: #fff !important; border-bottom: 1px solid var(--linha);
+  }
+  .main-header .nav-link, .main-header .nav-link span { color: var(--aco) !important; }
+  .main-header .nav-link:hover { color: var(--tinta) !important; }
+  .main-sidebar { background-color: var(--tinta) !important; }
+  .nav-sidebar .nav-header {
+    text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600;
+    color: #7C838D; padding: var(--e4) var(--e4) var(--e1);
+  }
+  .nav-sidebar > .nav-item > .nav-link { color: #C9CDD3; border-radius: 8px; }
+  .nav-sidebar > .nav-item > .nav-link:hover { background-color: rgba(255,255,255,.06); color: #fff; }
+  .nav-sidebar > .nav-item > .nav-link.active {
+    background-color: rgba(255,255,255,.10) !important; color: #fff !important;
+    box-shadow: inset 3px 0 0 #6E9BE0;
+  }
+  .nav-sidebar .badge { border: 0; border-radius: 10px; }
+  .nav-sidebar .badge-danger { background: #E0574A; color: #fff; }
+  .nav-sidebar .badge-warning { background: #E3A63F; color: #1F1A10; }
+  .nav-sidebar .badge-info { background: #5B8BD6; color: #fff; }
+  .dropdown-menu { border: 1px solid var(--linha); border-radius: var(--raio);
+                   box-shadow: 0 8px 24px rgba(22,24,29,.10); padding: var(--e1); }
+  .dropdown-item { border-radius: 6px; font-size: 14px; }
+  .dropdown-header { font-size: 12px; color: var(--aco); }
+
+  /* --- Cartões, campos, botões ------------------------------------- */
+  .card { border-radius: var(--raio); border-color: var(--linha); box-shadow: none; }
+  .card-header { background: transparent; }
+  .btn:not(.miniatura) { border-radius: 8px; }
+  .btn-outline-secondary { color: var(--tinta); border-color: #D5D9DD; }
+  .btn-outline-secondary:hover { background: #F1F3F4; color: var(--tinta); border-color: #C5CAD0; }
+  .form-control { border-radius: 8px; border-color: #D5D9DD; }
+  .form-control:focus, .btn:focus-visible {
+    border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); outline: 0;
+  }
+
+  /* --- Tabelas: leves, sem grade ----------------------------------- */
+  .table thead th { border-top: 0; border-bottom: 1px solid var(--linha); background: #FAFBFA; }
+  .table td { border-top: 1px solid #EEF0F1; }
+  .table-hover tbody tr:hover { background: #F7F8F8; }
+
+  /* --- Carimbo: o selo de status ----------------------------------- */
+  .badge {
+    text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600;
+    border-radius: 6px; padding: 2px var(--e2); border: 1px solid transparent;
+  }
+  .badge-success   { color: var(--ok);        background: var(--ok-soft);     border-color: #BFDCCB; }
+  .badge-danger    { color: var(--perigo);    background: var(--perigo-soft); border-color: #F0C4BE; }
+  .badge-warning   { color: #8A5300;          background: var(--alerta-soft); border-color: #F0D7A8; }
+  .badge-info, .badge-primary
+                   { color: var(--blue-deep); background: var(--blue-soft);   border-color: #C9D7EE; }
+  .badge-secondary { color: #4A5260;          background: var(--neutro-soft); border-color: #DADDE1; }
+  .badge-light     { color: #4A5260;          background: #F6F7F8;            border-color: var(--linha); }
+
+  /* --- Avisos ------------------------------------------------------ */
+  .alert { border-radius: var(--raio); }
+  .alert-warning { background: var(--alerta-soft); color: #6B4500; border-color: #F0D7A8; }
+  .alert-info    { background: var(--blue-soft);   color: var(--blue-deep); border-color: #C9D7EE; }
+  .alert-danger  { background: var(--perigo-soft); color: #8E2A20; border-color: #F0C4BE; }
+  .alert-success { background: var(--ok-soft);     color: #1F5A38; border-color: #BFDCCB; }
+
+  /* --- Contadores (Início, Tarefas) --------------------------------
+     Eram os "small-box" do AdminLTE: bloco cheio de cor com ícone
+     gigante, inclusive para zero. Agora é cartão branco com um filete
+     da cor na borda e o número na cor dela -- e zero fica cinza, sem
+     filete de cor, que é o que faz o vermelho voltar a significar algo. */
+  .small-box {
+    background: #fff !important; color: var(--tinta) !important;
+    border: 1px solid var(--linha); border-radius: var(--raio); box-shadow: none;
+    position: relative; overflow: hidden; margin-bottom: var(--e4);
+  }
+  .small-box::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--linha); }
+  .small-box.bg-danger::before  { background: var(--perigo); }
+  .small-box.bg-warning::before { background: #E0A33A; }
+  .small-box.bg-info::before, .small-box.bg-primary::before { background: var(--blue); }
+  .small-box.bg-success::before { background: var(--ok); }
+  .small-box .icon { display: none; }
+  .small-box .inner { padding: var(--e3) var(--e4) var(--e3) var(--e5); }
+  .small-box .inner h3 {
+    font-family: 'Big Shoulders', sans-serif; font-weight: 700; font-size: 34px;
+    line-height: 1; margin: 0 0 var(--e1); white-space: nowrap;
+  }
+  .small-box.bg-danger .inner h3  { color: var(--perigo); }
+  .small-box.bg-warning .inner h3 { color: var(--alerta); }
+  .small-box.bg-info .inner h3    { color: var(--blue); }
+  .small-box.bg-success .inner h3 { color: var(--ok); }
+  .small-box.bg-secondary .inner h3 { color: #9AA0A8; }
+  .small-box .inner p { font-size: 13px; color: var(--aco); margin: 0; }
+  .small-box > .small-box-footer { display: none; }
+  .atalho.small-box:hover { border-color: #C5CAD0; background: #FCFCFB !important; }
+  @media (max-width: 575px) {
+    /* Dois contadores por linha no celular: um por linha, os sete do
+       Início ocupavam a tela inteira antes de qualquer tarefa aparecer. */
+    .small-box { margin-bottom: var(--e2); }
+    .small-box .inner { padding: var(--e2) var(--e3) var(--e2) var(--e4); }
+    .small-box .inner h3 { font-size: 28px; }
+    .small-box .inner p { font-size: 12px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+
   .bolha-pendente { border: 1px dashed #C79100; background: #FFF8E1; }
 </style>
 </head>
@@ -546,7 +699,7 @@
               <p>Início</p>
             </a>
           </li>
-          <li class="nav-header">ATENDIMENTO</li>
+          <li class="nav-header">Atendimento</li>
           {% if usuario_papel == 'Gestor' or 'atendimentos' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="atendimentos" aria-label="Atendimentos">
@@ -603,7 +756,7 @@
             </a>
           </li>
           {% endif %}
-          <li class="nav-header">CLUBE</li>
+          <li class="nav-header">Clube</li>
           {% if usuario_papel == 'Gestor' or 'habitualidade' in funcoes_ativas %}
           <li class="nav-item">
             <a href="#" class="nav-link" data-view="habitualidade" aria-label="Filiados">
@@ -862,10 +1015,9 @@
           </div>
           <div class="card">
             <div class="card-body table-responsive p-0">
-              <table class="table table-hover text-nowrap">
+              <table class="table table-hover">
                 <thead><tr>
-                  <th>Caso</th><th>Cliente</th><th>Categoria</th><th>Status</th>
-                  <th>Prioridade</th><th>Responsável</th><th>Atualizado em</th>
+                  <th>Caso</th><th>Cliente</th><th>Status</th><th>Responsável</th><th>Atualizado</th>
                 </tr></thead>
                 <tbody id="casos-body"></tbody>
               </table>
@@ -1266,11 +1418,7 @@
       </div>
       <div class="content">
         <div class="container-fluid">
-          <div class="card">
-            <div class="card-body">
-              <div class="row" id="tarefas-resumo"></div>
-            </div>
-          </div>
+          <div class="row" id="tarefas-resumo"></div>
 
           <div class="card">
             <div class="card-body">
@@ -1308,8 +1456,7 @@
             <div class="card-body table-responsive p-0">
               <table class="table table-hover">
                 <thead><tr>
-                  <th>Prazo</th><th>Tarefa</th><th>Cliente / Caso</th>
-                  <th>Responsável</th><th>Prioridade</th><th>Situação</th><th></th>
+                  <th>Prazo</th><th>Tarefa</th><th>Responsável</th><th>Situação</th><th></th>
                 </tr></thead>
                 <tbody id="tarefas-body"></tbody>
               </table>
@@ -1416,6 +1563,12 @@
                   </select>
                 </div>
               </div>
+              <!-- Período e ordenação atrás de "Mais filtros" (2026-09-24):
+                   são os filtros de quem está fazendo um levantamento, não
+                   de quem só procura uma pessoa -- e ocupavam uma linha
+                   inteira o tempo todo. -->
+              <details class="mt-2">
+                <summary class="resumo-acao small">Mais filtros</summary>
               <div class="row mt-2">
                 <div class="col-md-3">
                   <label for="habitualidade-de">Última participação — de</label>
@@ -1441,19 +1594,19 @@
                           id="habitualidade-limpar" type="button">Limpar</button>
                 </div>
               </div>
+              </details>
               <small class="text-muted d-block mt-2" id="habitualidade-contagem"></small>
             </div>
           </div>
 
           <div class="card">
             <div class="card-body table-responsive p-0">
-              <table class="table table-hover text-nowrap">
+              <table class="table table-hover">
                 <thead><tr>
-                  <th>Filiado</th><th>CPF</th><th>Matrícula</th>
-                  <th class="text-right">Participações (12 meses)</th>
-                  <th>Última participação</th><th>Validade da filiação</th>
-                  <th>Vencimento do CR</th>
-                  <th>Retrato de</th>
+                  <th>Filiado</th><th>CPF</th>
+                  <th class="text-right">Participações<br><span class="font-weight-normal">12 meses</span></th>
+                  <th>Última</th><th>Filiação vale até</th>
+                  <th>CR vence</th>
                 </tr></thead>
                 <tbody id="habitualidade-body"></tbody>
               </table>
@@ -2330,15 +2483,16 @@ async function carregarCasos() {
 
   $("#casos-body").innerHTML = d.casos.length ? d.casos.map(c => `
     <tr class="linha-caso cursor-pointer" data-caso-id="${c.caso_id}">
-      <td class="text-monospace">${c.caso_id}</td>
+      <td><b>${escapeHtml(c.titulo || c.categoria)}</b>
+        <small class="d-block text-muted"><span class="mono">${c.caso_id}</span> · ${escapeHtml(c.categoria)}</small></td>
       <td>${escapeHtml(c.cliente_nome)}</td>
-      <td>${escapeHtml(c.categoria)}</td>
-      <td><span class="badge ${badgesStatus[c.status] || 'badge-secondary'}">${escapeHtml(c.status)}</span></td>
-      <td>${escapeHtml(c.prioridade)}</td>
+      <td class="text-nowrap"><span class="badge ${badgesStatus[c.status] || 'badge-secondary'}">${escapeHtml(c.status)}</span>
+        ${c.prioridade && c.prioridade !== "Normal"
+          ? `<span class="badge ${badgesPrioridade[c.prioridade] || "badge-light"} ml-1">${escapeHtml(c.prioridade)}</span>` : ""}</td>
       <td>${escapeHtml(c.responsavel_nome || 'não atribuído')}</td>
-      <td class="text-monospace">${dataHoraBr(c.atualizado_em)}</td>
+      <td class="text-monospace text-nowrap">${dataBr(c.atualizado_em)}</td>
     </tr>
-  `).join("") : `<tr><td colspan="7" class="text-muted">${
+  `).join("") : `<tr><td colspan="5" class="text-muted">${
       busca
         ? `Nenhum caso para “${escapeHtml(busca)}”. A busca olha nome do cliente, CPF e número do caso.`
         : "Nenhum caso encontrado com esses filtros."
@@ -3372,7 +3526,7 @@ function irPara(nomeView, ajustes) {
 function tileAtalho({ numero, label, cor, icone, view, ajustes }) {
   const classeCor = numero > 0 ? cor : "secondary";
   return `
-    <div class="col-lg-3 col-sm-6">
+    <div class="col-lg-3 col-6">
       <button type="button" class="small-box bg-${classeCor} atalho"
               data-ir="${view}" data-ajustes='${JSON.stringify(ajustes || {})}'>
         <div class="inner"><h3>${numero}</h3><p>${escapeHtml(label)}</p></div>
@@ -3554,7 +3708,7 @@ async function carregarTarefas() {
     // 403 (Atendente sem a função) não é erro de tela: some do caminho
     // em silêncio, como as outras pré-cargas fazem.
     if (resposta.dados && resposta.dados.erro) return;
-    $("#tarefas-body").innerHTML = `<tr><td colspan="7">${AVISO_FALHA_DE_REDE}</td></tr>`;
+    $("#tarefas-body").innerHTML = `<tr><td colspan="5">${AVISO_FALHA_DE_REDE}</td></tr>`;
     return;
   }
   const d = resposta.dados;
@@ -3598,18 +3752,19 @@ async function carregarTarefas() {
       <td>${prazoTarefaHtml(t)}</td>
       <td>
         <b>${escapeHtml(t.tipo)}</b>
-        ${t.descricao ? `<br><small class="text-muted">${escapeHtml(t.descricao)}</small>` : ""}
-      </td>
-      <td>
-        ${escapeHtml(t.cliente_nome)}
-        <br><small class="text-muted">${escapeHtml(t.caso_titulo)} <span class="mono">${idCurto(t.caso_id)}</span></small>
+        ${t.descricao ? `<small class="text-muted d-block">${escapeHtml(t.descricao)}</small>` : ""}
+        <small class="d-block mt-1">${escapeHtml(t.cliente_nome)}
+          <span class="text-muted">· ${escapeHtml(t.caso_titulo)} <span class="mono">${idCurto(t.caso_id)}</span></span></small>
       </td>
       <td>${escapeHtml(t.responsavel_nome || "não atribuído")}</td>
-      <td><span class="badge ${badgesPrioridade[t.prioridade] || "badge-light"}">${escapeHtml(t.prioridade)}</span></td>
-      <td><span class="badge ${badgesTarefaStatus[t.status] || "badge-secondary"}">${escapeHtml(t.status)}</span></td>
-      <td class="text-nowrap">${botoesTarefaHtml(t)}</td>
+      <td>
+        <span class="badge ${badgesTarefaStatus[t.status] || "badge-secondary"}">${escapeHtml(t.status)}</span>
+        ${t.prioridade && t.prioridade !== "Normal"
+          ? `<span class="badge ${badgesPrioridade[t.prioridade] || "badge-light"} ml-1">${escapeHtml(t.prioridade)}</span>` : ""}
+      </td>
+      <td class="text-nowrap text-right">${botoesTarefaHtml(t)}</td>
     </tr>
-  `).join("") : `<tr><td colspan="7" class="text-muted">Nenhuma tarefa com esses filtros.</td></tr>`;
+  `).join("") : `<tr><td colspan="5" class="text-muted">Nenhuma tarefa com esses filtros.</td></tr>`;
 
   $("#tarefas-body").querySelectorAll(".btn-editar-tarefa").forEach(botao => {
     botao.addEventListener("click", (ev) => {
@@ -4393,12 +4548,15 @@ async function carregarHabitualidade() {
       ? ` <button class="badge badge-info border-0" data-abrir-cliente="${f.cliente_id}"
            title="Também é cliente do despachante — abrir ficha">cliente</button>`
       : "";
+    // A data do retrato por linha virou dica (title) na coluna de
+    // participações: a mais antiga da tela continua sempre à vista na
+    // linha de cima, que é a regra da tela.
     return `
     <tr class="linha-filiado cursor-pointer" data-cpf="${escapeHtml(f.cpf || '')}">
-      <td>${escapeHtml(f.nome)}${inativo}${tambemCliente}</td>
-      <td class="text-monospace">${f.cpf ? cpfFormatado(f.cpf) : '—'}</td>
-      <td class="text-monospace">${escapeHtml(f.matricula || '—')}</td>
-      <td class="text-right">${participacoes}</td>
+      <td>${escapeHtml(f.nome)}${inativo}${tambemCliente}
+        ${f.matricula ? `<small class="d-block text-muted mono">${escapeHtml(f.matricula)}</small>` : ""}</td>
+      <td class="text-monospace text-nowrap">${f.cpf ? cpfFormatado(f.cpf) : '—'}</td>
+      <td class="text-right" title="${f.sincronizado_em ? "Retrato de " + dataHoraBr(f.sincronizado_em) : "Ainda não consultado"}">${participacoes}</td>
       <td class="text-monospace">${f.ultima_participacao ? dataBr(f.ultima_participacao) : '—'}</td>
       <td class="text-monospace">
         ${f.anuidade_validade ? dataBr(f.anuidade_validade) : '<span class="text-muted">—</span>'}
@@ -4412,9 +4570,8 @@ async function carregarHabitualidade() {
         ? dataBr(f.cr_vencimento) + (f.cr_vencimento_origem === "api"
             ? ' <span class="text-muted" title="Data do Shooting House, não conferida pelo despachante">(SH)</span>' : "")
         : '<span class="text-muted">—</span>'}</td>
-      <td class="text-monospace text-muted">${f.sincronizado_em ? dataHoraBr(f.sincronizado_em) : '—'}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="8" class="text-muted">${
+  }).join("") : `<tr><td colspan="6" class="text-muted">${
     // Duas situações bem diferentes, e mandar rodar a sincronização
     // quando o problema é o filtro só confundiria.
     filtrando
@@ -6601,10 +6758,12 @@ async function buscarCliente() {
 
 $("#buscar-cliente").addEventListener("click", buscarCliente);
 
+// Zero fica cinza, mesma regra de tileAtalho: cor só quando o número
+// pede ação.
 function smallBox(cor, numero, label) {
   return `
     <div class="col-lg-4 col-6">
-      <div class="small-box bg-${cor}">
+      <div class="small-box bg-${String(numero) === "0" ? "secondary" : cor}">
         <div class="inner"><h3>${numero}</h3><p>${label}</p></div>
         <div class="icon"><i class="fas fa-chart-bar" aria-hidden="true"></i></div>
       </div>

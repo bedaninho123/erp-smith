@@ -813,6 +813,25 @@ Padronizado em 2026-07-29, depois de medir 16 botões com **três** alturas (26/
 - **Bloco de dados** usa `.ficha` (grade rótulo/valor), nunca pilha de `<p><b>Rótulo:</b> valor</p>`.
 - **Data nunca vai crua pra tela**: `dataBr()` para dia, `dataHoraBr()` para instante, `cpfFormatado()` para CPF (o banco guarda só dígitos).
 
+**Tema de 2026-09-24** (bloco "TEMA 2026-09" no fim do `<style>`, por cima
+da régua acima, que continua valendo), depois de o usuário achar o painel
+"muito poluído":
+
+- **Nada em maiúsculas**: título, rótulo, cabeçalho de tabela e selo em
+  caixa normal. Big Shoulders continua nos títulos, em caixa normal.
+- **Cor forte só no que pede ação.** Zero é sempre cinza (`tileAtalho` e
+  `smallBox` já fazem isso); atrasado é vermelho.
+- **Selo de status é o "carimbo"**: moldura fina e fundo tingido
+  (`.badge-*`), nunca bloco de cor cheia.
+- **Tabela não rola para o lado** em tela de computador: informação
+  secundária (identificador, matrícula, cliente do caso) vai em linha
+  pequena embaixo do principal, e prioridade "Normal" não aparece.
+- **Texto explicativo da tela vira "?"** ao lado do título
+  (`aplicarAjudas()`), automaticamente para o `<p class="text-muted">` sem
+  id logo depois do `<h1>`.
+- **Menu lateral só com trabalho do dia a dia**; administração e
+  ferramenta técnica ficam na engrenagem do topo.
+
 As exceções têm nome e comentário explicando o porquê — `.miniatura` (botão que embrulha foto, não pode ter altura forçada), `.form-check-label` e `.config-chave` (texto de leitura e identificador, não viram maiúscula). Ao criar uma exceção nova, seguir o mesmo padrão: classe com nome + motivo no comentário, nunca `style` solto na marcação.
 
 ### portal/ é um app Flask separado, nunca reaproveita a sessão do painel
