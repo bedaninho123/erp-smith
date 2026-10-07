@@ -627,6 +627,10 @@
   }
 
   .bolha-pendente { border: 1px dashed #C79100; background: #FFF8E1; }
+  /* Campo de CPF na ficha do contato que chegou por e-mail sem CPF:
+     input estreito (CPF tem 11 dígitos) ao lado do botão. */
+  .informar-cpf { display: flex; flex-wrap: wrap; gap: var(--e2); }
+  .informar-cpf .form-control { max-width: 200px; }
 </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
@@ -5734,6 +5738,13 @@ async function abrirCliente(clienteId) {
     </p>
     <dl class="ficha">
       <dt>CPF</dt><dd class="mono">${c.cpf ? cpfFormatado(c.cpf) : 'não informado'}</dd>
+      ${c.cpf ? '' : `<dt></dt><dd>
+        <div class="informar-cpf">
+          <input id="cliente-informar-cpf" type="text" class="form-control" placeholder="Só dígitos" inputmode="numeric" aria-label="CPF do cliente">
+          <button id="cliente-informar-cpf-salvar" type="button" class="btn btn-primary">Informar CPF</button>
+        </div>
+        <small id="cliente-informar-cpf-status" class="text-muted">Sem CPF, o sistema não consulta habitualidade nem CR desta pessoa.</small>
+      </dd>`}
       <dt>E-mail</dt><dd>${escapeHtml(c.email || 'não informado')}</dd>
       <dt>Telefone</dt><dd>${escapeHtml(c.telefone || 'não informado')}</dd>
       <dt>Cidade</dt><dd>${escapeHtml(c.cidade || 'não informada')}</dd>
@@ -5743,6 +5754,35 @@ async function abrirCliente(clienteId) {
     </dl>
     ${blocoFiliado(d.filiado)}
   `;
+
+  // Contato que chegou por e-mail sem CPF (core/motor_clientes.py::
+  // informar_cpf). Só preenche vazio; CPF que já é de outro cliente
+  // volta 409 com o nome dele, e juntar os dois é decisão da equipe.
+  const botaoCpf = $("#cliente-informar-cpf-salvar");
+  if (botaoCpf) {
+    botaoCpf.addEventListener("click", async () => {
+      const status = $("#cliente-informar-cpf-status");
+      botaoCpf.disabled = true;
+      try {
+        const r = await fetch(`/api/clientes/${encodeURIComponent(clienteId)}/cpf`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cpf: $("#cliente-informar-cpf").value.trim() }),
+        });
+        const corpo = await r.json();
+        if (!r.ok) {
+          status.textContent = corpo.erro || "Não foi possível salvar.";
+          status.className = "text-danger";
+          return;
+        }
+        abrirCliente(clienteId);
+      } catch (e) {
+        status.textContent = "Falha de conexão -- tente de novo.";
+        status.className = "text-danger";
+      } finally {
+        botaoCpf.disabled = false;
+      }
+    });
+  }
 
   $("#cliente-casos-body").innerHTML = d.casos.length ? d.casos.map(caso => `
     <tr class="linha-caso cursor-pointer" data-caso-id="${caso.caso_id}">

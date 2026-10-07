@@ -149,6 +149,17 @@ def _criar_banco_core() -> None:
             "cidade, status, atendimento_ia, data_cadastro) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (cliente_id, EMPRESA, nome, cpf, email, telefone, cidade, "Ativo", "Sim", AGORA),
         )
+    # Contato que chegou por e-mail e ainda não informou CPF -- é o que o
+    # poller cria sozinho desde 2026-10-07. Sem ele aqui, o botão
+    # "Informar CPF" da ficha não aparece em demonstração nenhuma.
+    from core.motor_clientes import OBSERVACAO_CONTATO_AUTOMATICO
+
+    con.execute(
+        "INSERT INTO cliente (cliente_id, empresa_id, nome, cpf, email, status, "
+        "atendimento_ia, data_cadastro, observacoes) VALUES (?,?,?,NULL,?,?,?,?,?)",
+        ("CLI-000090", EMPRESA, "Contato Novo (sem CPF)", "contato.novo@demonstracao.local",
+         "Ativo", "Sim", AGORA, OBSERVACAO_CONTATO_AUTOMATICO),
+    )
     # Um caso por cliente, e tarefas em três situações de prazo. Mesma
     # razão do _popular_habitualidade(): sem caso nenhum, as telas de
     # Casos e de Tarefas abrem vazias e não dá pra ver se funcionam --

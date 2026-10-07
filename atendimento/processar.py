@@ -99,6 +99,7 @@ def processar_mensagem(
             cpf=remetente_cpf,
             nome=remetente_nome,
             telefone=remetente_telefone,
+            criar_contato_se_novo=True,
         )
     except Exception as e:
         traceback.print_exc()

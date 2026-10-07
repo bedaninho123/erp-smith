@@ -34,7 +34,10 @@ CREATE TABLE cliente (
     cliente_id      TEXT PRIMARY KEY,              -- CLI-000001
     empresa_id      TEXT NOT NULL REFERENCES empresa(empresa_id),
     nome            TEXT NOT NULL,
-    cpf             TEXT NOT NULL,                  -- só dígitos, sem pontuação
+    cpf             TEXT,                           -- só dígitos, sem pontuação
+    -- NULL = contato que chegou por e-mail e ainda não informou o CPF
+    -- (core/motor_clientes.py::obter_ou_criar_contato_por_email). Banco em
+    -- uso com NOT NULL: core.db.migrar_cliente_sem_cpf.
     email           TEXT,
     telefone        TEXT,
     cidade          TEXT,

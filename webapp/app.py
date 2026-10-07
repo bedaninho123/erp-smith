@@ -66,7 +66,7 @@ from domain.clube_tiro.motor_campeonatos import (
 from domain.clube_tiro.motor_resultados import (
     atualizar_resultado, criar_resultado, listar_resultados, remover_resultado,
 )
-from core.motor_clientes import ClienteInvalido, ClienteJaExiste, criar_cliente
+from core.motor_clientes import ClienteInvalido, ClienteJaExiste, criar_cliente, informar_cpf
 from core.motor_marketplace import (
     AnuncioInvalido, aprovar as aprovar_anuncio, editar_anuncio,
     listar_anuncios, obter_anuncio, recusar as recusar_anuncio,
@@ -2440,6 +2440,22 @@ def clientes_criar():
     except ClienteInvalido as e:
         return jsonify(erro=str(e)), 400
     return jsonify(cliente), 201
+
+
+@app.route("/api/clientes/<cliente_id>/cpf", methods=["POST"])
+@login_required
+@funcao_required("clientes")
+def clientes_informar_cpf(cliente_id):
+    """Completa o CPF do contato que chegou por e-mail sem informar
+    (core/motor_clientes.py::informar_cpf). Só preenche vazio."""
+    dados = request.get_json(silent=True) or {}
+    try:
+        resultado = informar_cpf(empresa_atual(), cliente_id, dados.get("cpf"))
+    except ClienteJaExiste as e:
+        return jsonify(erro=str(e), cliente_id=e.cliente_id), 409
+    except ClienteInvalido as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(resultado)
 
 
 @app.route("/api/campeonatos/<campeonato_id>/resultados")

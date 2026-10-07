@@ -17,7 +17,7 @@ institucional pedindo CPF, em vez de silêncio.
 import traceback
 from typing import Optional
 
-from core import motor_identidade, motor_log_administrativo
+from core import motor_clientes, motor_identidade, motor_log_administrativo
 from core.conexao import conectar
 from core.configuracoes import obter_configuracoes
 from core.motor_casos import localizar_ou_criar_caso
@@ -124,11 +124,19 @@ def atender_mensagem(
     cpf: Optional[str] = None,
     email: Optional[str] = None,
     telefone: Optional[str] = None,
+    criar_contato_se_novo: bool = False,
 ) -> dict:
     """empresa_id é o primeiro parâmetro de propósito: tudo daqui pra
     frente (identificação do cliente, consulta, memória) acontece dentro
     de uma empresa só. Quem chama é o canal de entrada, que sabe por qual
-    caixa de e-mail/portal a mensagem chegou."""
+    caixa de e-mail/portal a mensagem chegou.
+
+    `criar_contato_se_novo`: só os canais de entrada de verdade ligam
+    (atendimento/processar.py). Sem ele, o remetente de e-mail que
+    ninguém conhece não tinha cliente_id, e a mensagem dele não era
+    guardada em lugar nenhum -- ver core/db/migrar_cliente_sem_cpf.py.
+    Desligado por padrão para que teste e demonstração não encham a
+    lista de clientes."""
     cliente = None
     if not cliente_id:
         cliente = identificar_cliente(
@@ -136,6 +144,14 @@ def atender_mensagem(
         )
         if cliente:
             cliente_id = cliente["cliente_id"]
+        elif criar_contato_se_novo and canal == "Email":
+            # Depois da identificação, nunca no lugar dela: quem já é
+            # cliente tem que ser reconhecido, não ganhar cadastro novo.
+            cliente = motor_clientes.obter_ou_criar_contato_por_email(
+                empresa_id, email, nome
+            )
+            if cliente:
+                cliente_id = cliente["cliente_id"]
 
     # Os CPFs saem do texto AQUI, em Python, e é esta lista que o portão
     # de identidade usa lá embaixo -- nunca `classificacao.cpf_mencionado`,

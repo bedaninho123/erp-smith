@@ -26,6 +26,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from core.motor_clientes import remetente_automatico
 from integracoes.gmail import gmail_configurado, listar_mensagens_nao_lidas, marcar_como_lida
 from atendimento.alertas import alertar_excecao, alertar_falha
 from atendimento.config import EMPRESA_ID
@@ -129,6 +130,14 @@ def _verificar_uma_vez_com_trava() -> int:
         raise
 
     for msg in mensagens:
+        if remetente_automatico(msg["remetente_email"]):
+            # Alerta de segurança do Google, aviso de sistema, devolução:
+            # ninguém lê a resposta. Antes, a IA respondia a eles mesmo
+            # assim (2026-10-07: dois "Alerta de segurança" da conta nova
+            # viraram rascunho de resposta). Continuam na caixa do Gmail.
+            print(f"Ignorado (remetente automático) {msg['remetente_email']}: {msg['assunto']!r}")
+            marcar_como_lida(msg["id"])
+            continue
         print(f"Processando e-mail de {msg['remetente_email']}: {msg['assunto']!r}")
         try:
             resultado = processar_mensagem(

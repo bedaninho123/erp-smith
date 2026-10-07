@@ -139,6 +139,136 @@ def criar_cliente(
         con.close()
 
 
+# ----------------------------------------------------------------------
+# Contato que chegou por e-mail e ainda não informou CPF (2026-10-07).
+#
+# Até aqui só existia cliente criado à mão, sempre com CPF. Quando a caixa
+# do atendimento começou do zero, ficou claro o buraco: e-mail de quem
+# ainda não era cliente era lido e descartado em silêncio -- `mensagem` e
+# `conversa` exigem um cliente_id, e não havia cliente para apontar.
+# Agora o remetente desconhecido vira um cadastro com e-mail e nome, CPF
+# vazio, e a mensagem segue o caminho de todo mundo (Aprovações,
+# Atendimentos). Quem completa o CPF é uma pessoa da equipe, pela ficha.
+#
+# CPF vazio não abre nada: o portão de identidade recusa quem não tem CPF
+# no cadastro, e o Consultor não consulta o Shooting House sem CPF.
+# ----------------------------------------------------------------------
+
+OBSERVACAO_CONTATO_AUTOMATICO = (
+    "Cadastro criado automaticamente pelo primeiro e-mail recebido. "
+    "Falta informar o CPF."
+)
+
+# Parte antes do @ de quem nunca lê resposta: avisos de sistema, alertas
+# de segurança do Google, devolução de e-mail. Responder a eles é gastar
+# IA à toa, e cadastrá-los encheria a lista de clientes de robô.
+_REMETENTE_AUTOMATICO = re.compile(
+    r"^(no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer[-_.]?daemon|postmaster|bounces?)([-_.+].*)?$",
+    re.IGNORECASE,
+)
+
+
+def remetente_automatico(email: Optional[str]) -> bool:
+    local = (email or "").strip().split("@")[0]
+    return bool(_REMETENTE_AUTOMATICO.match(local))
+
+
+def obter_ou_criar_contato_por_email(
+    empresa_id: str, email: Optional[str], nome: Optional[str] = None,
+) -> Optional[dict]:
+    """Cadastro do remetente de e-mail que a identificação não achou.
+
+    Chamado só DEPOIS de `identificar_cliente` não achar ninguém -- nunca
+    no lugar dela, senão um cliente antigo escrevendo de outro endereço
+    ganharia um cadastro novo em vez de ser reconhecido pelo CPF.
+
+    Devolve None (e não cria nada) quando:
+      - não há e-mail, ou o remetente é automático (no-reply e afins);
+      - o e-mail já está em DOIS ou mais cadastros. É a identificação
+        ambígua (casal que divide o endereço): criar um terceiro só
+        aumentaria a confusão, e quem decide de quem é a mensagem é uma
+        pessoa.
+    Se o e-mail está em exatamente um cadastro, devolve esse -- não
+    duplica."""
+    email = (email or "").strip()
+    if not email or "@" not in email or remetente_automatico(email):
+        return None
+
+    con = conectar(empresa_id)
+    try:
+        existentes = con.execute(
+            "SELECT * FROM cliente WHERE empresa_id = ? AND LOWER(email) = LOWER(?) LIMIT 2",
+            (empresa_id, email),
+        ).fetchall()
+        if len(existentes) > 1:
+            return None
+        if existentes:
+            return dict(existentes[0])
+
+        nome = (nome or "").strip() or email.split("@")[0]
+        cliente_id = _proximo_id(con, "cliente", "cliente_id", "CLI")
+        agora = _agora_iso()
+        con.execute(
+            "INSERT INTO cliente (cliente_id, empresa_id, nome, cpf, email, telefone, "
+            "cidade, status, atendimento_ia, data_cadastro, observacoes) "
+            "VALUES (?,?,?,NULL,?,NULL,NULL,'Ativo','Sim',?,?)",
+            (cliente_id, empresa_id, nome, email, agora, OBSERVACAO_CONTATO_AUTOMATICO),
+        )
+        con.commit()
+        return {
+            "cliente_id": cliente_id, "empresa_id": empresa_id, "nome": nome,
+            "cpf": None, "email": email, "telefone": None, "cidade": None,
+            "status": "Ativo", "data_cadastro": agora,
+        }
+    finally:
+        con.close()
+
+
+def informar_cpf(empresa_id: str, cliente_id: str, cpf: str) -> dict:
+    """Completa o CPF de um cadastro que ainda não tem.
+
+    Só preenche vazio, nunca troca um CPF que já existe: corrigir CPF é
+    outra operação, mais perigosa (muda de quem é a habitualidade e o CR
+    consultados), e não deve acontecer de carona neste botão.
+
+    CPF que já é de outro cliente levanta `ClienteJaExiste` com o id dele
+    -- é o cliente antigo que escreveu de um e-mail novo. Juntar os dois
+    é decisão de gente, não deste motor."""
+    cpf_limpo = limpar_cpf(cpf)
+    if not cpf_valido(cpf_limpo):
+        raise ClienteInvalido("CPF inválido -- confira os números digitados.")
+
+    con = conectar(empresa_id)
+    try:
+        cliente = con.execute(
+            "SELECT cliente_id, cpf FROM cliente WHERE empresa_id = ? AND cliente_id = ?",
+            (empresa_id, cliente_id),
+        ).fetchone()
+        if not cliente:
+            raise ClienteInvalido("Cliente não encontrado.")
+        if cliente["cpf"]:
+            raise ClienteInvalido("Este cadastro já tem CPF.")
+
+        outro = con.execute(
+            "SELECT cliente_id, nome FROM cliente WHERE empresa_id = ? AND cpf = ?",
+            (empresa_id, cpf_limpo),
+        ).fetchone()
+        if outro:
+            raise ClienteJaExiste(
+                f"Este CPF já é de outro cliente: {outro['nome']} ({outro['cliente_id']}).",
+                outro["cliente_id"],
+            )
+
+        con.execute(
+            "UPDATE cliente SET cpf = ? WHERE empresa_id = ? AND cliente_id = ?",
+            (cpf_limpo, empresa_id, cliente_id),
+        )
+        con.commit()
+        return {"cliente_id": cliente_id, "cpf": cpf_limpo}
+    finally:
+        con.close()
+
+
 if __name__ == "__main__":
     # Só lógica, sem tocar no banco -- ver "Quem roda o quê" no CLAUDE.md.
     for cpf in ("529.982.247-25", "111.111.111-11", "123.456.789-00", "5299822472"):
