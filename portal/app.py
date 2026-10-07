@@ -334,6 +334,16 @@ def sair():
     return redirect(url_for("login"))
 
 
+@app.route("/portal/privacidade")
+def privacidade():
+    # Pública, sem login, de propósito (2026-10-07): o Google exige o
+    # endereço de uma Política de Privacidade acessível para tirar a
+    # autorização do Gmail do modo "Testando" -- e nesse modo o token
+    # vence a cada 7 dias, que foi o que derrubou o e-mail em julho.
+    # Também é o que a LGPD espera de quem guarda CPF e documento de arma.
+    return render_template("portal_privacidade.html")
+
+
 def _processos_com_checklist(con, empresa_id: str, caso_id: str) -> list:
     """Processos de um caso, cada um já com o checklist de documentos e
     as contagens pra o alvo de progresso -- usado tanto no resumo do

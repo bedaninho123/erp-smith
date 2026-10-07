@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Política de Privacidade — Smith Clube de Tiro</title>
+{% include "_portal_estilo.html" %}
+{# E-mail de contato para pedidos sobre dados pessoais. É a caixa de
+   atendimento do clube -- trocar aqui se ela mudar. #}
+{% set contato = "atendimentosmithclube@gmail.com" %}
+<style>
+  .pagina-politica { min-height: 100vh; background: var(--paper); padding: 32px 16px 64px; }
+  .politica { max-width: 720px; margin: 0 auto; }
+  .politica .topo { background: var(--ink-deep); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+  .politica .ficha { padding: 1.6rem 1.5rem; }
+  .politica h1 { font-size: 1.5rem; margin: 0 0 .3rem; }
+  .politica h2 { font-size: 1.1rem; margin: 1.8rem 0 .5rem; }
+  .politica p, .politica li { line-height: 1.6; font-size: .95rem; }
+  .politica ul { padding-left: 1.2rem; margin: .4rem 0; }
+  .politica .atualizado { color: var(--steel); font-size: .85rem; margin: 0 0 1rem; }
+  .politica a { color: var(--blue-deep); }
+</style>
+</head>
+<body>
+<div class="pagina-politica">
+  <div class="politica">
+    <div class="topo">
+      <img class="marca-logo marca-logo--grande" width="900" height="439" src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
+    </div>
+    <div class="ficha">
+      <h1>Política de Privacidade</h1>
+      <p class="atualizado">Última atualização: 7 de outubro de 2026</p>
+
+      <p>
+        Esta política explica quais dados pessoais o <strong>Smith Clube de Tiro</strong>
+        (CNPJ <span class="mono">39.617.861/0001-59</span>, Marília/SP) guarda, para que
+        eles são usados e como você pode pedir acesso, correção ou exclusão. Ela vale
+        para o atendimento por e-mail e mensagem e para o Portal do Cliente.
+      </p>
+
+      <h2>Quais dados guardamos</h2>
+      <ul>
+        <li>Dados de cadastro: nome, CPF, e-mail e telefone.</li>
+        <li>Documentos que você nos envia ou que conferimos para você, como CR, CRAF,
+          certidões, laudos, comprovantes e guias.</li>
+        <li>Dados das armas ligados aos processos que você pediu.</li>
+        <li>As mensagens trocadas com o clube e o andamento dos seus atendimentos.</li>
+        <li>Para filiados: situação de filiação, anuidade e participações registradas
+          no sistema de gestão do clube.</li>
+      </ul>
+
+      <h2>Para que usamos</h2>
+      <ul>
+        <li>Prestar os serviços que você pediu, como CR, CRAF, transferência e
+          aquisição de arma e guia de tráfego.</li>
+        <li>Responder às suas mensagens e informar o andamento dos seus processos.</li>
+        <li>Mostrar seus processos e documentos no Portal do Cliente.</li>
+        <li>Cumprir obrigações legais e regulatórias do clube.</li>
+      </ul>
+      <p>Não vendemos seus dados e não os usamos para publicidade.</p>
+
+      <h2>E-mail e serviços do Google</h2>
+      <p>
+        O clube usa uma conta do Gmail própria para receber e responder mensagens e
+        para enviar o link de acesso ao Portal. O sistema acessa somente essa caixa
+        de e-mail do clube, nunca a sua conta. As mensagens recebidas são usadas
+        apenas para o atendimento.
+      </p>
+      <p>
+        O uso e a transferência de informações recebidas das APIs do Google seguem a
+        <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener">Política de Dados do Usuário dos Serviços de API do Google</a>,
+        incluindo os requisitos de Uso Limitado.
+      </p>
+
+      <h2>Inteligência artificial</h2>
+      <p>
+        Para agilizar o atendimento, o texto das mensagens pode ser processado por um
+        serviço de inteligência artificial contratado (OpenAI) para sugerir respostas.
+        Números de CPF são mascarados antes desse envio, e números de série de arma não
+        são enviados. A equipe do clube pode revisar as respostas antes de enviá-las.
+      </p>
+
+      <h2>Com quem compartilhamos</h2>
+      <ul>
+        <li>Órgãos públicos, como Polícia Federal e Exército, quando isso é necessário
+          para o processo que você pediu.</li>
+        <li>Fornecedores que mantêm o sistema funcionando: hospedagem (Railway),
+          e-mail (Google), inteligência artificial (OpenAI) e o sistema de gestão do
+          clube (Shooting House). Eles recebem só o necessário para prestar o serviço.</li>
+      </ul>
+
+      <h2>Como protegemos</h2>
+      <p>
+        O acesso ao sistema exige login. O Portal usa links de acesso únicos e
+        temporários. Informações especialmente sensíveis são guardadas cifradas, os
+        acessos a dados sensíveis ficam registrados e fazemos cópia de segurança
+        diária.
+      </p>
+
+      <h2>Por quanto tempo guardamos</h2>
+      <p>
+        Pelo tempo em que você for cliente ou filiado e, depois disso, pelo prazo
+        exigido por lei ou necessário para o clube se defender em processos.
+      </p>
+
+      <h2>Seus direitos</h2>
+      <p>
+        Pela Lei Geral de Proteção de Dados (Lei nº 13.709/2018), você pode pedir para
+        confirmar se tratamos seus dados, acessá-los, corrigi-los, pedir a exclusão do
+        que não formos obrigados a manter e tirar dúvidas sobre o uso. Basta escrever
+        para <a href="mailto:{{ contato }}">{{ contato }}</a>.
+      </p>
+
+      <h2>Mudanças nesta política</h2>
+      <p>
+        Se esta política mudar, a nova versão será publicada nesta página com a data
+        de atualização.
+      </p>
+
+      <p style="margin-top:2rem;"><a href="{{ url_for('login') }}">Ir para o Portal do Cliente</a></p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
