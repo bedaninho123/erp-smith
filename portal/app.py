@@ -344,6 +344,13 @@ def privacidade():
     return render_template("portal_privacidade.html")
 
 
+@app.route("/portal/termos")
+def termos():
+    # Pública, pelo mesmo motivo da política acima: o Google pede o link
+    # dos Termos de Serviço na mesma tela de Branding.
+    return render_template("portal_termos.html")
+
+
 def _processos_com_checklist(con, empresa_id: str, caso_id: str) -> list:
     """Processos de um caso, cada um já com o checklist de documentos e
     as contagens pra o alvo de progresso -- usado tanto no resumo do

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Termos de Serviço — Smith Clube de Tiro</title>
+{% include "_portal_estilo.html" %}
+{# Mesmo contato da Política de Privacidade -- trocar nos dois se mudar. #}
+{% set contato = "atendimentosmithclube@gmail.com" %}
+<style>
+  .pagina-politica { min-height: 100vh; background: var(--paper); padding: 32px 16px 64px; }
+  .politica { max-width: 720px; margin: 0 auto; }
+  .politica .topo { background: var(--ink-deep); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+  .politica .ficha { padding: 1.6rem 1.5rem; }
+  .politica h1 { font-size: 1.5rem; margin: 0 0 .3rem; }
+  .politica h2 { font-size: 1.1rem; margin: 1.8rem 0 .5rem; }
+  .politica p, .politica li { line-height: 1.6; font-size: .95rem; }
+  .politica ul { padding-left: 1.2rem; margin: .4rem 0; }
+  .politica .atualizado { color: var(--steel); font-size: .85rem; margin: 0 0 1rem; }
+  .politica a { color: var(--blue-deep); }
+</style>
+</head>
+<body>
+<div class="pagina-politica">
+  <div class="politica">
+    <div class="topo">
+      <img class="marca-logo marca-logo--grande" width="900" height="439" src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
+    </div>
+    <div class="ficha">
+      <h1>Termos de Serviço</h1>
+      <p class="atualizado">Última atualização: 7 de outubro de 2026</p>
+
+      <p>
+        Estes termos valem para o atendimento por e-mail e mensagem e para o Portal do
+        Cliente do <strong>Smith Clube de Tiro</strong> (CNPJ
+        <span class="mono">39.617.861/0001-59</span>, Marília/SP). Ao usar esses
+        serviços, você concorda com eles.
+      </p>
+
+      <h2>O que oferecemos</h2>
+      <p>
+        Pelo atendimento e pelo Portal você acompanha os processos que pediu ao clube
+        (como CR, CRAF, transferência e aquisição de arma e guia de tráfego), envia
+        documentos, consulta sua situação no clube e, se for filiado, anuncia ou procura
+        itens no Marketplace do Atirador.
+      </p>
+
+      <h2>Acesso ao Portal</h2>
+      <ul>
+        <li>O acesso é feito por um link enviado ao e-mail do seu cadastro. Ele vale por
+          15 minutos e só pode ser usado uma vez.</li>
+        <li>Não repasse esse link a ninguém. Quem abre o link entra como você.</li>
+        <li>Se perceber um acesso que não foi seu, avise o clube imediatamente.</li>
+      </ul>
+
+      <h2>Suas responsabilidades</h2>
+      <ul>
+        <li>Informar dados verdadeiros e mantê-los atualizados.</li>
+        <li>Enviar apenas documentos autênticos, seus ou de quem você representa.</li>
+        <li>Usar o Portal e o Marketplace dentro da lei, em especial da legislação
+          sobre armas de fogo.</li>
+      </ul>
+
+      <h2>Processos junto aos órgãos públicos</h2>
+      <p>
+        O clube cuida da documentação e do acompanhamento, mas a decisão final sobre
+        cada pedido é dos órgãos públicos responsáveis, como Polícia Federal e Exército.
+        Por isso não garantimos aprovação nem prazo, que dependem desses órgãos. Os
+        prazos mostrados no Portal são estimativas.
+      </p>
+
+      <h2>Respostas automáticas</h2>
+      <p>
+        Parte das respostas do atendimento é preparada com ajuda de inteligência
+        artificial e pode conter erros. Em caso de dúvida sobre prazo, exigência ou
+        situação de um documento, vale a confirmação da equipe do clube e o documento
+        oficial.
+      </p>
+
+      <h2>Marketplace do Atirador</h2>
+      <ul>
+        <li>O Marketplace é um espaço para filiados anunciarem e encontrarem itens. A
+          negociação acontece diretamente entre as pessoas.</li>
+        <li>O clube não recebe pagamentos, não participa da negociação e não garante os
+          itens anunciados.</li>
+        <li>A venda de arma de fogo só se completa com o processo legal de
+          transferência, que o clube pode fazer como serviço.</li>
+        <li>O clube pode remover anúncios que descumpram a lei ou estes termos.</li>
+      </ul>
+
+      <h2>Disponibilidade</h2>
+      <p>
+        Fazemos o possível para manter o Portal e o atendimento no ar, mas eles podem
+        ficar indisponíveis por manutenção ou falha técnica. Nenhum prazo legal seu deve
+        depender só do Portal: em caso de urgência, fale com o clube.
+      </p>
+
+      <h2>Privacidade</h2>
+      <p>
+        O uso dos seus dados está descrito na
+        <a href="{{ url_for('privacidade') }}">Política de Privacidade</a>.
+      </p>
+
+      <h2>Suspensão de acesso</h2>
+      <p>
+        O clube pode suspender o acesso de quem usar os serviços para fraude, enviar
+        documento falso ou descumprir estes termos.
+      </p>
+
+      <h2>Mudanças e contato</h2>
+      <p>
+        Se estes termos mudarem, a nova versão será publicada nesta página com a data
+        de atualização. Dúvidas: <a href="mailto:{{ contato }}">{{ contato }}</a>.
+        Fica eleito o foro da comarca de Marília/SP.
+      </p>
+
+      <p style="margin-top:2rem;"><a href="{{ url_for('login') }}">Ir para o Portal do Cliente</a></p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
