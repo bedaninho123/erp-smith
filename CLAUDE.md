@@ -92,6 +92,7 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.migrar_log_administrativo     # idempotente, cria a tabela log_administrativo
 .venv\Scripts\python.exe -m core.db.migrar_conversas_crm          # idempotente, liga mensagens antigas a conversas (tela Atendimentos)
 .venv\Scripts\python.exe -m core.db.migrar_encerrado_em           # idempotente, preenche caso.encerrado_em a partir do historico (Dashboard)
+.venv\Scripts\python.exe -m core.db.migrar_codigo_portal          # idempotente, codigo de 6 digitos do login do Portal (roda sozinha em producao)
 # Permite documento pertencer ao CLIENTE e não a um caso (dossiê). RECONSTRÓI
 # a tabela documento -- ver tests/test_migracao_dossie.py
 .venv\Scripts\python.exe -m core.db.migrar_dossie_cliente
@@ -837,6 +838,36 @@ As exceções têm nome e comentário explicando o porquê — `.miniatura` (bot
 ### portal/ é um app Flask separado, nunca reaproveita a sessão do painel
 
 Ver `docs/portal_cliente_arquitetura.md` para o rascunho completo. Autoatendimento pro cliente real (não staff), rodando em porta própria (5002) com `secret_key` e nome de cookie (`SESSION_COOKIE_NAME = "portal_session"`) totalmente separados de `webapp/` — os dois podem rodar ao mesmo tempo no mesmo navegador sem misturar sessão. Login sem senha: link mágico de token único por e-mail (`core/motor_portal_auth.py`), nunca reaproveita `usuario.senha_hash`. MVP é só leitura (status do caso + checklist de documentos) + upload — sem chat com a IA pelo Portal ainda. Toda rota que recebe `caso_id`/`documento_id` do cliente **sempre** confere se o dono bate com `session["cliente_id"]` antes de ler ou escrever qualquer coisa — esse é o único ponto realmente crítico de segurança do Portal (primeira superfície pública do sistema, domínio regulado de arma de fogo): um bug aqui vaza documento de um cliente para outro.
+
+### Portal como app instalável (PWA) e o código de 6 dígitos
+
+(2026-10-14.) O Portal se instala na tela do celular como app: manifesto
+(`/portal/manifest.webmanifest`), service worker (`/portal/sw.js`) e um
+convite de instalação (`_portal_convite_app.html`). No Android o convite
+usa o aviso do próprio navegador; no iPhone, que nunca oferece sozinho,
+ele ensina Compartilhar → Adicionar à Tela de Início. Nada de loja: é o
+mesmo site, atualizado a cada deploy.
+
+**O service worker só guarda o que é igual para todo mundo** (logo,
+ícones, tela "sem conexão"). Página, dado e documento vão sempre à rede.
+Celular perdido não pode levar CPF, arma ou documento numa cópia offline.
+`tests/test_portal_codigo.py` confere a lista.
+
+**O código de 6 dígitos existe por causa do iPhone**: o app instalado tem
+cookies separados do Safari, então o link mágico do e-mail loga no
+Safari e o app continua deslogado. O mesmo e-mail leva um código,
+digitado no app. Link e código são a mesma linha de `portal_token`, e
+usar um fecha o outro. Travas do código (`core/motor_portal_auth.py`):
+preso ao aparelho que pediu (`desafio` na sessão, criado para todo
+pedido, com ou sem cadastro, para não revelar se o CPF existe), 5
+tentativas (esgotou, o código morre e o link continua valendo) e gravado
+só como hash.
+
+A sessão do Portal passou a durar **30 dias** (`SESSAO_VALIDADE_DIAS`):
+sem isso o app pediria código toda vez que o celular o tirasse da
+memória. O escopo do app é `/portal` **sem barra**, porque o Início é
+`/portal`. O `static_url_path` do Portal virou `/portal/static`: em
+produção o `/static` caía no painel.
 
 ### Checklist de documento: quem liga o arquivo ao item define o estado
 

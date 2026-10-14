@@ -28,13 +28,16 @@ passa a enxergar dado de outra empresa.
 """
 import os
 import secrets
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv, set_key
-from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import (
+    Flask, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for,
+)
 
 from core import motor_checklist, motor_documentos
 from core.conexao import conectar
@@ -52,7 +55,13 @@ from core.motor_marketplace import (
     obter_anuncio,
     remover as remover_anuncio,
 )
-from core.motor_portal_auth import criar_token, localizar_cliente_por_cpf_ou_email, validar_e_consumir_token
+from core.motor_portal_auth import (
+    TOKEN_VALIDADE_MINUTOS,
+    criar_acesso,
+    localizar_cliente_por_cpf_ou_email,
+    validar_e_consumir_codigo,
+    validar_e_consumir_token,
+)
 from domain.clube_tiro.categorias_marketplace import CATEGORIA_ARMA, CATEGORIAS
 from domain.clube_tiro.motor_campeonatos import listar_campeonatos, obter_campeonato
 from domain.clube_tiro.motor_filiados import (
@@ -93,6 +102,16 @@ MESES_PT_ABREV = [m[:3].upper() for m in MESES_PT]
 # (core/limitador_tentativas.py).
 LOGIN_MAX_TENTATIVAS = 5
 LOGIN_JANELA_SEGUNDOS = 300
+# Código de 6 dígitos: a trava que importa é a do próprio código (5
+# chutes, contados no banco -- core/motor_portal_auth.py). Esta, por IP,
+# só segura quem tenta varrer vários pedidos de uma vez.
+CODIGO_MAX_TENTATIVAS_IP = 10
+
+# Quanto tempo o Portal fica logado (2026-10-14). Antes a sessão morria
+# ao fechar o navegador -- num app instalado isso é pedir código toda vez
+# que o celular tira o app da memória. 30 dias, e "Sair" continua
+# encerrando na hora.
+SESSAO_VALIDADE_DIAS = 30
 
 load_dotenv(ENV_PATH)
 if not os.getenv("PORTAL_SECRET_KEY"):
@@ -100,7 +119,11 @@ if not os.getenv("PORTAL_SECRET_KEY"):
     set_key(str(ENV_PATH), "PORTAL_SECRET_KEY", _chave)
     os.environ["PORTAL_SECRET_KEY"] = _chave
 
-app = Flask(__name__)
+# static_url_path com o prefixo /portal (2026-10-14): em produção o
+# despachante de webapp/servir.py manda pro Portal só o que começa com
+# /portal -- um /static/... caía no PAINEL, e o logo só aparecia porque o
+# painel tem uma cópia do mesmo arquivo. Os ícones do app não têm.
+app = Flask(__name__, static_url_path="/portal/static")
 app.secret_key = os.environ["PORTAL_SECRET_KEY"]
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 # Cookie de sessão só trafega em HTTPS quando COOKIE_HTTPS=Sim no .env --
@@ -112,6 +135,7 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("COOKIE_HTTPS", "").strip()
 # rodar no mesmo navegador ao mesmo tempo em localhost, cookies com o
 # mesmo nome se sobrescreveriam entre si.
 app.config["SESSION_COOKIE_NAME"] = "portal_session"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=SESSAO_VALIDADE_DIAS)
 
 URL_BASE = os.environ.get("PORTAL_URL_BASE", "http://127.0.0.1:5002")
 
@@ -246,8 +270,16 @@ def login():
             # achou" -- nunca um 500 por tentar mandar e-mail vazio.
             if cliente and not cliente.get("email"):
                 cliente = None
+        # O desafio vai pra sessão SEMPRE, ache ou não o cliente: é o que
+        # prende o código a este aparelho, e um cookie que só mudasse
+        # quando o CPF está cadastrado contaria o que a mensagem única
+        # abaixo esconde.
+        desafio = secrets.token_urlsafe(16)
+        session["desafio_login"] = desafio
+        session["desafio_em"] = int(time.time())
+        session.permanent = True
         if cliente:
-            token = criar_token(PORTAL_EMPRESA_ID, cliente["cliente_id"])
+            token, codigo = criar_acesso(PORTAL_EMPRESA_ID, cliente["cliente_id"], desafio)
             link = f"{URL_BASE}/portal/entrar/{token}"
             if gmail_configurado():
                 config = obter_configuracoes(PORTAL_EMPRESA_ID)
@@ -261,6 +293,8 @@ def login():
                             "Use o link abaixo para acessar o Portal (válido por 15 minutos, "
                             "uso único):\n\n"
                             f"{link}\n\n"
+                            "Está usando o app do Portal no celular? Digite este código lá:\n\n"
+                            f"    {codigo}\n\n"
                             "Se você não solicitou esse acesso, é só ignorar este e-mail.\n\n"
                             f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
                         ),
@@ -286,17 +320,60 @@ def login():
                 # -- imprime o link no console pra dar pra testar sem
                 # depender de e-mail real chegando.
                 print(f"[PORTAL] Gmail não configurado -- link de acesso: {link}")
+                print(f"[PORTAL] Gmail não configurado -- código de acesso: {codigo}")
         # Mensagem sempre igual, ache ou não o cliente -- não dá pista se
         # um CPF/e-mail está cadastrado (evita enumeração de clientes).
-        mensagem = "Se encontrarmos esse CPF ou e-mail no nosso cadastro, enviamos um link de acesso por e-mail."
-    return render_template("portal_login.html", mensagem=mensagem)
+        mensagem = (
+            "Se encontrarmos esse CPF ou e-mail no nosso cadastro, enviamos "
+            "um e-mail com um link e um código de acesso."
+        )
+        return render_template("portal_login.html", mensagem=mensagem, etapa_codigo=True)
+    # O iPhone pode tirar o app da memória enquanto a pessoa vai ao e-mail
+    # buscar o código, e aí ele reabre do zero, nesta tela. Se o pedido é
+    # recente, ela volta direto ao campo do código em vez de ao do CPF.
+    # (O desafio existe para todo pedido, cadastrado ou não, então isto
+    # não revela nada.)
+    pedido_em = session.get("desafio_em") or 0
+    pedido_recente = time.time() - pedido_em < TOKEN_VALIDADE_MINUTOS * 60
+    return render_template(
+        "portal_login.html",
+        etapa_codigo=pedido_recente and session.get("desafio_login") and not request.args.get("novo"),
+    )
+
+
+@app.route("/portal/login/codigo", methods=["POST"])
+def entrar_com_codigo():
+    """A segunda porta do mesmo acesso (ver core/motor_portal_auth.py):
+    o código do e-mail, digitado no aparelho que pediu."""
+    if excedeu_limite(f"codigo_portal:{request.remote_addr}", CODIGO_MAX_TENTATIVAS_IP, LOGIN_JANELA_SEGUNDOS):
+        return render_template(
+            "portal_login.html", etapa_codigo=True,
+            erro="Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+        )
+    cliente_id = validar_e_consumir_codigo(
+        PORTAL_EMPRESA_ID, session.get("desafio_login"), request.form.get("codigo"),
+    )
+    if not cliente_id or not _abrir_sessao(cliente_id):
+        # Um texto só para todos os motivos (errado, expirado, esgotado,
+        # pedido em outro aparelho) -- mesma regra do link.
+        return render_template(
+            "portal_login.html", etapa_codigo=True,
+            erro="Código incorreto ou expirado. Confira o último e-mail ou peça um novo.",
+        )
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/portal/entrar/<token>")
 def entrar(token):
     cliente_id = validar_e_consumir_token(PORTAL_EMPRESA_ID, token)
-    if not cliente_id:
+    if not cliente_id or not _abrir_sessao(cliente_id):
         return render_template("portal_expirado.html")
+    return redirect(url_for("dashboard"))
+
+
+def _abrir_sessao(cliente_id: str) -> bool:
+    """O que vem depois de link OU código aceito -- num lugar só, para as
+    duas portas abrirem exatamente a mesma sessão."""
     # A empresa da sessão sai da linha do cliente, não da configuração:
     # é o cliente que define de quem é o dado que ele vai enxergar pelo
     # resto da sessão.
@@ -307,8 +384,10 @@ def entrar(token):
     ).fetchone()
     con.close()
     if not cliente:
-        return render_template("portal_expirado.html")
+        return False
+    # clear() também apaga o desafio_login: o pedido de acesso acabou.
     session.clear()
+    session.permanent = True
     session["cliente_id"] = cliente_id
     session["cliente_nome"] = cliente["nome"]
     session["empresa_id"] = cliente["empresa_id"]
@@ -325,7 +404,7 @@ def entrar(token):
     con2.close()
     filiado = obter_filiado_por_cpf(cliente["empresa_id"], cpf_cliente["cpf"] if cpf_cliente else None)
     session["e_filiado_ativo"] = bool(filiado and filiado.get("status_filiacao") == "Ativo")
-    return redirect(url_for("dashboard"))
+    return True
 
 
 @app.route("/portal/sair")
@@ -349,6 +428,75 @@ def termos():
     # Pública, pelo mesmo motivo da política acima: o Google pede o link
     # dos Termos de Serviço na mesma tela de Branding.
     return render_template("portal_termos.html")
+
+
+# --------------------------------------------------------------------
+# App instalável (PWA, 2026-10-14)
+# --------------------------------------------------------------------
+# O Portal instalado na tela do celular continua sendo este mesmo site:
+# o manifesto diz ao celular nome, ícone e cor; o service worker só
+# guarda o visual (logo, ícones e a tela "sem internet").
+#
+# Escopo "/portal" SEM barra no fim: o Início do Portal é "/portal", e um
+# escopo "/portal/" deixaria justamente ele fora do app.
+
+PWA_ESCOPO = "/portal"
+PWA_VERSAO = "portal-v1"  # trocar quando mudar ARQUIVOS do service worker
+
+
+@app.route("/portal/manifest.webmanifest")
+def pwa_manifesto():
+    icones = [
+        {"src": url_for("static", filename="app/icone-192.png"), "sizes": "192x192", "type": "image/png"},
+        {"src": url_for("static", filename="app/icone-512.png"), "sizes": "512x512", "type": "image/png"},
+        {"src": url_for("static", filename="app/icone-maskable-512.png"), "sizes": "512x512",
+         "type": "image/png", "purpose": "maskable"},
+    ]
+    resposta = jsonify(
+        id=PWA_ESCOPO,
+        name="Smith Clube de Tiro",
+        short_name="Smith",
+        description="Portal do Cliente: processos, documentos e habitualidade.",
+        lang="pt-BR",
+        start_url=url_for("dashboard"),
+        scope=PWA_ESCOPO,
+        display="standalone",
+        background_color="#131417",
+        theme_color="#131417",
+        icons=icones,
+    )
+    resposta.mimetype = "application/manifest+json"
+    return resposta
+
+
+@app.route("/portal/sw.js")
+def pwa_service_worker():
+    """Nunca guarda página, dado nem documento -- só o que é igual para
+    todo mundo. O Portal mostra CPF, arma e documento de pessoa; um
+    celular perdido não pode levar nada disso numa cópia offline. Sem
+    internet, a navegação cai na tela "sem conexão" em vez do erro do
+    navegador."""
+    arquivos = [
+        url_for("pwa_offline"),
+        url_for("static", filename="img/logo_smith_white.png"),
+        url_for("static", filename="app/icone-192.png"),
+    ]
+    codigo = render_template("portal_sw.js", versao=PWA_VERSAO, arquivos=arquivos,
+                             offline=url_for("pwa_offline"),
+                             estaticos=url_for("static", filename=""))
+    resposta = Response(codigo, mimetype="application/javascript")
+    # Sem isto o navegador limita o escopo à pasta do arquivo
+    # ("/portal/"), que não inclui o Início ("/portal").
+    resposta.headers["Service-Worker-Allowed"] = PWA_ESCOPO
+    # O navegador precisa ver versão nova do service worker quando ela
+    # sair; cache aqui atrasaria isso.
+    resposta.headers["Cache-Control"] = "no-cache"
+    return resposta
+
+
+@app.route("/portal/offline")
+def pwa_offline():
+    return render_template("portal_offline.html")
 
 
 def _processos_com_checklist(con, empresa_id: str, caso_id: str) -> list:

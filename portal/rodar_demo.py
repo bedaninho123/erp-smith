@@ -22,6 +22,15 @@ tem. Nada aqui escreve no banco real nem no `.env`.
 # aponta as variáveis de ambiente para a pasta temporária.
 from webapp import rodar_demo as base  # noqa: E402
 
+import os  # noqa: E402
+
+# Gmail DESLIGADO na demonstração (2026-10-14): com o token.json do clube
+# na pasta do projeto, pedir acesso pela tela de login mandaria e-mail de
+# verdade, pela conta do atendimento, para o endereço da cliente
+# inventada. Apontando para um arquivo que não existe, o Portal cai no
+# caminho de desenvolvimento e imprime link e código aqui no console.
+os.environ["ERP_GMAIL_TOKEN_PATH"] = str(base.PASTA / "sem_gmail_na_demo.json")
+
 from core.motor_portal_auth import criar_token  # noqa: E402
 
 PORTA = 5012

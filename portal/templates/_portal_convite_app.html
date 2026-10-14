@@ -1,0 +1,101 @@
+{#- Convite para instalar o app (2026-10-14). Incluído no fim do <body>
+    do login e do layout logado. Nasce escondido e só aparece quando
+    instalar é possível e o app ainda não está instalado:
+      - Android: o próprio navegador avisa que dá (beforeinstallprompt), e
+        o botão "Instalar" abre a confirmação dele.
+      - iPhone: o Safari nunca oferece sozinho, então o convite ensina os
+        dois toques (Compartilhar -> Adicionar à Tela de Início).
+    "Agora não" guarda a escolha no aparelho e o convite não volta. -#}
+<style>
+  .convite-app {
+    position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 50;
+    max-width: 440px; margin: 0 auto;
+    background: var(--ink-deep); color: #fff;
+    border: 1px solid rgba(255,255,255,.14); border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(0,0,0,.28);
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    font-size: .9rem; line-height: 1.45;
+  }
+  .convite-app[hidden] { display: none; }
+  .convite-app-topo { display: flex; gap: 12px; align-items: center; }
+  .convite-app-topo img { width: 44px; height: 44px; border-radius: 10px; flex: none; }
+  .convite-app strong { display: block; font-size: .98rem; }
+  .convite-app-texto { color: #C9CDD4; }
+  .convite-app ol { margin: 10px 0 0; padding-left: 1.2rem; color: #C9CDD4; }
+  .convite-app ol li { margin: 2px 0; }
+  .convite-app ol svg { vertical-align: -3px; }
+  .convite-app-acoes { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .convite-app-acoes button {
+    height: 36px; padding: 0 14px; border-radius: 6px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  .convite-app-fechar { background: transparent; color: #C9CDD4; border: 1px solid rgba(255,255,255,.2); }
+  .convite-app-instalar { background: #fff; color: var(--ink-deep); border: 0; }
+</style>
+
+<div class="convite-app" id="convite-app" role="dialog" aria-labelledby="convite-app-titulo" hidden>
+  <div class="convite-app-topo">
+    <img src="{{ url_for('static', filename='app/icone-192.png') }}" alt="" width="44" height="44">
+    <div>
+      <strong id="convite-app-titulo">Instale o app do Portal</strong>
+      <span class="convite-app-texto">Fica na tela do celular, como os outros apps.</span>
+    </div>
+  </div>
+  <ol id="convite-app-passos-iphone" hidden>
+    <li>Toque em <b>Compartilhar</b>
+      <svg aria-label="(o quadrado com a seta para cima)" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5v10"/><path d="M6.5 6 10 2.5 13.5 6"/><path d="M6 9H4.5v8.5h11V9H14"/></svg>
+      na barra do navegador</li>
+    <li>Escolha <b>Adicionar à Tela de Início</b></li>
+  </ol>
+  <div class="convite-app-acoes">
+    <button type="button" class="convite-app-fechar" id="convite-app-fechar">Agora não</button>
+    <button type="button" class="convite-app-instalar" id="convite-app-instalar" hidden>Instalar</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var CHAVE = "portal_convite_app_fechado";
+  var caixa = document.getElementById("convite-app");
+  if (!caixa) return;
+
+  function jaFechou() {
+    try { return localStorage.getItem(CHAVE) === "1"; } catch (e) { return false; }
+  }
+  function lembrarFechado() {
+    try { localStorage.setItem(CHAVE, "1"); } catch (e) { /* sem armazenamento, volta na próxima visita */ }
+  }
+  var instalado = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  if (instalado || jaFechou()) return;
+
+  document.getElementById("convite-app-fechar").addEventListener("click", function () {
+    caixa.hidden = true;
+    lembrarFechado();
+  });
+
+  // iPad novo se apresenta como Mac; o toque denuncia.
+  var ehIphone = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (ehIphone) {
+    document.getElementById("convite-app-passos-iphone").hidden = false;
+    caixa.hidden = false;
+    return;
+  }
+
+  // Android (Chrome, Edge, Samsung): só aparece se o navegador disser que
+  // instalar é possível -- nunca um botão que não faz nada.
+  var pedido = null;
+  var botao = document.getElementById("convite-app-instalar");
+  window.addEventListener("beforeinstallprompt", function (evento) {
+    evento.preventDefault();
+    pedido = evento;
+    botao.hidden = false;
+    caixa.hidden = false;
+  });
+  botao.addEventListener("click", function () {
+    if (!pedido) return;
+    pedido.prompt();
+    pedido.userChoice.finally(function () { caixa.hidden = true; pedido = null; });
+  });
+  window.addEventListener("appinstalled", function () { caixa.hidden = true; });
+})();
+</script>

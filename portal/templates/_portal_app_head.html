@@ -1,0 +1,20 @@
+{#- App instalável (PWA, 2026-10-14) -- incluído por _portal_estilo.html,
+    que já está no <head> de toda tela do Portal. Ver pwa_manifesto() e
+    pwa_service_worker() em portal/app.py. -#}
+<link rel="manifest" href="{{ url_for('pwa_manifesto') }}">
+<meta name="theme-color" content="#131417">
+{#- iPhone: o Safari ignora parte do manifesto e lê estas tags. -#}
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='app/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Smith">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker
+        .register({{ url_for('pwa_service_worker')|tojson }}, { scope: "/portal" })
+        .catch(function () { /* sem service worker o Portal funciona igual, só não instala */ });
+    });
+  }
+</script>

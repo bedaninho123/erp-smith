@@ -568,11 +568,20 @@ CREATE TABLE portal_token (
     cliente_id        TEXT NOT NULL REFERENCES cliente(cliente_id),
     criado_em         TEXT NOT NULL,                    -- ISO 8601
     expira_em         TEXT NOT NULL,                     -- ISO 8601 (criado_em + 15 min)
-    usado_em          TEXT                                -- ISO 8601, NULL até ser consumido
+    usado_em          TEXT,                               -- ISO 8601, NULL até ser consumido
+    -- Código de 6 dígitos (2026-10-14): a segunda porta da MESMA linha,
+    -- para o app instalado no iPhone, que não recebe o link do e-mail
+    -- (ver core/motor_portal_auth.py). Guardado só como hash; `desafio`
+    -- prende o código ao aparelho que o pediu; esgotadas as tentativas,
+    -- o código morre (o link continua valendo).
+    codigo_hash       TEXT,
+    desafio           TEXT,
+    tentativas_codigo INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX idx_portal_token_empresa_id ON portal_token(empresa_id);
 CREATE INDEX idx_portal_token_cliente_id ON portal_token(cliente_id);
+CREATE INDEX idx_portal_token_desafio ON portal_token(desafio);
 
 -- Marketplace de classificados (2026-09-02) -- mural entre os próprios
 -- clientes/afiliados de uma empresa (quem conta como "pode ver e

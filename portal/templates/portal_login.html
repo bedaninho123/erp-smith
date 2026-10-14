@@ -19,6 +19,14 @@
   .caixa-login .ficha { padding: 1.6rem 1.5rem; }
   .subtitulo { color: var(--steel); font-size: .88rem; margin: -.2rem 0 1.2rem; }
   .ajuda { color: var(--steel); font-size: .78rem; margin-top: .6rem; }
+  /* Código: fonte de identificador (Plex Mono, a régua do Portal) e
+     espaçado, para os 6 dígitos serem conferidos de relance contra o
+     e-mail. */
+  .campo-codigo {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 1.5rem; letter-spacing: .35em; text-align: center;
+    margin-bottom: 1rem;
+  }
 </style>
 </head>
 <body>
@@ -29,7 +37,25 @@
       <h1 style="font-size:1.25rem; margin:0 0 .2rem;">Portal do Cliente</h1>
       <p class="subtitulo">Acompanhe seus processos e envie documentos</p>
 
-      {% if mensagem %}
+      {% if etapa_codigo %}
+      {#- Segunda etapa: o código de 6 dígitos do e-mail. É o caminho do
+          app instalado no iPhone, onde o link abriria no Safari e não
+          aqui (ver core/motor_portal_auth.py). O link do mesmo e-mail
+          continua funcionando para quem está no navegador. -#}
+      {% if mensagem %}<div class="aviso" style="margin-bottom:1rem;">{{ mensagem }}</div>{% endif %}
+      {% if erro %}<div class="msg-flash msg-flash--erro" role="alert" style="margin-bottom:1rem;">{{ erro }}</div>{% endif %}
+      <form method="post" action="{{ url_for('entrar_com_codigo') }}">
+        <label for="codigo">Código de 6 dígitos do e-mail</label>
+        <!-- one-time-code: o iPhone e o Android oferecem o código direto
+             do e-mail/SMS acima do teclado, sem a pessoa trocar de app. -->
+        <input id="codigo" name="codigo" type="text" inputmode="numeric"
+          autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="7"
+          spellcheck="false" required autofocus class="campo-codigo">
+        <button type="submit" class="botao" style="width:100%;">Entrar</button>
+      </form>
+      <p class="ajuda">Ou toque no link do mesmo e-mail. O código vale por 15 minutos.</p>
+      <p class="ajuda"><a href="{{ url_for('login', novo=1) }}" style="color:var(--blue-deep);">Não chegou? Pedir um novo código</a></p>
+      {% elif mensagem %}
       <div class="aviso">{{ mensagem }}</div>
       {% else %}
       <form method="post">
@@ -41,9 +67,9 @@
         <input id="identificador" name="identificador" type="text"
           autocomplete="username" spellcheck="false" autocapitalize="none"
           required autofocus style="margin-bottom:1rem;">
-        <button type="submit" class="botao" style="width:100%;">Enviar link de acesso</button>
+        <button type="submit" class="botao" style="width:100%;">Receber acesso por e-mail</button>
       </form>
-      <p class="ajuda">Sem senha pra lembrar — mandamos um link de acesso único pro seu e-mail, válido por 15 minutos.</p>
+      <p class="ajuda">Sem senha pra lembrar — mandamos um link e um código de acesso pro seu e-mail, válidos por 15 minutos.</p>
       {% endif %}
     </div>
     <p class="ajuda" style="text-align:center; margin-top:1rem;">
@@ -53,5 +79,6 @@
     </p>
   </div>
 </div>
+{% include "_portal_convite_app.html" %}
 </body>
 </html>

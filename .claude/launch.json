@@ -43,6 +43,7 @@
       "name": "portal-demo",
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": [
+        "-u",
         "-m",
         "portal.rodar_demo"
       ],
