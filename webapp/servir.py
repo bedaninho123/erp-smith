@@ -136,6 +136,44 @@ painel_app.wsgi_app = ProxyFix(painel_app.wsgi_app, x_for=1, x_proto=1, x_host=1
 portal_app.wsgi_app = ProxyFix(portal_app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
+# UM ENDEREÇO PARA CADA APP (2026-10-14). Com domínio próprio
+# (smithclubedetiro.com.br), o mesmo serviço Railway responde em dois
+# subdomínios, e quem decide o app passa a ser o ENDEREÇO, não o caminho:
+#
+#   PORTAL_HOST -> tudo vai pro Portal. O painel não existe ali: um
+#                  cliente que digite /login não cai na tela da equipe.
+#   PAINEL_HOST -> painel. /portal... ali redireciona pro PORTAL_HOST,
+#                  para link antigo continuar levando ao lugar certo.
+#   outro       -> a regra antiga por prefixo, sem mudança nenhuma: é o
+#                  endereço *.up.railway.app, que continua no ar (e-mail
+#                  já enviado e a política de privacidade cadastrada no
+#                  Google apontam para ele) e o uso local.
+#
+# Vazias = comportamento de antes, inteiro. Por isso este código pode
+# subir antes de o domínio existir.
+#
+# As rotas do Portal continuam com /portal mesmo no endereço próprio
+# (portal.../portal/login): tirar o prefixo mexeria em toda rota, no
+# escopo do app instalado e no link dos e-mails, só para encurtar a URL.
+PORTAL_HOST = os.environ.get("PORTAL_HOST", "").strip().lower()
+PAINEL_HOST = os.environ.get("PAINEL_HOST", "").strip().lower()
+
+
+def _host_pedido(environ) -> str:
+    # X-Forwarded-Host primeiro: é o endereço que o visitante digitou,
+    # visto pela borda do Railway. Falsificar isso só escolheria qual dos
+    # dois apps públicos responde -- cada um continua com o próprio login.
+    bruto = environ.get("HTTP_X_FORWARDED_HOST") or environ.get("HTTP_HOST") or ""
+    return bruto.split(",")[0].strip().split(":")[0].lower()
+
+
+def _redirecionar(destino: str, start_response):
+    # 302, não 301: navegador guarda 301 para sempre, e um erro de
+    # configuração aqui ficaria gravado no celular do cliente.
+    start_response("302 Found", [("Location", destino), ("Content-Length", "0")])
+    return [b""]
+
+
 def _despachar_por_prefixo(environ, start_response):
     """WSGI mínimo: só decide qual dos dois `app` atende. Nenhuma
     reescrita de PATH_INFO/SCRIPT_NAME -- as rotas do Portal já nasceram
@@ -143,7 +181,19 @@ def _despachar_por_prefixo(environ, start_response):
     ambiente intocado é o que faz url_for, redirect e o <form method=
     "post"> sem action do Portal continuarem funcionando exatamente como
     localmente."""
-    if environ.get("PATH_INFO", "").startswith("/portal"):
+    caminho = environ.get("PATH_INFO", "")
+    host = _host_pedido(environ)
+    if PORTAL_HOST and host == PORTAL_HOST:
+        return portal_app.wsgi_app(environ, start_response)
+    if PAINEL_HOST and PORTAL_HOST and host == PAINEL_HOST:
+        if caminho.startswith("/portal"):
+            consulta = environ.get("QUERY_STRING", "")
+            return _redirecionar(
+                f"https://{PORTAL_HOST}{caminho}" + (f"?{consulta}" if consulta else ""),
+                start_response,
+            )
+        return painel_app.wsgi_app(environ, start_response)
+    if caminho.startswith("/portal"):
         return portal_app.wsgi_app(environ, start_response)
     return painel_app.wsgi_app(environ, start_response)
 

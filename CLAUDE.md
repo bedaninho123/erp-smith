@@ -869,6 +869,14 @@ memória. O escopo do app é `/portal` **sem barra**, porque o Início é
 `/portal`. O `static_url_path` do Portal virou `/portal/static`: em
 produção o `/static` caía no painel.
 
+**Um endereço por app** (`webapp/servir.py`, `PORTAL_HOST`/`PAINEL_HOST`):
+domínio próprio `smithclubedetiro.com.br` (o `smithclube.com.br` é do
+site, com DNS no Shooting House). No endereço do Portal o painel não
+existe; no do painel, `/portal...` redireciona pro Portal; o endereço
+`*.up.railway.app` segue dividido por prefixo, como antes, porque e-mail
+já enviado e a política de privacidade cadastrada no Google apontam pra
+ele. Variáveis vazias = comportamento antigo inteiro.
+
 ### Checklist de documento: quem liga o arquivo ao item define o estado
 
 `documento_checklist` liga um arquivo recebido a um item de `documento_exigido`. Quem cria essa ligação determina em que estado ela nasce, e essa é a regra inteira: marcação feita no painel nasce `Aprovado` (o funcionário abriu o arquivo pra decidir — a conferência aconteceu no mesmo gesto), envio pelo Portal nasce `Aguardando aprovação` (é uma afirmação do cliente, ninguém conferiu). `Recusado` guarda o `motivo_recusa`, que é mostrado ao cliente, e para efeito de checklist conta como faltando. **Pendente não conta na contagem X/Y nem no anel de progresso** — contar infla o progresso com trabalho que ninguém fez. A decisão continua sendo sempre humana: a IA nunca decide que um PDF é a certidão X.

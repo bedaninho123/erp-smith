@@ -455,7 +455,7 @@ def pwa_manifesto():
     resposta = jsonify(
         id=PWA_ESCOPO,
         name="Smith Clube de Tiro",
-        short_name="Smith",
+        short_name="Smith App",
         description="Portal do Cliente: processos, documentos e habitualidade.",
         lang="pt-BR",
         start_url=url_for("dashboard"),
