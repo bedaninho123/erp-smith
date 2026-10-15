@@ -58,7 +58,15 @@
   {% set situacao = filiacao_resumo.status_filiacao %}
   <div class="ficha destaque-mini{% if situacao == 'Ativo' %} destaque-mini--ativo{% elif situacao == 'Inativo' %} destaque-mini--inativo{% endif %}">
     <div class="destaque-mini-icone">
-      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5l6 2.2v4.3c0 4-2.6 6.6-6 8.5-3.4-1.9-6-4.5-6-8.5V4.7l6-2.2z"/></svg>
+      {# Ícone diz a situação junto com a cor: certo = ativa, X = inativa,
+         traço = o clube não informou (nunca o "certo" por padrão). #}
+      {% if situacao == 'Ativo' %}
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 10.5l3.2 3.2L15 7"/></svg>
+      {% elif situacao == 'Inativo' %}
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 6.5l7 7M13.5 6.5l-7 7"/></svg>
+      {% else %}
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 10h8"/></svg>
+      {% endif %}
     </div>
     <div>
       <p class="destaque-mini-eyebrow">Filiação{% if situacao == 'Ativo' %} ativa{% elif situacao == 'Inativo' %} inativa{% endif %}</p>
@@ -74,7 +82,7 @@
   {% elif filiacao_resumo and filiacao_resumo.indisponivel %}
   <div class="ficha destaque-mini">
     <div class="destaque-mini-icone">
-      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5l6 2.2v4.3c0 4-2.6 6.6-6 8.5-3.4-1.9-6-4.5-6-8.5V4.7l6-2.2z"/></svg>
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 10h8"/></svg>
     </div>
     <div>
       <p class="destaque-mini-eyebrow">Filiação</p>

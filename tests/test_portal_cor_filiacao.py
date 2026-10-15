@@ -34,3 +34,14 @@ def test_sem_situacao_fica_neutro(portal, monkeypatch):
     assert "Válida até 08/02/2031" in html
     assert 'class="ficha destaque-mini destaque-mini--' not in html
     assert "Filiação ativa" not in html
+
+
+ICONE_CERTO = "M5 10.5l3.2 3.2L15 7"
+
+
+def test_icone_de_certo_so_quando_ativa(portal, monkeypatch):
+    monkeypatch.setattr(portal_app, "_resumo_filiacao", lambda cpf: _resumo("Ativo"))
+    assert ICONE_CERTO in portal.get("/portal").get_data(as_text=True)
+    for status in ("Inativo", None):
+        monkeypatch.setattr(portal_app, "_resumo_filiacao", lambda cpf, s=status: _resumo(s))
+        assert ICONE_CERTO not in portal.get("/portal").get_data(as_text=True)
