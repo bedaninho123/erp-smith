@@ -269,6 +269,37 @@ def _enviar_notificacao_mudanca_status(empresa_id: str, caso_id: str) -> None:
     )
 
 
+@app.route("/saude")
+def saude_sistema():
+    """Para o monitor externo (2026-10-14), por isso SEM login: ele não
+    tem como entrar. Mostra só o nome de cada parte e se está bem -- nada
+    de dado, contagem ou mensagem de erro (erro pode carregar CPF, ver
+    _mascarar_cpf em integracoes/shooting_house.py).
+
+    503 quando qualquer parte falha: o monitor gratuito só olha o código
+    de resposta. As rotinas de fundo só existem no processo de produção
+    (webapp/servir.py); rodando o painel sozinho no PC, e-mail e backup
+    viram "atrasado" depois do prazo, e está certo que virem."""
+    from core import saude
+    from core.conexao import conectar_admin
+
+    estado = saude.avaliar()
+    try:
+        con = conectar_admin()
+        try:
+            con.execute("SELECT 1 FROM empresa LIMIT 1").fetchone()
+        finally:
+            con.close()
+        estado["banco"] = "ok"
+    except Exception:
+        estado["banco"] = "falha"
+    bom = all(v in ("ok", "aguardando") for v in estado.values())
+    resposta = jsonify(status="ok" if bom else "falha", partes=estado)
+    resposta.status_code = 200 if bom else 503
+    resposta.headers["Cache-Control"] = "no-store"
+    return resposta
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     erro = None

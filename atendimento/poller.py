@@ -26,6 +26,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from core import saude
 from core.motor_clientes import remetente_automatico
 from integracoes.gmail import gmail_configurado, listar_mensagens_nao_lidas, marcar_como_lida
 from atendimento.alertas import alertar_excecao, alertar_falha
@@ -128,6 +129,9 @@ def _verificar_uma_vez_com_trava() -> int:
     except Exception as e:
         alertar_excecao("Falha ao consultar a caixa de entrada", e)
         raise
+    # Batimento só depois de o Gmail responder de verdade: é o que separa
+    # "a rotina está rodando" de "a caixa está sendo lida" (core/saude.py).
+    saude.registrar("email")
 
     for msg in mensagens:
         if remetente_automatico(msg["remetente_email"]):

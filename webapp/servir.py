@@ -262,6 +262,10 @@ def _enviar_backup_ao_drive(pasta_backup) -> None:
         nome = f"erp_smith_producao_{Path(pasta_backup).name}.zip"
         arquivo = modulo_backup.empacotar_para_envio(Path(pasta_backup), Path(temporaria) / nome)
         saida = google_drive.enviar_backup(arquivo, manter_ultimos=modulo_backup.MANTER_ULTIMOS)
+    # Batimento só com o .zip FORA do Railway: o backup no próprio volume
+    # sozinho não protege do que mais importa (core/saude.py).
+    from core import saude
+    saude.registrar("backup")
     _log(f"Enviado ao Drive: {nome} ({saida['tamanho'] // 1024} KB); "
          f"{len(saida['apagados'])} antigo(s) apagado(s).", origem="backup-drive")
 

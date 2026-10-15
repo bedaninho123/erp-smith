@@ -814,6 +814,13 @@ levantou cinco pontos, todos corrigidos:
   `drive.file`), mantendo os últimos 14. Apaga o antigo só depois de o
   novo subir. O backup local do PC (G:\ do Drive para desktop) copia o
   banco do PC, que deixou de ser o de produção em 2026-09-08.
+- **Monitor de saúde** (2026-10-14): `/saude` no painel, sem login, para
+  um monitor externo (UptimeRobot). Responde 503 se o banco não abre, se
+  a caixa de e-mail não foi LIDA com sucesso em 15 min ou se o backup não
+  chegou ao Drive em 26h (`core/saude.py`). O batimento do e-mail sai
+  depois de o Gmail responder, não da rotina rodar: em julho a rotina
+  rodava e a caixa ficou dois meses sem ser lida. Só mostra "ok"/"falha"
+  por parte, nunca dado nem texto de erro.
 - **`WEBHOOK_SECRET` configurado.** `atendimento/webhook.py` já avisava
   no console quando essa variável está vazia ("aceita qualquer chamada
   sem autenticação") — era o estado real do `.env` até esta auditoria.
