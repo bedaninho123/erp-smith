@@ -21,8 +21,10 @@ import os
 import shutil
 import sqlite3
 import traceback
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -115,7 +117,38 @@ def _rotacionar() -> None:
         shutil.rmtree(antiga, ignore_errors=True)
 
 
-def main(incluir_documentos: bool = True) -> None:
+def empacotar_para_envio(pasta_backup: Path, arquivo_zip: Path,
+                         pasta_anuncios: Optional[Path] = None) -> Path:
+    """Um .zip com tudo o que o backup de produção precisa levar para fora
+    do Railway (ver integracoes/google_drive.py): os bancos que main()
+    acabou de copiar, os documentos dos clientes e as fotos de anúncio.
+
+    Os documentos entram AQUI, e não na pasta de main(), porque aquela
+    pasta mora no mesmo volume e é guardada por 14 dias -- duplicar os
+    documentos lá encheria o volume. O .zip é feito numa pasta temporária,
+    sai do servidor e é apagado por quem chamou.
+
+    O .zip não é cifrado: a proteção é a conta Google de destino, que
+    precisa de verificação em duas etapas."""
+    if pasta_anuncios is None:
+        from core.motor_marketplace import PASTA_ANUNCIOS
+        pasta_anuncios = PASTA_ANUNCIOS
+    origens = [
+        (pasta_backup, "bancos"),
+        (DOCUMENTOS_DIR, "documentos_recebidos"),
+        (pasta_anuncios, "marketplace_fotos"),
+    ]
+    with zipfile.ZipFile(arquivo_zip, "w", compression=zipfile.ZIP_DEFLATED) as zip_:
+        for origem, nome in origens:
+            if not origem.exists():
+                continue
+            for arquivo in sorted(origem.rglob("*")):
+                if arquivo.is_file():
+                    zip_.write(arquivo, Path(nome) / arquivo.relative_to(origem))
+    return arquivo_zip
+
+
+def main(incluir_documentos: bool = True) -> Path:
     """`incluir_documentos=False` existe pro backup automático dentro do
     Railway (ver webapp/servir.py): ali BACKUP_DIR aponta pra uma
     subpasta do MESMO volume onde o banco já mora (não tem HD externo
@@ -143,6 +176,7 @@ def main(incluir_documentos: bool = True) -> None:
 
     _rotacionar()
     _registrar(f"OK -- backup salvo em {destino}")
+    return destino
 
 
 if __name__ == "__main__":

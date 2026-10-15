@@ -144,6 +144,10 @@ domain\clube_tiro\remover_tarefa_habitualidade.bat
 
 # Autorizar o Gmail (OAuth2 -- interativo, roda uma vez por máquina, o usuário faz o consentimento no navegador)
 .venv\Scripts\python.exe -m integracoes.gmail_autorizar
+
+# Autorizar o Google Drive que recebe o backup de PRODUÇÃO (interativo, uma vez;
+# conta pessoal do dono, permissão drive.file -- só enxerga a pasta que criar)
+.venv\Scripts\python.exe -m integracoes.drive_autorizar
 ```
 
 Ao editar `.env`, use `.env.example` como referência da lista completa de variáveis esperadas.
@@ -800,6 +804,16 @@ levantou cinco pontos, todos corrigidos:
   != 0 na falha: a tarefa roda com `pythonw.exe`, sem console, então
   `print()` ali é descartado em silêncio — sem o log, uma falha às 3h da
   manhã não deixava rastro em lugar nenhum.
+
+  **Produção (2026-10-14):** o backup do Railway gravava em
+  `/data/backups`, no MESMO volume do banco, e sem os documentos --
+  perder o volume era perder tudo, backup junto. Agora, a cada rodada
+  diária, `webapp/servir.py` monta um `.zip` (bancos + documentos +
+  fotos de anúncio, `backup.empacotar_para_envio`) e manda para o Google
+  Drive pessoal do dono (`integracoes/google_drive.py`, permissão
+  `drive.file`), mantendo os últimos 14. Apaga o antigo só depois de o
+  novo subir. O backup local do PC (G:\ do Drive para desktop) copia o
+  banco do PC, que deixou de ser o de produção em 2026-09-08.
 - **`WEBHOOK_SECRET` configurado.** `atendimento/webhook.py` já avisava
   no console quando essa variável está vazia ("aceita qualquer chamada
   sem autenticação") — era o estado real do `.env` até esta auditoria.

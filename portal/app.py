@@ -135,6 +135,12 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("COOKIE_HTTPS", "").strip()
 # rodar no mesmo navegador ao mesmo tempo em localhost, cookies com o
 # mesmo nome se sobrescreveriam entre si.
 app.config["SESSION_COOKIE_NAME"] = "portal_session"
+# SameSite=Lax -- mesmo motivo de webapp/app.py: sem a marcação, Safari
+# e Firefox mandam o cookie em POST vindo de outro site, e uma página
+# maliciosa poderia remover anúncio ou enviar arquivo em nome do cliente
+# logado. Lax deixa o link mágico do e-mail funcionando (é navegação
+# normal); Strict não deixaria.
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=SESSAO_VALIDADE_DIAS)
 
 URL_BASE = os.environ.get("PORTAL_URL_BASE", "http://127.0.0.1:5002")

@@ -9,6 +9,8 @@ __pycache__/
 .env
 credentials.json
 token.json
+# Autorização do Google Drive do backup de produção (integracoes/google_drive.py)
+drive_token.json
 atendimento/poller.log
 core/db/backup.log
 # Registro do modo simulado do WhatsApp -- guarda o TEXTO das respostas

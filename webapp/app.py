@@ -131,6 +131,12 @@ app.secret_key = os.environ["WEBAPP_SECRET_KEY"]
 # (127.0.0.1); ligar em True sem HTTPS de verdade na frente quebraria o
 # login (o navegador simplesmente não manda o cookie de volta).
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("COOKIE_HTTPS", "").strip().lower() == "sim"
+# SameSite=Lax (2026-10-14): sem ele, o Flask manda o cookie sem a
+# marcação, e Safari e Firefox o enviam também em POST vindo de OUTRO
+# site -- uma página qualquer aberta por quem está logado podia disparar
+# ação no painel em nome dela (CSRF). Lax e não Strict: Strict faria
+# o link para o painel, aberto de um e-mail, chegar sem login.
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 # Recarrega o template (.html) a cada requisição mesmo sem o modo debug
 # do Flask ligado -- TEMPLATES_AUTO_RELOAD por padrão segue app.debug, e
 # desligamos debug (ver comentário no app.run() no fim do arquivo) pelo

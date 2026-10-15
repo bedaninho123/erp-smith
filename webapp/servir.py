@@ -242,13 +242,42 @@ _INTERVALO_BACKUP_SEGUNDOS = 24 * 60 * 60
 _ATRASO_INICIAL_BACKUP_SEGUNDOS = 300
 
 
+def _enviar_backup_ao_drive(pasta_backup) -> None:
+    """Cópia FORA do Railway (2026-10-14): a pasta de main() fica no mesmo
+    volume do banco e sem documentos. Aqui vai tudo -- bancos, documentos,
+    fotos -- num .zip para o Google Drive do dono, guardando os últimos
+    BACKUP_MANTER_ULTIMOS. Falha aqui só vira log: o backup local da
+    rodada já está salvo, e o processo nunca cai por causa do Drive."""
+    import tempfile
+    from pathlib import Path
+
+    from core.db import backup as modulo_backup
+    from integracoes import google_drive
+
+    if not google_drive.drive_configurado():
+        _log("Google Drive não autorizado -- cópia externa pulada "
+             "(ver integracoes/drive_autorizar.py).", origem="backup-drive")
+        return
+    with tempfile.TemporaryDirectory() as temporaria:
+        nome = f"erp_smith_producao_{Path(pasta_backup).name}.zip"
+        arquivo = modulo_backup.empacotar_para_envio(Path(pasta_backup), Path(temporaria) / nome)
+        saida = google_drive.enviar_backup(arquivo, manter_ultimos=modulo_backup.MANTER_ULTIMOS)
+    _log(f"Enviado ao Drive: {nome} ({saida['tamanho'] // 1024} KB); "
+         f"{len(saida['apagados'])} antigo(s) apagado(s).", origem="backup-drive")
+
+
 def _loop_backup() -> None:
     from core.db import backup as modulo_backup
 
     time.sleep(_ATRASO_INICIAL_BACKUP_SEGUNDOS)
     while True:
         try:
-            modulo_backup.main(incluir_documentos=False)
+            pasta = modulo_backup.main(incluir_documentos=False)
+            try:
+                _enviar_backup_ao_drive(pasta)
+            except Exception:
+                _log("Falhou o envio ao Drive:", origem="backup-drive")
+                traceback.print_exc()
         except Exception:
             _log("Falhou:", origem="backup")
             traceback.print_exc()
