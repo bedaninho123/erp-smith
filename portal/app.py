@@ -630,6 +630,10 @@ def _resumo_filiacao(cpf: str) -> dict:
         "indisponivel": False,
         "anuidade_em_dia": ficha.get("anuidade_em_dia"),
         "anuidade_validade": _data_br(ficha.get("anuidade_validade")),
+        # 'Ativo' / 'Inativo' / None -- decide a cor do cartão. None
+        # (o campo não veio) fica na cor neutra: pintar de verde
+        # afirmaria o que ninguém conferiu, e de vermelho acusaria.
+        "status_filiacao": ficha.get("status_filiacao"),
     }
 
 
