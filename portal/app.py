@@ -293,7 +293,12 @@ def login():
                 try:
                     enviar_email(
                         destinatario=cliente["email"],
-                        assunto=f"Acesso ao Portal do Cliente -- {nome_empresa}",
+                        # Assunto curto e sem pontuação de enfeite: o nome da
+                        # empresa já aparece no remetente, logo ao lado (sem o
+                        # "nosso escritório" de reserva: remetente com esse nome
+                        # é pior que remetente sem nome).
+                        assunto="Seu link de acesso ao Portal do Cliente",
+                        nome_remetente=config.get("nome_empresa"),
                         corpo=(
                             f"Olá {cliente['nome']},\n\n"
                             "Use o link abaixo para acessar o Portal (válido por 15 minutos, "

@@ -25,6 +25,7 @@ ao renovar o token, então o caminho precisa ser gravável, não só legível.
 import base64
 import os
 from email.mime.text import MIMEText
+from email.utils import formataddr
 from pathlib import Path
 
 from google.auth.transport.requests import Request
@@ -65,20 +66,60 @@ def _obter_credenciais() -> Credentials:
     return creds
 
 
-def enviar_email(destinatario: str, assunto: str, corpo: str, em_resposta_a: str = None) -> str:
-    """Envia um e-mail e devolve o id da mensagem enviada. em_resposta_a é
-    o Message-ID do e-mail original, se disponível, para manter o e-mail
-    na mesma thread da conversa."""
-    creds = _obter_credenciais()
-    service = build("gmail", "v1", credentials=creds)
+def montar_mensagem(
+    destinatario: str, assunto: str, corpo: str,
+    remetente: str = None, nome_remetente: str = None, em_resposta_a: str = None,
+) -> MIMEText:
+    """Monta o e-mail sem mandar -- separado de enviar_email para dar
+    pra conferir o resultado sem precisar de Gmail de verdade.
 
+    nome_remetente é o que aparece na caixa de entrada no lugar do
+    endereço solto ("Smith Clube de Tiro" em vez de
+    atendimentosmithclube@gmail.com). Um endereço sem nome, pedindo
+    para clicar num link de acesso, é exatamente o que um golpe parece,
+    e os filtros de spam pesam isso (2026-10-15). O nome vem da
+    configuração da empresa, nunca de um literal aqui."""
     mensagem = MIMEText(corpo)
+    if remetente:
+        # formataddr codifica o nome quando tem acento -- montar a
+        # string na mão ("Nome <email>") quebraria em "Nossa Senhora".
+        mensagem["from"] = formataddr((nome_remetente, remetente)) if nome_remetente else remetente
     mensagem["to"] = destinatario
     mensagem["subject"] = assunto
     if em_resposta_a:
         mensagem["In-Reply-To"] = em_resposta_a
         mensagem["References"] = em_resposta_a
+    return mensagem
 
+
+# O endereço da conta não muda enquanto o processo vive (trocar de
+# conta é trocar o token.json e reiniciar) -- guardado para não gastar
+# uma chamada extra à API a cada e-mail com nome de remetente.
+_endereco_da_conta = None
+
+
+def enviar_email(
+    destinatario: str, assunto: str, corpo: str,
+    em_resposta_a: str = None, nome_remetente: str = None,
+) -> str:
+    """Envia um e-mail e devolve o id da mensagem enviada. em_resposta_a é
+    o Message-ID do e-mail original, se disponível, para manter o e-mail
+    na mesma thread da conversa. Sem nome_remetente, o cabeçalho From
+    fica de fora e o Gmail preenche sozinho, como sempre foi."""
+    global _endereco_da_conta
+    creds = _obter_credenciais()
+    service = build("gmail", "v1", credentials=creds)
+
+    remetente = None
+    if nome_remetente:
+        if _endereco_da_conta is None:
+            _endereco_da_conta = service.users().getProfile(userId="me").execute()["emailAddress"]
+        remetente = _endereco_da_conta
+
+    mensagem = montar_mensagem(
+        destinatario, assunto, corpo,
+        remetente=remetente, nome_remetente=nome_remetente, em_resposta_a=em_resposta_a,
+    )
     raw = base64.urlsafe_b64encode(mensagem.as_bytes()).decode("utf-8")
     enviado = service.users().messages().send(userId="me", body={"raw": raw}).execute()
     return enviado["id"]

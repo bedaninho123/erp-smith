@@ -259,6 +259,7 @@ def _enviar_notificacao_mudanca_status(empresa_id: str, caso_id: str) -> None:
     enviar_email(
         destinatario=destinatario["email"],
         assunto=f"Atualização no seu atendimento -- {nome_empresa}",
+        nome_remetente=config.get("nome_empresa"),
         corpo=(
             f"Olá {destinatario['nome']},\n\n"
             "Houve uma atualização no seu atendimento. Acesse o Portal do "
@@ -1121,6 +1122,7 @@ def _notificar_documento_recusado(empresa_id: str, caso_id: str, item: str) -> N
     enviar_email(
         destinatario=destinatario["email"],
         assunto=f"Documento precisa ser reenviado -- {nome_empresa}",
+        nome_remetente=config.get("nome_empresa"),
         corpo=(
             f"Olá {destinatario['nome']},\n\n"
             f"O documento enviado para \"{item}\" não pôde ser aceito. "
