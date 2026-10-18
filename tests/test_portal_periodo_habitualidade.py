@@ -25,8 +25,15 @@ def habitualidade_falsa(monkeypatch):
         {"data_participacao": _dia(500), "modalidade": "Mod Dezesseis Meses", "competicao": "Copa X"},
         {"data_participacao": _dia(1000), "modalidade": "Mod Trinta Meses", "competicao": "TREINO"},
     ]}}}
-    monkeypatch.setattr(portal_app, "consultar_habitualidade", lambda cpf: dados)
+    chamadas = []
+
+    def consultar(cpf, data_inicio=None, data_fim=None):
+        chamadas.append({"data_inicio": data_inicio, "data_fim": data_fim})
+        return dados
+
+    monkeypatch.setattr(portal_app, "consultar_habitualidade", consultar)
     monkeypatch.setattr(portal_app, "consultar_cr", lambda cpf: None)
+    return chamadas
 
 
 @pytest.fixture
@@ -50,6 +57,17 @@ def test_lista_e_cartao_seguem_o_periodo(banco, portal_filiado, habitualidade_fa
         assert (modalidade in html) == (modalidade in visiveis), modalidade
     assert f"participações nos últimos {periodo} meses" in html
     assert f"{len(visiveis)} de 4 no total" in html
+
+
+@pytest.mark.parametrize("periodo", ["6", "12", "36"])
+def test_consulta_sempre_pede_36_meses_em_formato_iso(banco, portal_filiado, habitualidade_falsa, periodo):
+    """Sem startDate a API real devolve só 12 meses -- e aí os filtros de
+    24 e 36 mostrariam o mesmo número do de 12, como se não houvesse nada
+    antes. DD/MM/AAAA dá HTTP 500 lá; só AAAA-MM-DD funciona."""
+    portal_filiado.get(f"/portal/habitualidade?periodo={periodo}")
+
+    assert habitualidade_falsa[-1]["data_inicio"] == (date.today() - timedelta(days=1095)).isoformat()
+    assert habitualidade_falsa[-1]["data_fim"] is None
 
 
 def test_sem_periodo_ou_periodo_invalido_mostra_12_meses(banco, portal_filiado, habitualidade_falsa):

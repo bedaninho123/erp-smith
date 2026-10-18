@@ -750,6 +750,13 @@ def habitualidade():
     # a consulta ao vivo já trouxe -- a chamada ao Shooting House é a mesma
     # para qualquer período, então trocar o filtro não muda o que é lido.
     meses = periodo_valido(request.args.get("periodo"))
+    # SEM startDate a API devolve só os últimos 12 meses (conferido com
+    # CPF real em 2026-10-18: 36 eventos sem filtro, 143 com startDate de
+    # 36 meses). Por isso a consulta pede sempre o período MAIOR, e o
+    # recorte por período é feito aqui. Formato AAAA-MM-DD: DD/MM/AAAA dá
+    # HTTP 500. Sem endDate de propósito -- não se sabe se ele inclui o
+    # próprio dia, e o treino de hoje sumiria da tela.
+    inicio_consulta = limite_janela(max(PERIODOS_MESES)).isoformat()
     cr = None
     eventos = []
     total_eventos = 0
@@ -766,7 +773,7 @@ def habitualidade():
         except ShootingHouseIndisponivel:
             indisponivel = True
         try:
-            hab = consultar_habitualidade(cpf)
+            hab = consultar_habitualidade(cpf, data_inicio=inicio_consulta)
         except ShootingHouseIndisponivel:
             indisponivel = True
             hab = {}
