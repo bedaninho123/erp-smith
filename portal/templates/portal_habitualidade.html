@@ -30,6 +30,9 @@
     border: 1px solid var(--line); font-size: .82rem; text-decoration: none; color: var(--steel);
   }
   .filtro-periodo a.ativo { background: var(--blue-deep); color: #fff; border-color: var(--blue-deep); }
+  .acao-imprimir { margin: 0 0 1rem; }
+  /* .botao foi desenhado para <button>; aqui é link, e link vem sublinhado. */
+  .acao-imprimir .botao { text-decoration: none; }
 </style>
 {% endblock %}
 {% block conteudo %}
@@ -112,6 +115,16 @@
     <h2>Histórico dos últimos {{ meses }} meses</h2>
     <span style="color:var(--steel); font-size:.82rem;">{{ eventos|length }} de {{ total_eventos }} no total</span>
   </div>
+
+  {# Folha A4 timbrada do mesmo período, para imprimir ou salvar em PDF
+     (ver habitualidade_imprimir em portal/app.py). Mesma janela, não
+     abre aba nova: no app instalado do iPhone a aba nova é o Safari,
+     com outro cookie, e a pessoa cairia na tela de login. #}
+  <p class="acao-imprimir">
+    <a class="botao" href="{{ url_for('habitualidade_imprimir', periodo=meses) }}">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" style="vertical-align:-3px; margin-right:.4rem;"><path d="M5 8V3h10v5"/><rect x="2.5" y="8" width="15" height="7" rx="1.5"/><path d="M5 12.5h10V17H5z"/></svg>Salvar ou imprimir
+    </a>
+  </p>
 
   {% if not eventos and total_eventos %}
   <div class="ficha estado-vazio">Nenhuma participação nos últimos {{ meses }} meses. Escolha um período maior para ver as anteriores.</div>

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{# O título vira o nome sugerido do arquivo quando a pessoa escolhe
+   "Salvar como PDF" no diálogo de impressão. #}
+<title>Relação de habitualidade - {{ atirador_nome }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #232428; --steel: #626873; --line: #DFE3EA;
+    --blue: #396BB3; --blue-deep: #24487D; --fundo: #E9ECF1;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--fundo); color: var(--ink);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.45;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+
+  /* ---- barra de ações: só na tela, some no papel ---- */
+  .acoes {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 12px 16px; background: #131417; color: #fff;
+  }
+  .acoes a { color: #fff; text-decoration: none; font-size: 14px; }
+  .acoes button {
+    margin-left: auto; height: 38px; padding: 0 18px; border: 0; border-radius: 8px;
+    background: var(--blue); color: #fff; font: 600 14px 'IBM Plex Sans', system-ui, sans-serif; cursor: pointer;
+  }
+  .acoes-dica { flex-basis: 100%; color: #B7BDC7; font-size: 12px; }
+
+  /* ---- a folha ---- */
+  .folha {
+    position: relative; overflow: hidden;
+    width: 210mm; min-height: 297mm; margin: 24px auto; padding: 16mm 14mm 22mm;
+    background: #fff; box-shadow: 0 2px 16px rgba(0,0,0,.12);
+  }
+  /* Timbrado de fundo: a própria logo, bem clara, no centro da folha.
+     <img> e não background-image de propósito -- o navegador NÃO imprime
+     imagem de fundo por padrão, e a pessoa teria que achar a opção
+     "gráficos de fundo" para o timbrado aparecer. */
+  .marca-dagua {
+    position: absolute; top: 50%; left: 50%; width: 78%;
+    transform: translate(-50%, -50%) rotate(-18deg);
+    opacity: .06; pointer-events: none; z-index: 0;
+  }
+  .folha > *:not(.marca-dagua) { position: relative; z-index: 1; }
+
+  .cabecalho { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .cabecalho img { height: 58px; }
+  .cabecalho-titulo { text-align: right; }
+  .cabecalho-titulo h1 {
+    margin: 0; font-family: 'Big Shoulders', system-ui, sans-serif; font-weight: 700;
+    font-size: 26px; line-height: 1.05; color: var(--ink);
+  }
+  .cabecalho-titulo p { margin: 2px 0 0; color: var(--steel); font-size: 12px; }
+  .filete { height: 3px; margin: 12px 0 18px; background: var(--blue); border-bottom: 1px solid var(--blue-deep); }
+
+  .identificacao { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; margin-bottom: 16px; }
+  .identificacao div span { display: block; color: var(--steel); font-size: 11px; }
+  .identificacao div b { font-weight: 600; font-size: 14px; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  .resumo { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 18px; }
+  .resumo div { padding: 10px 12px; border-left: 1px solid var(--line); }
+  .resumo div:first-child { border-left: 0; }
+  .resumo b { display: block; font-family: 'Big Shoulders', system-ui, sans-serif; font-size: 24px; line-height: 1; }
+  .resumo span { color: var(--steel); font-size: 11px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left; font-size: 11px; font-weight: 600; color: var(--blue-deep);
+    padding: 6px 8px; border-bottom: 1.5px solid var(--blue-deep);
+  }
+  tbody td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr { break-inside: avoid; page-break-inside: avoid; }
+  td.data { white-space: nowrap; }
+  .pequeno { color: var(--steel); font-size: 11px; }
+
+  .aviso { padding: 14px 16px; border: 1px solid var(--line); border-radius: 6px; }
+
+  .rodape {
+    margin-top: 22px; padding-top: 10px; border-top: 1px solid var(--line);
+    color: var(--steel); font-size: 10.5px;
+  }
+
+  /* Celular: a folha ocupa a largura da tela em vez de 210mm. */
+  @media screen and (max-width: 820px) {
+    .folha { width: auto; min-height: 0; margin: 12px; padding: 20px 16px 24px; }
+    .cabecalho { flex-direction: column; align-items: flex-start; }
+    .cabecalho-titulo { text-align: left; }
+    .identificacao { grid-template-columns: 1fr; }
+    .resumo { grid-template-columns: repeat(2, 1fr); }
+    .resumo div:nth-child(3) { border-left: 0; }
+    .resumo div:nth-child(n+3) { border-top: 1px solid var(--line); }
+    table, thead, tbody, tr, td { display: block; }
+    thead { display: none; }
+    tbody tr { padding: 8px 0; border-bottom: 1px solid var(--line); }
+    tbody td { padding: 1px 0; border: 0; }
+  }
+
+  @page { size: A4; margin: 12mm 12mm 14mm; }
+  @media print {
+    body { background: #fff; }
+    .acoes { display: none; }
+    .folha { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; overflow: visible; }
+    /* Fixa no papel: o navegador repete o timbrado em todas as páginas. */
+    .marca-dagua { position: fixed; }
+  }
+</style>
+</head>
+<body>
+
+<div class="acoes">
+  <a href="{{ url_for('habitualidade', periodo=meses) }}">&larr; Voltar</a>
+  {% if tem_cpf and not (indisponivel and not eventos) %}
+  <button type="button" id="botao-imprimir">Imprimir ou salvar PDF</button>
+  <span class="acoes-dica">Na tela que abrir, escolha a impressora ou "Salvar como PDF".</span>
+  {% endif %}
+</div>
+
+<main class="folha">
+  <img class="marca-dagua" src="{{ url_for('static', filename='img/logo_smith.png') }}" alt="">
+
+  <header class="cabecalho">
+    <img src="{{ url_for('static', filename='img/logo_smith.png') }}" alt="{{ nome_clube }}">
+    <div class="cabecalho-titulo">
+      <h1>Relação de habitualidade</h1>
+      <p>Emitido em {{ emitido_em }}</p>
+    </div>
+  </header>
+  <div class="filete"></div>
+
+  {% if not tem_cpf %}
+  <div class="aviso">Não conseguimos localizar seu CPF no cadastro. Fale com a gente para atualizar.</div>
+
+  {% elif indisponivel and not eventos %}
+  {# Mesma regra da tela: "não consegui consultar" nunca vira uma relação
+     vazia. Sem o botão de imprimir lá em cima -- não existe folha para
+     emitir. #}
+  <div class="aviso">
+    <b>Não foi possível consultar seus registros agora.</b><br>
+    Isto não quer dizer que você está sem registro — a consulta ao sistema do clube não respondeu
+    neste momento. Tente de novo em alguns minutos.
+  </div>
+
+  {% else %}
+  <section class="identificacao">
+    <div><span>Atirador</span><b>{{ atirador_nome }}</b></div>
+    <div><span>CPF</span><b class="mono">{{ cpf_formatado }}</b></div>
+    <div><span>Período</span><b>Últimos {{ meses }} meses</b></div>
+    <div><span>De / até</span><b class="mono">{{ inicio_periodo }} a {{ emitido_em[:10] }}</b></div>
+  </section>
+
+  <section class="resumo">
+    <div><b>{{ participacoes_periodo if participacoes_periodo is not none else 0 }}</b><span>participações</span></div>
+    <div><b>{{ treinos_provas_periodo.treinos }}</b><span>treinos</span></div>
+    <div><b>{{ treinos_provas_periodo.provas }}</b><span>provas</span></div>
+    <div><b class="mono" style="font-size:15px;">{{ ultima_participacao or "—" }}</b><span>última participação</span></div>
+  </section>
+
+  {% if not eventos %}
+  <div class="aviso">Nenhuma participação registrada nos últimos {{ meses }} meses.</div>
+  {% else %}
+  <table>
+    <thead>
+      <tr><th>Data</th><th>Modalidade</th><th>Tipo</th><th>Arma</th><th>Local</th></tr>
+    </thead>
+    <tbody>
+      {% for ev in eventos %}
+      <tr>
+        <td class="data mono">{{ ev.data_participacao }}{% if ev.hora_participacao %} <span class="pequeno">{{ ev.hora_participacao }}</span>{% endif %}</td>
+        <td>{{ ev.modalidade }}{% if ev.grupo %} <span class="pequeno">· {{ ev.grupo }}</span>{% endif %}</td>
+        <td>{% if ev.competicao and ev.competicao.strip().upper() != "TREINO" %}Prova{% else %}Treino{% endif %}</td>
+        <td class="pequeno">{{ ev.arma or "" }}</td>
+        <td class="pequeno">{{ ev.local or "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <footer class="rodape">
+    {{ nome_clube }} · Relação gerada pelo Portal do Cliente a partir dos registros de habitualidade
+    do clube em {{ emitido_em }}.
+  </footer>
+  {% endif %}
+</main>
+
+<script>
+  var botao = document.getElementById("botao-imprimir");
+  if (botao) botao.addEventListener("click", function () { window.print(); });
+</script>
+</body>
+</html>

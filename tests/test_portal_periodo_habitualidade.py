@@ -76,3 +76,53 @@ def test_sem_periodo_ou_periodo_invalido_mostra_12_meses(banco, portal_filiado, 
         assert "participações nos últimos 12 meses" in html
         assert "Mod Oito Meses" in html
         assert "Mod Dezesseis Meses" not in html
+
+
+# --------------------------------------------------------------------
+# Folha timbrada para imprimir / salvar em PDF
+# --------------------------------------------------------------------
+
+def test_folha_impressa_segue_o_periodo_e_identifica_o_atirador(banco, portal_filiado, habitualidade_falsa):
+    html = portal_filiado.get("/portal/habitualidade/imprimir?periodo=24").get_data(as_text=True)
+
+    assert "Relação de habitualidade" in html
+    assert "Ana Teste" in html
+    assert "111.111.111-11" in html
+    assert "Últimos 24 meses" in html
+    assert "Mod Dezesseis Meses" in html
+    assert "Mod Trinta Meses" not in html
+    assert "logo_smith.png" in html
+    assert 'id="botao-imprimir"' in html
+
+
+def test_tela_leva_para_a_folha_do_mesmo_periodo(banco, portal_filiado, habitualidade_falsa):
+    html = portal_filiado.get("/portal/habitualidade?periodo=36").get_data(as_text=True)
+    assert "/portal/habitualidade/imprimir?periodo=36" in html
+
+
+def test_folha_nao_sai_vazia_quando_a_consulta_falha(banco, portal_filiado, monkeypatch):
+    """Papel timbrado dizendo "nenhuma participação" para quem treinou é
+    o pior documento que esta rota pode emitir."""
+    from integracoes.shooting_house import ShootingHouseIndisponivel
+
+    def falha(*args, **kwargs):
+        raise ShootingHouseIndisponivel("fora do ar")
+
+    monkeypatch.setattr(portal_app, "consultar_habitualidade", falha)
+    monkeypatch.setattr(portal_app, "consultar_cr", falha)
+
+    html = portal_filiado.get("/portal/habitualidade/imprimir").get_data(as_text=True)
+
+    assert "Não foi possível consultar" in html
+    assert "Nenhuma participação" not in html
+    assert 'id="botao-imprimir"' not in html
+
+
+def test_folha_e_exclusiva_de_filiado_logado(banco, portal):
+    # Ana logada mas sem ser filiada ativa
+    assert portal.get("/portal/habitualidade/imprimir").status_code == 403
+
+    with portal.session_transaction() as sessao:
+        sessao.clear()
+    resposta = portal.get("/portal/habitualidade/imprimir")
+    assert resposta.status_code == 302

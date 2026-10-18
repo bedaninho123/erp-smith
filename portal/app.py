@@ -29,7 +29,8 @@ passa a enxergar dado de outra empresa.
 import os
 import secrets
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from functools import wraps
 from pathlib import Path
 from typing import Optional
@@ -732,24 +733,20 @@ def processos():
     return redirect(url_for("despachante"))
 
 
-@app.route("/portal/habitualidade")
-@cliente_login_required
-@filiado_ativo_required
-def habitualidade():
+def _dados_habitualidade(meses: int) -> dict:
+    """Consulta ao vivo + recorte por período, para a tela e para a folha
+    de impressão. Uma função só de propósito: o papel impresso não pode
+    dizer um número diferente da tela que a pessoa acabou de ver."""
     cliente_id = session["cliente_id"]
     empresa_id = empresa_atual()
     con = conectar(empresa_id)
     cliente = con.execute(
-        "SELECT cpf FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+        "SELECT nome, cpf FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
         (cliente_id, empresa_id),
     ).fetchone()
     con.close()
 
     cpf = cliente["cpf"] if cliente else None
-    # Período escolhido pelo atirador (6/12/24/36 meses). Só recorta o que
-    # a consulta ao vivo já trouxe -- a chamada ao Shooting House é a mesma
-    # para qualquer período, então trocar o filtro não muda o que é lido.
-    meses = periodo_valido(request.args.get("periodo"))
     # SEM startDate a API devolve só os últimos 12 meses (conferido com
     # CPF real em 2026-10-18: 36 eventos sem filtro, 143 com startDate de
     # 36 meses). Por isso a consulta pede sempre o período MAIOR, e o
@@ -811,21 +808,81 @@ def habitualidade():
     else:
         treinos_provas_periodo = {"treinos": 0, "provas": 0, "total": 0}
 
+    return {
+        "atirador_nome": cliente["nome"] if cliente else session.get("cliente_nome"),
+        "atirador_cpf": cpf,
+        "cr": cr,
+        "eventos": eventos,
+        "total_eventos": total_eventos,
+        "meses": meses,
+        "periodos": PERIODOS_MESES,
+        "participacoes_periodo": participacoes_periodo,
+        "treinos_provas_periodo": treinos_provas_periodo,
+        "ultima_participacao": _data_br(ultima_participacao),
+        "tem_cpf": bool(cpf),
+        "indisponivel": indisponivel,
+    }
+
+
+@app.route("/portal/habitualidade")
+@cliente_login_required
+@filiado_ativo_required
+def habitualidade():
+    # Período escolhido pelo atirador (6/12/24/36 meses). Só recorta o que
+    # a consulta ao vivo já trouxe -- a chamada ao Shooting House é a mesma
+    # para qualquer período, então trocar o filtro não muda o que é lido.
+    meses = periodo_valido(request.args.get("periodo"))
     return render_template(
         "portal_habitualidade.html",
         ativo="habitualidade",
         cliente_nome=session.get("cliente_nome"),
-        cr=cr,
-        eventos=eventos,
-        total_eventos=total_eventos,
-        meses=meses,
-        periodos=PERIODOS_MESES,
-        participacoes_periodo=participacoes_periodo,
-        treinos_provas_periodo=treinos_provas_periodo,
-        ultima_participacao=_data_br(ultima_participacao),
-        tem_cpf=bool(cpf),
-        indisponivel=indisponivel,
+        **_dados_habitualidade(meses),
     )
+
+
+# O servidor de produção roda em UTC (sem TZ no Railway), e o "emitido
+# em" da folha impressa é lido por gente. Brasil sem horário de verão
+# desde 2019: se o fuso não estiver instalado (Windows sem tzdata), -3h
+# fixo dá a mesma hora.
+try:
+    _FUSO_BRASILIA = ZoneInfo("America/Sao_Paulo")
+except ZoneInfoNotFoundError:
+    _FUSO_BRASILIA = timezone(timedelta(hours=-3))
+
+
+@app.route("/portal/habitualidade/imprimir")
+@cliente_login_required
+@filiado_ativo_required
+def habitualidade_imprimir():
+    """Folha A4 timbrada com a relação de participações do período, para
+    o atirador imprimir ou salvar em PDF pelo próprio navegador (o
+    diálogo de impressão do celular e do computador já oferece "Salvar
+    como PDF" -- sem biblioteca de PDF no servidor).
+
+    Mesma consulta AO VIVO da tela (`_dados_habitualidade`): a folha
+    nunca sai de retrato guardado. Consulta indisponível vira aviso, nunca
+    uma relação vazia -- papel timbrado dizendo "nenhuma participação"
+    para quem treinou seria o pior documento que esta tela pode emitir."""
+    meses = periodo_valido(request.args.get("periodo"))
+    dados = _dados_habitualidade(meses)
+    cpf = dados["atirador_cpf"] or ""
+    return render_template(
+        "portal_habitualidade_impressao.html",
+        **dados,
+        cpf_formatado=(f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}" if len(cpf) == 11 else cpf),
+        inicio_periodo=limite_janela(meses).strftime("%d/%m/%Y"),
+        emitido_em=datetime.now(_FUSO_BRASILIA).strftime("%d/%m/%Y às %H:%M"),
+        nome_clube=_nome_empresa(empresa_atual()),
+    )
+
+
+def _nome_empresa(empresa_id: str) -> str:
+    con = conectar(empresa_id)
+    linha = con.execute(
+        "SELECT nome FROM empresa WHERE empresa_id = ?", (empresa_id,)
+    ).fetchone()
+    con.close()
+    return linha["nome"] if linha else "Smith Clube de Tiro"
 
 
 @app.route("/portal/acervo")
