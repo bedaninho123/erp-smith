@@ -65,10 +65,13 @@ from core.motor_portal_auth import (
 from domain.clube_tiro.categorias_marketplace import CATEGORIA_ARMA, CATEGORIAS
 from domain.clube_tiro.motor_campeonatos import listar_campeonatos, obter_campeonato
 from domain.clube_tiro.motor_filiados import (
+    PERIODOS_MESES,
     contar_participacoes,
     contar_treinos_e_provas,
+    limite_janela,
     localizar_ativo_por_cpf_ou_email,
     obter_por_cpf as obter_filiado_por_cpf,
+    periodo_valido,
 )
 from domain.clube_tiro.motor_resultados import listar_resultados
 from integracoes.gmail import enviar_email, gmail_configurado
@@ -743,9 +746,14 @@ def habitualidade():
     con.close()
 
     cpf = cliente["cpf"] if cliente else None
+    # Período escolhido pelo atirador (6/12/24/36 meses). Só recorta o que
+    # a consulta ao vivo já trouxe -- a chamada ao Shooting House é a mesma
+    # para qualquer período, então trocar o filtro não muda o que é lido.
+    meses = periodo_valido(request.args.get("periodo"))
     cr = None
     eventos = []
-    participacoes_12m = None
+    total_eventos = 0
+    participacoes_periodo = None
     ultima_participacao = None
     # Tela vazia por "não consegui consultar" tem que ser visivelmente
     # diferente de tela vazia por "você não tem registro nenhum" -- ver
@@ -774,19 +782,27 @@ def habitualidade():
             for ev in dados.get("eventos", []):
                 eventos.append({**ev, "grupo": grupo})
         eventos.sort(key=lambda e: datetime.strptime(e["data_participacao"], "%d/%m/%Y"), reverse=True)
+        total_eventos = len(eventos)
+        # O histórico mostra só o período escolhido, com o mesmo corte de
+        # data das contagens -- senão o cartão diria "5 em 6 meses" em
+        # cima de uma lista de 30 linhas.
+        limite = limite_janela(meses)
+        eventos = [
+            e for e in eventos
+            if datetime.strptime(e["data_participacao"], "%d/%m/%Y").date() >= limite
+        ]
         # Mesmo número que aparece na ficha de Filiado do painel (bloco
-        # "NO CLUBE") -- mesma função, `contar_participacoes`, pra não
-        # existirem duas contas de "quantas participações em 12 meses"
-        # que podem divergir. A diferença é que ali é um retrato
-        # sincronizado (pode estar desatualizado) e aqui sai da consulta
-        # AO VIVO que acabou de rodar acima -- por isso o número aqui
-        # pode não bater com o do painel num dado momento, e é o daqui
-        # que vale (CLAUDE.md: pergunta de cliente é sempre consulta ao
-        # vivo).
-        participacoes_12m, ultima_participacao = contar_participacoes(hab)
-        treinos_provas_12m = contar_treinos_e_provas(hab)
+        # "NO CLUBE") quando o período é 12 meses -- mesma função,
+        # `contar_participacoes`, pra não existirem duas contas que podem
+        # divergir. A diferença é que ali é um retrato sincronizado (pode
+        # estar desatualizado) e aqui sai da consulta AO VIVO que acabou
+        # de rodar acima -- por isso o número aqui pode não bater com o do
+        # painel num dado momento, e é o daqui que vale (CLAUDE.md:
+        # pergunta de cliente é sempre consulta ao vivo).
+        participacoes_periodo, ultima_participacao = contar_participacoes(hab, meses=meses)
+        treinos_provas_periodo = contar_treinos_e_provas(hab, meses=meses)
     else:
-        treinos_provas_12m = {"treinos": 0, "provas": 0, "total": 0}
+        treinos_provas_periodo = {"treinos": 0, "provas": 0, "total": 0}
 
     return render_template(
         "portal_habitualidade.html",
@@ -794,8 +810,11 @@ def habitualidade():
         cliente_nome=session.get("cliente_nome"),
         cr=cr,
         eventos=eventos,
-        participacoes_12m=participacoes_12m,
-        treinos_provas_12m=treinos_provas_12m,
+        total_eventos=total_eventos,
+        meses=meses,
+        periodos=PERIODOS_MESES,
+        participacoes_periodo=participacoes_periodo,
+        treinos_provas_periodo=treinos_provas_periodo,
         ultima_participacao=_data_br(ultima_participacao),
         tem_cpf=bool(cpf),
         indisponivel=indisponivel,

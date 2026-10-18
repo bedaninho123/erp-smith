@@ -20,6 +20,16 @@
   .evento-modalidade { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
   .evento-arma { color: var(--steel); font-size: .82rem; margin-top: .15rem; }
   .evento-local { color: var(--steel); font-size: .8rem; margin-top: .15rem; }
+
+  /* Mesmo desenho do filtro de categorias do Marketplace: links simples,
+     sem JS -- o período vai na URL (?periodo=24) e a página recarrega. */
+  .filtro-periodo { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
+  .filtro-periodo-rotulo { color: var(--steel); font-size: .82rem; margin-right: .2rem; }
+  .filtro-periodo a {
+    display: inline-block; padding: .35rem .8rem; border-radius: 999px;
+    border: 1px solid var(--line); font-size: .82rem; text-decoration: none; color: var(--steel);
+  }
+  .filtro-periodo a.ativo { background: var(--blue-deep); color: #fff; border-color: var(--blue-deep); }
 </style>
 {% endblock %}
 {% block conteudo %}
@@ -67,23 +77,30 @@
   </div>
   {% endif %}
 
-  {# Mesmo número que aparece na ficha de Filiado do painel administrativo
-     (bloco "NO CLUBE" -> "Participações (12 meses)") -- mesma função de
-     contagem, ver portal/app.py::habitualidade(). Cartão em vez de linha
-     de texto porque é o dado que mais importa nesta tela: é o que decide
-     se a habitualidade legal está em dia. #}
+  <nav class="filtro-periodo" aria-label="Período">
+    <span class="filtro-periodo-rotulo">Período:</span>
+    {% for p in periodos %}
+    <a href="{{ url_for('habitualidade', periodo=p) }}" class="{{ 'ativo' if p == meses }}"
+       {% if p == meses %}aria-current="true"{% endif %}>Últimos {{ p }} meses</a>
+    {% endfor %}
+  </nav>
+
+  {# Com 12 meses, é o mesmo número da ficha de Filiado do painel
+     administrativo (bloco "NO CLUBE" -> "Participações (12 meses)") --
+     mesma função de contagem, ver portal/app.py::habitualidade(). Cartão
+     em vez de linha de texto porque é o dado que mais importa nesta tela. #}
   <div class="stats-grid" style="margin-bottom:1.6rem;">
     <div class="ficha stat-card">
-      <span class="stat-numero">{{ participacoes_12m if participacoes_12m is not none else 0 }}</span>
-      <span class="stat-rotulo">participações nos últimos 12 meses</span>
+      <span class="stat-numero">{{ participacoes_periodo if participacoes_periodo is not none else 0 }}</span>
+      <span class="stat-rotulo">participações nos últimos {{ meses }} meses</span>
     </div>
     <div class="ficha stat-card">
-      <span class="stat-numero">{{ treinos_provas_12m.treinos }}</span>
-      <span class="stat-rotulo">treinos nos últimos 12 meses</span>
+      <span class="stat-numero">{{ treinos_provas_periodo.treinos }}</span>
+      <span class="stat-rotulo">treinos nos últimos {{ meses }} meses</span>
     </div>
     <div class="ficha stat-card">
-      <span class="stat-numero">{{ treinos_provas_12m.provas }}</span>
-      <span class="stat-rotulo">provas nos últimos 12 meses</span>
+      <span class="stat-numero">{{ treinos_provas_periodo.provas }}</span>
+      <span class="stat-rotulo">provas nos últimos {{ meses }} meses</span>
     </div>
     <div class="ficha stat-card">
       <span class="stat-numero" style="font-size:1.3rem;">{{ ultima_participacao or "—" }}</span>
@@ -92,11 +109,13 @@
   </div>
 
   <div class="secao-titulo" style="margin-top:0;">
-    <h2>Histórico completo</h2>
-    <span style="color:var(--steel); font-size:.82rem;">{{ eventos|length }} no total</span>
+    <h2>Histórico dos últimos {{ meses }} meses</h2>
+    <span style="color:var(--steel); font-size:.82rem;">{{ eventos|length }} de {{ total_eventos }} no total</span>
   </div>
 
-  {% if not eventos %}
+  {% if not eventos and total_eventos %}
+  <div class="ficha estado-vazio">Nenhuma participação nos últimos {{ meses }} meses. Escolha um período maior para ver as anteriores.</div>
+  {% elif not eventos %}
   <div class="ficha estado-vazio">Nenhuma participação registrada ainda.</div>
   {% else %}
   <div class="ficha" style="padding: 0 1.3rem;">

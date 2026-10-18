@@ -29,6 +29,30 @@ from motor_ia.conexao import DOMAIN_DB
 # está em dia quando não está, e isso custa o CR dele.
 JANELA_MESES = 12
 
+# Períodos que o atirador pode escolher no Portal (pedido do usuário,
+# 2026-10-17). Lista controlada em código: o valor vem da URL, e qualquer
+# coisa fora daqui volta para JANELA_MESES em vez de virar uma janela
+# arbitrária. O panorama do clube e a sincronização continuam em 12.
+PERIODOS_MESES = (6, 12, 24, 36)
+
+
+def periodo_valido(valor) -> int:
+    """Converte o que veio da requisição num dos PERIODOS_MESES; qualquer
+    outra coisa (vazio, texto, 7, 120) vira JANELA_MESES."""
+    try:
+        meses = int(valor)
+    except (TypeError, ValueError):
+        return JANELA_MESES
+    return meses if meses in PERIODOS_MESES else JANELA_MESES
+
+
+def limite_janela(meses: int = JANELA_MESES, hoje=None):
+    """Primeiro dia que ainda conta dentro da janela de `meses`. Mesma
+    conta de dias que a janela de 12 meses sempre usou (365 * meses / 12),
+    para 12 meses continuar dando exatamente o número de antes."""
+    hoje = hoje or datetime.now().date()
+    return hoje - timedelta(days=365 * meses // 12)
+
 # Ordenações oferecidas na tela. Lista controlada em código, nunca texto
 # vindo da requisição: `ORDER BY` não aceita parâmetro do SQLite, então o
 # valor entra por interpolação -- e interpolar o que o navegador mandou
@@ -210,15 +234,15 @@ def proximos_a_sincronizar(empresa_id: str, limite: int) -> list[dict]:
         con.close()
 
 
-def contar_participacoes(habitualidade: dict, hoje=None) -> tuple[int, Optional[str]]:
+def contar_participacoes(habitualidade: dict, hoje=None,
+                         meses: int = JANELA_MESES) -> tuple[int, Optional[str]]:
     """Conta participações dentro da janela e devolve a data da última.
 
     Conta em Python, nunca na IA -- data é aritmética. O formato de
     entrada é o normalizado por integracoes/shooting_house.py
     (dd/mm/aaaa, já sem a hora).
     """
-    hoje = hoje or datetime.now().date()
-    limite = hoje - timedelta(days=365 * JANELA_MESES // 12)
+    limite = limite_janela(meses, hoje)
 
     datas = []
     for grupo in (habitualidade.get("habitualidades") or {}).values():
@@ -251,14 +275,14 @@ def _e_treino(evento: dict) -> bool:
     return not competicao or competicao.upper() == "TREINO"
 
 
-def contar_treinos_e_provas(habitualidade: dict, hoje=None) -> dict:
-    """Mesma janela de 12 meses de `contar_participacoes`, mas separando
+def contar_treinos_e_provas(habitualidade: dict, hoje=None,
+                            meses: int = JANELA_MESES) -> dict:
+    """Mesma janela de `contar_participacoes`, mas separando
     treino de prova em vez de só somar tudo -- pedido do usuário
     (2026-09-23): "tudo que é lançado como treino é treino, todas as
     outras são provas" (arma longa, arma curta, silhueta metálica...).
     Conta em Python, nunca na IA -- mesmo motivo de `contar_participacoes`."""
-    hoje = hoje or datetime.now().date()
-    limite = hoje - timedelta(days=365 * JANELA_MESES // 12)
+    limite = limite_janela(meses, hoje)
 
     treinos = provas = 0
     for grupo in (habitualidade.get("habitualidades") or {}).values():
@@ -291,8 +315,7 @@ def datas_participacao(habitualidade: dict, hoje=None) -> list:
     dois eventos, e é isso que o gráfico por dia precisa somar. Quem quer
     "em quantos dias distintos essa pessoa apareceu" usa set() em cima.
     """
-    hoje = hoje or datetime.now().date()
-    limite = hoje - timedelta(days=365 * JANELA_MESES // 12)
+    limite = limite_janela(JANELA_MESES, hoje)
 
     datas = []
     for grupo in (habitualidade.get("habitualidades") or {}).values():

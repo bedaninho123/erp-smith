@@ -103,6 +103,37 @@ def test_data_em_formato_estranho_nao_vira_contagem_errada():
     assert total == 1
 
 
+def test_periodo_escolhido_muda_a_janela_e_12_continua_o_padrao():
+    """Filtro de período do Portal (2026-10-17). 12 meses tem que dar o
+    mesmo número de antes -- é o que a sincronização e o painel usam."""
+    hoje = date(2026, 8, 25)
+    dados = _habitualidade([
+        "20/08/2026",  # ~5 dias
+        "01/01/2026",  # ~8 meses
+        "01/06/2025",  # ~15 meses
+        "01/01/2024",  # ~32 meses
+        "01/01/2023",  # ~44 meses -- fora até de 36
+    ])
+
+    def total(meses):
+        return motor_filiados.contar_participacoes(dados, hoje=hoje, meses=meses)[0]
+
+    assert total(6) == 1
+    assert total(12) == 2
+    assert total(12) == motor_filiados.contar_participacoes(dados, hoje=hoje)[0]
+    assert total(24) == 3
+    assert total(36) == 4
+    assert motor_filiados.contar_treinos_e_provas(dados, hoje=hoje, meses=36)["total"] == 4
+
+
+@pytest.mark.parametrize("valor, esperado", [
+    ("6", 6), ("24", 24), ("36", 36), (36, 36),
+    (None, 12), ("", 12), ("7", 12), ("120", 12), ("abc", 12), ("-6", 12),
+])
+def test_periodo_fora_da_lista_volta_para_12(valor, esperado):
+    assert motor_filiados.periodo_valido(valor) == esperado
+
+
 # --------------------------------------------------------------------
 # Guarda e leitura
 # --------------------------------------------------------------------
