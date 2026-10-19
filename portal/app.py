@@ -26,6 +26,7 @@ A empresa da sessão vem do cliente que logou (cliente.empresa_id), não
 da configuração: se um dia a configuração mudar, uma sessão viva não
 passa a enxergar dado de outra empresa.
 """
+import base64
 import os
 import secrets
 import time
@@ -84,8 +85,9 @@ from integracoes.shooting_house import (
     consultar_ficha_completa,
     consultar_habitualidade,
 )
+from portal.pdf_habitualidade import gerar_pdf as gerar_pdf_habitualidade
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR =Path(__file__).resolve().parent.parent
 ENV_PATH = BASE_DIR / ".env"
 
 # Mesmo allowlist/limite de integracoes/gmail.py e webapp/app.py --
@@ -866,13 +868,38 @@ def habitualidade_imprimir():
     meses = periodo_valido(request.args.get("periodo"))
     dados = _dados_habitualidade(meses)
     cpf = dados["atirador_cpf"] or ""
+    agora = datetime.now(_FUSO_BRASILIA)
+    contexto = {
+        **dados,
+        "cpf_formatado": (f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}" if len(cpf) == 11 else cpf),
+        "inicio_periodo": limite_janela(meses).strftime("%d/%m/%Y"),
+        "emitido_em": agora.strftime("%d/%m/%Y às %H:%M"),
+        "nome_clube": _nome_empresa(empresa_atual()),
+    }
+
+    # O mesmo papel em PDF, para o iPhone (ver portal/pdf_habitualidade.py).
+    # Vai DENTRO da página, e não num endereço próprio, de propósito: um
+    # endereço próprio refaria a consulta ao Shooting House, e o menu de
+    # compartilhar do iPhone só abre se for chamado no instante do toque
+    # -- não dá tempo de esperar a rede depois. Só quando a folha tem o
+    # que emitir: nunca um PDF "sem participação" para consulta que falhou.
+    pdf_base64 = None
+    pdf_nome = None
+    if dados["tem_cpf"] and not (dados["indisponivel"] and not dados["eventos"]):
+        try:
+            pdf_base64 = base64.b64encode(gerar_pdf_habitualidade(contexto)).decode("ascii")
+            nome = "".join(c for c in (contexto["atirador_nome"] or "") if c not in '\\/:*?"<>|').strip()
+            pdf_nome = f"Habitualidade {nome} {agora.strftime('%Y-%m-%d')}.pdf"
+        except Exception:
+            # Falha no PDF não pode tirar a folha do ar: o botão cai na
+            # impressão do navegador, que é o que existia antes.
+            app.logger.exception("Falha ao gerar o PDF da habitualidade")
+
     return render_template(
         "portal_habitualidade_impressao.html",
-        **dados,
-        cpf_formatado=(f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}" if len(cpf) == 11 else cpf),
-        inicio_periodo=limite_janela(meses).strftime("%d/%m/%Y"),
-        emitido_em=datetime.now(_FUSO_BRASILIA).strftime("%d/%m/%Y às %H:%M"),
-        nome_clube=_nome_empresa(empresa_atual()),
+        **contexto,
+        pdf_base64=pdf_base64,
+        pdf_nome=pdf_nome,
     )
 
 

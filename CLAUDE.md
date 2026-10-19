@@ -884,6 +884,15 @@ pedido, com ou sem cadastro, para não revelar se o CPF existe), 5
 tentativas (esgotou, o código morre e o link continua valendo) e gravado
 só como hash.
 
+**Imprimir no iPhone não usa `window.print()`** (2026-10-19): no app
+instalado ele é instável (num dia imprimiu, no outro o botão não fazia
+nada). A folha de habitualidade leva um PDF pronto
+(`portal/pdf_habitualidade.py`, fpdf2) embutido na própria página, e no
+iPhone o botão o entrega ao menu de compartilhar ("Imprimir", "Salvar em
+Arquivos"). Embutido, e não num endereço próprio, porque o menu só abre
+no instante do toque e um endereço próprio refaria a consulta ao
+Shooting House. Computador e Android seguem na impressão do navegador.
+
 A sessão do Portal passou a durar **30 dias** (`SESSAO_VALIDADE_DIAS`):
 sem isso o app pediria código toda vez que o celular o tirasse da
 memória. O escopo do app é `/portal` **sem barra**, porque o Início é

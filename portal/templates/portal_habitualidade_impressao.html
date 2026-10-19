@@ -121,7 +121,7 @@
   <a href="{{ url_for('habitualidade', periodo=meses) }}">&larr; Voltar</a>
   {% if tem_cpf and not (indisponivel and not eventos) %}
   <button type="button" id="botao-imprimir">Imprimir ou salvar PDF</button>
-  <span class="acoes-dica">Na tela que abrir, escolha a impressora ou "Salvar como PDF".</span>
+  <span class="acoes-dica" id="dica-imprimir">Na tela que abrir, escolha a impressora ou "Salvar como PDF".</span>
   {% endif %}
 </div>
 
@@ -194,8 +194,43 @@
 </main>
 
 <script>
-  var botao = document.getElementById("botao-imprimir");
-  if (botao) botao.addEventListener("click", function () { window.print(); });
+  (function () {
+    var botao = document.getElementById("botao-imprimir");
+    if (!botao) return;
+
+    // No iPhone/iPad o window.print() do app instalado é instável (um dia
+    // imprime, no outro o botão não faz nada). Lá o botão entrega o PDF
+    // pronto ao menu de compartilhar do aparelho, que tem "Imprimir" e
+    // "Salvar em Arquivos". Computador e Android seguem na impressão do
+    // navegador, que funciona e mostra a folha exatamente como na tela.
+    var ehIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    var pdfBase64 = {{ pdf_base64|tojson }};
+    var arquivo = null;
+    if (ehIOS && pdfBase64 && window.File && navigator.canShare) {
+      try {
+        var binario = atob(pdfBase64);
+        var bytes = new Uint8Array(binario.length);
+        for (var i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+        // Pronto antes do toque: o menu só abre se for chamado no mesmo
+        // instante do toque, sem nada demorado no meio.
+        var candidato = new File([bytes], {{ pdf_nome|tojson }}, { type: "application/pdf" });
+        if (navigator.canShare({ files: [candidato] })) arquivo = candidato;
+      } catch (e) { arquivo = null; }
+    }
+    if (arquivo) {
+      document.getElementById("dica-imprimir").textContent =
+        'Na tela que abrir, escolha "Imprimir" ou "Salvar em Arquivos".';
+    }
+
+    botao.addEventListener("click", function () {
+      if (!arquivo) { window.print(); return; }
+      navigator.share({ files: [arquivo], title: document.title }).catch(function (erro) {
+        // AbortError = a pessoa fechou o menu sem escolher nada.
+        if (erro && erro.name !== "AbortError") window.print();
+      });
+    });
+  })();
 </script>
 </body>
 </html>

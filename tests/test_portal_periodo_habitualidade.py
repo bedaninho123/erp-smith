@@ -126,3 +126,91 @@ def test_folha_e_exclusiva_de_filiado_logado(banco, portal):
         sessao.clear()
     resposta = portal.get("/portal/habitualidade/imprimir")
     assert resposta.status_code == 302
+
+
+# --------------------------------------------------------------------
+# PDF pronto para o menu de compartilhar do iPhone (2026-10-19)
+# --------------------------------------------------------------------
+
+import base64
+import re
+import zlib
+
+
+def _texto_do_pdf(pdf: bytes) -> str:
+    """Junta o texto de todas as páginas, sem biblioteca de leitura de
+    PDF: o fpdf2 comprime cada página com zlib e escreve o texto como
+    literal, então basta descomprimir os blocos."""
+    partes = []
+    for bloco in re.findall(rb"stream\r?\n(.*?)\r?\nendstream", pdf, re.S):
+        try:
+            partes.append(zlib.decompress(bloco).decode("latin-1"))
+        except zlib.error:
+            pass  # imagem ou bloco não comprimido com zlib
+    return "\n".join(partes)
+
+
+def _pdf_da_folha(html: str) -> bytes:
+    achado = re.search(r'var pdfBase64 = "([^"]+)"', html)
+    assert achado, "a folha não trouxe o PDF"
+    return base64.b64decode(achado.group(1))
+
+
+def test_pdf_da_folha_diz_o_mesmo_que_a_folha(banco, portal_filiado, habitualidade_falsa):
+    html = portal_filiado.get("/portal/habitualidade/imprimir?periodo=24").get_data(as_text=True)
+    pdf = _pdf_da_folha(html)
+
+    assert pdf.startswith(b"%PDF")
+    texto = _texto_do_pdf(pdf)
+    assert "Ana Teste" in texto
+    assert "111.111.111-11" in texto
+    assert "Mod Dezesseis Meses" in texto
+    assert "Mod Trinta Meses" not in texto
+    # Uma consulta só para tela e PDF -- o PDF não chama a API de novo.
+    assert len(habitualidade_falsa) == 1
+
+
+def test_sem_pdf_quando_a_consulta_falha(banco, portal_filiado, monkeypatch):
+    from integracoes.shooting_house import ShootingHouseIndisponivel
+
+    def falha(*args, **kwargs):
+        raise ShootingHouseIndisponivel("fora do ar")
+
+    monkeypatch.setattr(portal_app, "consultar_habitualidade", falha)
+    monkeypatch.setattr(portal_app, "consultar_cr", falha)
+
+    html = portal_filiado.get("/portal/habitualidade/imprimir").get_data(as_text=True)
+    assert "var pdfBase64 = null;" in html
+
+
+def test_falha_no_pdf_nao_derruba_a_folha(banco, portal_filiado, habitualidade_falsa, monkeypatch):
+    def quebra(dados):
+        raise RuntimeError("pdf quebrou")
+
+    monkeypatch.setattr(portal_app, "gerar_pdf_habitualidade", quebra)
+    resposta = portal_filiado.get("/portal/habitualidade/imprimir")
+
+    assert resposta.status_code == 200
+    html = resposta.get_data(as_text=True)
+    assert 'id="botao-imprimir"' in html
+    assert "var pdfBase64 = null;" in html
+
+
+def test_pdf_aguenta_caractere_fora_da_fonte():
+    """Texto vindo da API com travessão, aspas curvas ou emoji não pode
+    derrubar a geração."""
+    from portal.pdf_habitualidade import gerar_pdf
+
+    eventos = [{"data_participacao": "01/10/2026", "hora_participacao": "16:30",
+                "modalidade": "Tiro — Rápido “IPSC”", "grupo": "ACLP",
+                "competicao": "TREINO", "arma": "Pistola 🔫 9mm", "local": "Estande"}] * 60
+    pdf = gerar_pdf({
+        "atirador_nome": "José da Conceição", "cpf_formatado": "111.111.111-11",
+        "meses": 12, "inicio_periodo": "19/10/2025", "emitido_em": "19/10/2026 às 10:00",
+        "nome_clube": "Clube Teste", "participacoes_periodo": 60,
+        "treinos_provas_periodo": {"treinos": 60, "provas": 0, "total": 60},
+        "ultima_participacao": "01/10/2026", "eventos": eventos,
+    })
+    texto = _texto_do_pdf(pdf)
+    assert "Concei" in texto
+    assert "Página 2 de" in texto  # 60 linhas quebram em mais de uma página
