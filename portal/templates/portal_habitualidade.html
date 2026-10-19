@@ -33,6 +33,20 @@
   .acao-imprimir { margin: 0 0 1rem; }
   /* .botao foi desenhado para <button>; aqui é link, e link vem sublinhado. */
   .acao-imprimir .botao { text-decoration: none; }
+  /* Enquanto a folha é preparada (consulta ao vivo, alguns segundos).
+     No app instalado do iPhone não existe barra de carregamento do
+     navegador: sem isto o toque parece não ter feito nada. */
+  .acao-imprimir .botao.carregando { opacity: .75; pointer-events: none; }
+  .acao-imprimir-giro {
+    display: none; width: 14px; height: 14px; margin-right: .45rem; vertical-align: -2px;
+    border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+    animation: acao-imprimir-giro .8s linear infinite;
+  }
+  .acao-imprimir .botao.carregando .acao-imprimir-giro { display: inline-block; }
+  .acao-imprimir .botao.carregando svg { display: none; }
+  .acao-imprimir-dica { display: none; margin: .4rem 0 0; color: var(--steel); font-size: .82rem; }
+  .acao-imprimir-dica.visivel { display: block; }
+  @keyframes acao-imprimir-giro { to { transform: rotate(360deg); } }
 </style>
 {% endblock %}
 {% block conteudo %}
@@ -121,10 +135,33 @@
      abre aba nova: no app instalado do iPhone a aba nova é o Safari,
      com outro cookie, e a pessoa cairia na tela de login. #}
   <p class="acao-imprimir">
-    <a class="botao" href="{{ url_for('habitualidade_imprimir', periodo=meses) }}">
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" style="vertical-align:-3px; margin-right:.4rem;"><path d="M5 8V3h10v5"/><rect x="2.5" y="8" width="15" height="7" rx="1.5"/><path d="M5 12.5h10V17H5z"/></svg>Salvar ou imprimir
+    <a class="botao" id="botao-folha" href="{{ url_for('habitualidade_imprimir', periodo=meses) }}">
+      <span class="acao-imprimir-giro" aria-hidden="true"></span><svg aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" style="vertical-align:-3px; margin-right:.4rem;"><path d="M5 8V3h10v5"/><rect x="2.5" y="8" width="15" height="7" rx="1.5"/><path d="M5 12.5h10V17H5z"/></svg><span class="acao-imprimir-texto">Salvar ou imprimir</span>
     </a>
+    <span class="acao-imprimir-dica" id="dica-folha" role="status">Consultando seus registros no sistema do clube. Pode levar alguns segundos.</span>
   </p>
+  <script>
+    (function () {
+      var botao = document.getElementById("botao-folha");
+      var dica = document.getElementById("dica-folha");
+      var texto = botao.querySelector(".acao-imprimir-texto");
+      var original = texto.textContent;
+      botao.addEventListener("click", function () {
+        botao.classList.add("carregando");
+        botao.setAttribute("aria-busy", "true");
+        texto.textContent = "Preparando a folha…";
+        dica.classList.add("visivel");
+      });
+      // Voltar da folha pelo "← Voltar" ou pelo gesto do iPhone pode
+      // reexibir esta tela da memória, com o botão ainda girando.
+      window.addEventListener("pageshow", function () {
+        botao.classList.remove("carregando");
+        botao.removeAttribute("aria-busy");
+        texto.textContent = original;
+        dica.classList.remove("visivel");
+      });
+    })();
+  </script>
 
   {% if not eventos and total_eventos %}
   <div class="ficha estado-vazio">Nenhuma participação nos últimos {{ meses }} meses. Escolha um período maior para ver as anteriores.</div>
