@@ -214,6 +214,40 @@ def remover_item_extra(empresa_id: str, processo_id: str, documento_exigido_id: 
         con.close()
 
 
+def _conferir_processo_e_item(con, empresa_id: str, processo_id: str, documento_exigido_id: str):
+    """Processo e item de checklist têm que ser desta empresa, e o item
+    tem que ser do serviço deste processo. Devolve a linha do processo."""
+    processo = con.execute(
+        "SELECT servico_id, caso_id, cliente_id FROM processo WHERE processo_id = ? AND empresa_id = ?",
+        (processo_id, empresa_id),
+    ).fetchone()
+    if not processo:
+        raise ValueError(f"Processo não encontrado: {processo_id}")
+
+    # Item extra de OUTRO processo não serve aqui, mesmo sendo do
+    # mesmo serviço -- é a carabina de outra pessoa.
+    existe_item = con.execute(
+        "SELECT 1 FROM documento_exigido WHERE documento_exigido_id = ? "
+        "AND servico_id = ? AND empresa_id = ? "
+        "AND (processo_id IS NULL OR processo_id = ?)",
+        (documento_exigido_id, processo["servico_id"], empresa_id, processo_id),
+    ).fetchone()
+    if not existe_item:
+        raise ValueError("Este item de checklist não pertence ao serviço deste processo.")
+    return processo
+
+
+def conferir_item(empresa_id: str, processo_id: str, documento_exigido_id: str) -> dict:
+    """A mesma conferência de marcar_documento(), para quem precisa dela
+    ANTES de gravar o arquivo em disco (envio pelo checklist do painel):
+    item errado descoberto depois deixaria um arquivo solto no caso."""
+    con = conectar(empresa_id)
+    try:
+        return dict(_conferir_processo_e_item(con, empresa_id, processo_id, documento_exigido_id))
+    finally:
+        con.close()
+
+
 def marcar_documento(
     empresa_id: str, processo_id: str, documento_exigido_id: str, documento_id: str,
     marcado_por: str = "Painel administrativo",
@@ -229,27 +263,15 @@ def marcar_documento(
     try:
         # Cada um dos três IDs é conferido contra a empresa: processo,
         # item de checklist e documento têm que ser todos dela.
-        processo = con.execute(
-            "SELECT servico_id FROM processo WHERE processo_id = ? AND empresa_id = ?",
-            (processo_id, empresa_id),
-        ).fetchone()
-        if not processo:
-            raise ValueError(f"Processo não encontrado: {processo_id}")
+        processo = _conferir_processo_e_item(con, empresa_id, processo_id, documento_exigido_id)
 
-        # Item extra de OUTRO processo não serve aqui, mesmo sendo do
-        # mesmo serviço -- é a carabina de outra pessoa.
-        existe_item = con.execute(
-            "SELECT 1 FROM documento_exigido WHERE documento_exigido_id = ? "
-            "AND servico_id = ? AND empresa_id = ? "
-            "AND (processo_id IS NULL OR processo_id = ?)",
-            (documento_exigido_id, processo["servico_id"], empresa_id, processo_id),
-        ).fetchone()
-        if not existe_item:
-            raise ValueError("Este item de checklist não pertence ao serviço deste processo.")
-
+        # E o documento tem que ser da MESMA PESSOA do processo (2026-10-20).
+        # O filtro de empresa não cobre dois clientes do mesmo despachante:
+        # sem isto, o arquivo do Bruno marcado no processo da Ana apareceria
+        # no checklist que a Ana vê no Portal.
         existe_documento = con.execute(
-            "SELECT 1 FROM documento WHERE documento_id = ? AND empresa_id = ?",
-            (documento_id, empresa_id),
+            "SELECT 1 FROM documento WHERE documento_id = ? AND empresa_id = ? AND cliente_id = ?",
+            (documento_id, empresa_id, processo["cliente_id"]),
         ).fetchone()
         if not existe_documento:
             raise ValueError(f"Documento não encontrado: {documento_id}")

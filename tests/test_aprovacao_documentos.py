@@ -147,6 +147,68 @@ def test_marcacao_feita_pelo_painel_ja_nasce_aprovada(checklist, painel):
     assert painel.get("/api/documentos-pendentes").get_json() == []
 
 
+def _enviar_pelo_checklist_do_painel(painel, caso_id, processo_id, documento_exigido_id):
+    return painel.post(
+        f"/api/casos/{caso_id}/documentos",
+        data={
+            "processo_id": processo_id,
+            "documento_exigido_id": documento_exigido_id,
+            "tipo_documento": "Documento de identificação",
+            "arquivo": (io.BytesIO(b"%PDF-1.4 trazido no balcao"), "rg-balcao.pdf"),
+        },
+        content_type="multipart/form-data",
+    )
+
+
+def test_arquivo_enviado_pelo_checklist_do_painel_aparece_recebido_no_portal(checklist, painel, portal):
+    """O pedido de 2026-10-20: enviar no checklist e o cliente ver.
+
+    Antes, o arquivo enviado pelo painel ficava solto no caso e o item
+    seguia "faltando" no Portal até alguém marcar à mão, em outro gesto.
+    """
+    antes = portal.get("/portal/casos/CAS-000001").get_data(as_text=True)
+    assert "faltando" in antes
+
+    resposta = _enviar_pelo_checklist_do_painel(painel, "CAS-000001", "PRO-000001", ITEM_A)
+
+    assert resposta.status_code == 200
+    item = _item("PRO-000001")
+    assert item["estado"] == "aprovado"
+    assert item["documentos"][0]["nome_arquivo"] == "rg-balcao.pdf"
+    depois = portal.get("/portal/casos/CAS-000001").get_data(as_text=True)
+    assert "faltando" not in depois
+
+
+def test_checklist_do_painel_nao_envia_para_processo_de_outro_caso(checklist, painel):
+    """Caso da Ana na URL, processo do Bruno no formulário: nem o arquivo
+    pode ser gravado, senão ficaria um documento da Ana pendurado no
+    processo do Bruno."""
+    resposta = _enviar_pelo_checklist_do_painel(painel, "CAS-000001", "PRO-000002", ITEM_A)
+
+    assert resposta.status_code == 400
+    assert _item("PRO-000002")["estado"] == "faltando"
+    con = conectar(EMPRESA_A)
+    try:
+        assert con.execute(
+            "SELECT COUNT(*) FROM documento WHERE nome_arquivo = 'rg-balcao.pdf'"
+        ).fetchone()[0] == 0
+    finally:
+        con.close()
+
+
+def test_documento_de_outro_cliente_nao_e_marcado_no_checklist(checklist, painel):
+    """DOC-000002 é do Bruno, mesma empresa da Ana. Marcado no processo da
+    Ana, o nome do arquivo dele apareceria no Portal dela -- o filtro de
+    empresa não pega isso."""
+    resposta = painel.post(
+        "/api/processos/PRO-000001/checklist",
+        json={"documento_exigido_id": ITEM_A, "documento_id": "DOC-000002"},
+    )
+
+    assert resposta.status_code == 400
+    assert _item("PRO-000001")["estado"] == "faltando"
+
+
 # --------------------------------------------------------------------
 # 2. O que não pode acontecer
 # --------------------------------------------------------------------

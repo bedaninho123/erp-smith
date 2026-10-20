@@ -469,6 +469,13 @@
     .item-checklist > .acoes-item { position: absolute; top: 0; right: 0; margin: 0 !important; }
     .item-checklist .btn-item-extra { opacity: 0; transition: opacity .12s; }
     .item-checklist:hover .btn-item-extra, .item-checklist .btn-item-extra:focus { opacity: 1; }
+    /* Item com arquivo escolhido e ainda NÃO salvo (2026-10-20): a faixa
+       à esquerda é o aviso de que o cliente ainda não vê isto no Portal. */
+    .item-checklist.pendente { border-left: 3px solid var(--blue); padding-left: var(--e3); }
+    .item-checklist .escolha-pendente { color: var(--blue); }
+    /* Esconde o <input type=file> nativo -- quem abre o seletor é o
+       <label> com cara de botão, que tem a altura da régua. */
+    .arquivo-checklist { display: none; }
   }
   .resumo-acao { cursor: pointer; font-weight: 600; color: var(--blue); }
   [data-painel] > details { padding: var(--e4); }
@@ -1270,6 +1277,7 @@
             <details class="card-body border-top">
               <summary class="resumo-acao">+ Adicionar documento</summary>
               <p class="text-muted mt-3">Para quando o cliente traz o documento pessoalmente ou por outro canal, em vez de mandar por e-mail. PDF ou foto, até 15MB.</p>
+              <p class="small mb-3">Documento que o processo exige? Envie pelo <b>checklist</b>, na aba "Processo e checklist" — enviado por aqui, ele fica guardado no caso mas o item continua "faltando" para o cliente no Portal.</p>
               <div class="row">
                 <div class="col-md-6">
                   <label for="documento-arquivo">Arquivo</label>
@@ -5166,15 +5174,25 @@ function renderChecklist(processo) {
           `).join("")}
         </div>`;
     } else {
+      // Duas formas de resolver o item, as duas só valem ao clicar em
+      // "Salvar alterações": enviar o arquivo agora, ou apontar um que já
+      // chegou no caso (por e-mail, por exemplo).
       corpo = `<div class="mb-2">
           <span class="badge badge-secondary mr-2">Faltando</span>${escapeHtml(item.item)}
           ${item.motivo_recusa ? `<div class="small text-danger mt-1">Recusado antes: ${escapeHtml(item.motivo_recusa)}</div>` : ""}
-          <div class="mt-1 form-inline">
-            <select class="form-control form-control-sm mr-2 select-doc-checklist" data-dex="${item.documento_exigido_id}" style="min-width:220px">
-              <option value="">selecione um documento recebido…</option>
-              ${opcoesDocumentos}
-            </select>
-            <button type="button" class="btn btn-outline-primary btn-sm btn-marcar-checklist" data-dex="${item.documento_exigido_id}">Marcar</button>
+          <div class="mt-1 form-inline" style="gap:var(--e2)">
+            <label class="btn btn-outline-primary btn-sm mb-0">
+              <i class="fas fa-upload mr-1" aria-hidden="true"></i>Enviar arquivo
+              <input type="file" class="arquivo-checklist" data-dex="${item.documento_exigido_id}"
+                     accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp">
+            </label>
+            ${opcoesDocumentos ? `
+              <select class="form-control form-control-sm select-doc-checklist" data-dex="${item.documento_exigido_id}"
+                      style="min-width:220px" aria-label="Usar um documento já recebido">
+                <option value="">ou usar um já recebido…</option>
+                ${opcoesDocumentos}
+              </select>` : ""}
+            <span class="small escolha-pendente" data-dex="${item.documento_exigido_id}"></span>
           </div>
         </div>`;
     }
@@ -5189,28 +5207,20 @@ function renderChecklist(processo) {
                data-dex="${item.documento_exigido_id}" data-nome="${escapeHtml(item.item)}">remover este item</button>`
           : ""}
       </div>`;
-    return cabecalho + `<div class="item-checklist">${corpo}${acoes}</div>`;
+    return cabecalho + `<div class="item-checklist" data-dex="${item.documento_exigido_id}">${corpo}${acoes}</div>`;
   }).join("");
 
-  $("#checklist-corpo").innerHTML = linhas || `<p class="text-muted">Nenhum item de checklist cadastrado para este serviço.</p>`;
+  const temFaltando = processo.checklist.some(i => i.estado === "faltando");
+  $("#checklist-corpo").innerHTML = linhas
+    ? linhas + (temFaltando ? `
+      <div class="d-flex align-items-center flex-wrap border-top pt-3 mt-2" style="gap:var(--e3)">
+        <button type="button" class="btn btn-primary" id="btn-salvar-checklist" disabled>Salvar alterações</button>
+        <span class="text-muted small" id="checklist-salvar-status" aria-live="polite">Nenhuma alteração para salvar.</span>
+      </div>` : "")
+    : `<p class="text-muted">Nenhum item de checklist cadastrado para este serviço.</p>`;
 
   ligarBotoesVerDocumento($("#checklist-corpo"));
-
-  $("#checklist-corpo").querySelectorAll(".btn-marcar-checklist").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const dex = btn.dataset.dex;
-      const select = $("#checklist-corpo").querySelector(`.select-doc-checklist[data-dex="${dex}"]`);
-      const documentoId = select.value;
-      if (!documentoId) { alert("Selecione um documento."); return; }
-      const r = await fetch(`/api/processos/${processo.processo_id}/checklist`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documento_exigido_id: dex, documento_id: documentoId }),
-      });
-      const d = await r.json();
-      if (!r.ok) { alert("Erro ao marcar: " + d.erro); return; }
-      await recarregarChecklist(processo.caso_id, processo.processo_id);
-    });
-  });
+  ligarSalvarChecklist(processo);
 
   // Aprovar/recusar aqui recarrega o checklist E o contador da barra
   // lateral: a fila da tela "Documentos a Aprovar" é a mesma coisa vista
@@ -5268,6 +5278,113 @@ function renderChecklist(processo) {
       if (!r.ok) { alert("Erro ao remover: " + d.erro); return; }
       await recarregarChecklist(processo.caso_id, processo.processo_id);
     });
+  });
+}
+
+// Escolhas do checklist ainda não salvas (2026-10-20). Antes, enviar o
+// arquivo (aba Documentos) e ligá-lo ao item ("Marcar") eram dois gestos
+// separados, e o item continuava "faltando" no Portal do cliente até
+// alguém lembrar do segundo. Agora cada item guarda a escolha e um botão
+// só salva tudo.
+let checklistPendentes = 0;
+window.addEventListener("beforeunload", evento => {
+  if (checklistPendentes) { evento.preventDefault(); evento.returnValue = ""; }
+});
+
+function ligarSalvarChecklist(processo) {
+  const corpo = $("#checklist-corpo");
+  const botao = corpo.querySelector("#btn-salvar-checklist");
+  checklistPendentes = 0;
+  if (!botao) return;
+  const status = corpo.querySelector("#checklist-salvar-status");
+
+  // Uma escolha por item: arquivo novo OU documento já recebido.
+  const escolhas = new Map();
+
+  const atualizar = () => {
+    checklistPendentes = escolhas.size;
+    botao.disabled = !escolhas.size;
+    status.className = "text-muted small";
+    status.textContent = escolhas.size
+      ? `${escolhas.size} ${escolhas.size === 1 ? "item alterado" : "itens alterados"}, ainda não salvo — o cliente ainda não vê no Portal.`
+      : "Nenhuma alteração para salvar.";
+  };
+
+  const marcar = (dex, escolha, rotulo) => {
+    const linha = corpo.querySelector(`.item-checklist[data-dex="${dex}"]`);
+    const aviso = corpo.querySelector(`.escolha-pendente[data-dex="${dex}"]`);
+    if (escolha) escolhas.set(dex, escolha); else escolhas.delete(dex);
+    linha.classList.toggle("pendente", !!escolha);
+    aviso.textContent = rotulo || "";
+    atualizar();
+  };
+
+  corpo.querySelectorAll(".arquivo-checklist").forEach(campo => {
+    campo.addEventListener("change", () => {
+      const arquivo = campo.files[0];
+      const dex = campo.dataset.dex;
+      const select = corpo.querySelector(`.select-doc-checklist[data-dex="${dex}"]`);
+      if (select) select.value = "";
+      marcar(dex, arquivo ? { arquivo } : null, arquivo ? arquivo.name : "");
+    });
+  });
+
+  corpo.querySelectorAll(".select-doc-checklist").forEach(select => {
+    select.addEventListener("change", () => {
+      const dex = select.dataset.dex;
+      const campo = corpo.querySelector(`.arquivo-checklist[data-dex="${dex}"]`);
+      if (campo) campo.value = "";
+      marcar(dex, select.value ? { documentoId: select.value } : null, "");
+    });
+  });
+
+  botao.addEventListener("click", async () => {
+    const itens = processo.checklist;
+    botao.disabled = true;
+    status.textContent = "Salvando…";
+    const erros = [];
+    for (const [dex, escolha] of escolhas) {
+      const nomeItem = (itens.find(i => i.documento_exigido_id === dex) || {}).item || dex;
+      let r;
+      try {
+        if (escolha.arquivo) {
+          const dados = new FormData();
+          dados.append("arquivo", escolha.arquivo);
+          dados.append("processo_id", processo.processo_id);
+          dados.append("documento_exigido_id", dex);
+          dados.append("tipo_documento", nomeItem);
+          r = await fetch(`/api/casos/${processo.caso_id}/documentos`, { method: "POST", body: dados });
+        } else {
+          r = await fetch(`/api/processos/${processo.processo_id}/checklist`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ documento_exigido_id: dex, documento_id: escolha.documentoId }),
+          });
+        }
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          erros.push(`${nomeItem}: ${d.erro || "falha desconhecida"}`);
+        }
+      } catch (e) {
+        erros.push(`${nomeItem}: sem conexão com o servidor`);
+      }
+    }
+    const salvos = escolhas.size - erros.length;
+    checklistPendentes = 0;
+    await recarregarChecklist(processo.caso_id, processo.processo_id);
+
+    // A ficha foi redesenhada: o aviso vai no status NOVO.
+    const novoStatus = $("#checklist-salvar-status");
+    const mensagem = erros.length
+      ? `${salvos ? `${salvos} salvo(s). ` : ""}Não foi possível salvar: ${erros.join("; ")}`
+      : `Salvo. O cliente já vê ${salvos === 1 ? "este documento" : "estes documentos"} no Portal.`;
+    if (novoStatus) {
+      novoStatus.className = erros.length ? "small text-danger" : "small text-success";
+      novoStatus.textContent = mensagem;
+    } else {
+      // Checklist completo: a barra de salvar some junto com os faltantes.
+      if (erros.length) alert(mensagem);
+      else $("#checklist-titulo small").textContent += " — salvo, o cliente já vê no Portal";
+    }
   });
 }
 

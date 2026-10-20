@@ -1321,6 +1321,30 @@ def documento_upload(caso_id):
     processo_id = (request.form.get("processo_id") or "").strip() or None
     tipo_documento = (request.form.get("tipo_documento") or "").strip() or "Anexo enviado pelo painel"
     observacoes = (request.form.get("observacoes") or "").strip() or None
+    # Enviado pelo próprio checklist (2026-10-20): o arquivo já nasce
+    # marcado no item. Antes, enviar e marcar eram dois gestos em duas
+    # abas, e o item seguia "faltando" no Portal até alguém lembrar do
+    # segundo.
+    documento_exigido_id = (request.form.get("documento_exigido_id") or "").strip() or None
+
+    # Tudo conferido ANTES de gravar o arquivo: descobrir depois deixaria
+    # um arquivo solto no caso.
+    if processo_id:
+        con = conectar(empresa_id)
+        do_caso = con.execute(
+            "SELECT 1 FROM processo WHERE processo_id = ? AND caso_id = ? AND empresa_id = ?",
+            (processo_id, caso_id, empresa_id),
+        ).fetchone()
+        con.close()
+        if not do_caso:
+            return jsonify(erro="Este processo não é deste caso."), 400
+        if documento_exigido_id:
+            try:
+                motor_checklist.conferir_item(empresa_id, processo_id, documento_exigido_id)
+            except ValueError as e:
+                return jsonify(erro=str(e)), 400
+    elif documento_exigido_id:
+        return jsonify(erro="Item de checklist sem processo."), 400
 
     try:
         documento_id = motor_documentos.salvar_documento(
@@ -1328,6 +1352,11 @@ def documento_upload(caso_id):
             caso_id=caso_id, processo_id=processo_id,
             tipo_documento=tipo_documento, observacoes=observacoes,
         )
+        if documento_exigido_id:
+            motor_checklist.marcar_documento(
+                empresa_id, processo_id, documento_exigido_id, documento_id,
+                marcado_por=session.get("usuario_nome", "Painel administrativo"),
+            )
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(ok=True, documento_id=documento_id)
