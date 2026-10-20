@@ -1424,8 +1424,16 @@
     <div id="view-tarefas" class="view">
       <div class="content-header">
         <div class="container-fluid">
-          <h1 class="m-0">Tarefas e Prazos</h1>
-          <p class="text-muted mb-0">O que precisa ser feito, por quem e até quando. Toda tarefa nasce dentro de um caso.</p>
+          <div class="d-flex justify-content-between align-items-start flex-wrap" style="gap:var(--e3)">
+            <div>
+              <h1 class="m-0">Tarefas e Prazos</h1>
+              <p class="text-muted mb-0">O que precisa ser feito, por quem e até quando. Toda tarefa nasce dentro de um caso.</p>
+            </div>
+            <button class="btn btn-primary" id="ir-nova-tarefa" type="button">
+              <i class="fas fa-plus mr-1" aria-hidden="true"></i>Nova tarefa
+            </button>
+          </div>
+          <small class="text-success d-block mt-2" id="tarefas-aviso" aria-live="polite"></small>
         </div>
       </div>
       <div class="content">
@@ -1474,9 +1482,23 @@
               </table>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
 
+    <!-- Nova tarefa e edição de tarefa (2026-10-20): tela própria, como
+         "Abrir caso". No pé da lista, o formulário ficava longe do botão
+         Editar e se confundia com os filtros de cima. -->
+    <div id="view-tarefa-form" class="view">
+      <div class="content-header">
+        <div class="container-fluid">
+          <button class="btn btn-outline-secondary btn-sm" id="voltar-tarefas-do-form"><i class="fas fa-arrow-left mr-1" aria-hidden="true"></i>Voltar para Tarefas</button>
+          <h1 class="m-0 mt-3" id="tarefa-form-titulo">Nova tarefa</h1>
+        </div>
+      </div>
+      <div class="content">
+        <div class="container-fluid">
           <div class="card">
-            <div class="card-header"><h3 class="card-title" id="tarefa-form-titulo">Nova tarefa</h3></div>
             <div class="card-body">
               <div class="row">
                 <div class="col-md-6">
@@ -1518,7 +1540,7 @@
                 <textarea id="tarefa-observacoes" class="form-control"></textarea>
               </div>
               <button class="btn btn-primary" id="salvar-tarefa">Criar tarefa</button>
-              <button class="btn btn-outline-secondary ml-2" id="cancelar-edicao-tarefa" style="display:none">Cancelar edição</button>
+              <button class="btn btn-outline-secondary ml-2" id="cancelar-edicao-tarefa">Cancelar</button>
               <span class="text-muted ml-2" id="salvar-tarefa-status" aria-live="polite"></span>
             </div>
           </div>
@@ -2756,6 +2778,10 @@ function aplicarRota() {
     $("#ir-abrir-caso").click();
     return;
   }
+  if (secao === "tarefas" && id === "nova") {
+    abrirNovaTarefa();
+    return;
+  }
   if (id && ROTAS_DETALHE[secao]) { ROTAS_DETALHE[secao](id); return; }
   const botao = document.querySelector(`[data-view="${secao}"]`);
   if (botao) ativarView(botao);
@@ -3791,6 +3817,33 @@ async function carregarTarefas() {
   });
 }
 
+// A tela do formulário (2026-10-20) é separada da lista, mas o menu
+// continua marcando "Tarefas": é a mesma área, um passo adiante.
+async function mostrarFormularioTarefa() {
+  // Chegando direto por #/tarefas/nova (F5, link), a lista ainda não
+  // carregou -- e é ela que preenche os selects de caso e responsável.
+  if (!tarefasSelecaoCarregada) await carregarTarefas();
+  mostrarView("tarefa-form");
+  const menu = document.querySelector('[data-view="tarefas"]');
+  if (menu) menu.classList.add("active");
+  $("#tarefas-aviso").textContent = "";
+  window.scrollTo(0, 0);
+}
+
+function voltarParaTarefas(aviso = "") {
+  mostrarView("tarefas");
+  definirHash("/tarefas");
+  $("#tarefas-aviso").textContent = aviso;
+  carregarTarefas();
+}
+
+async function abrirNovaTarefa() {
+  await mostrarFormularioTarefa();
+  definirHash("/tarefas/nova");
+  resetFormularioTarefa();
+  $("#tarefa-caso").focus();
+}
+
 function resetFormularioTarefa() {
   $("#tarefa-form-titulo").textContent = "Nova tarefa";
   $("#salvar-tarefa").textContent = "Criar tarefa";
@@ -3807,11 +3860,11 @@ function resetFormularioTarefa() {
   // (é o motor que decide isso), então o campo em branco só ofereceria
   // uma escolha que não existe.
   $("#tarefa-status-campo").style.display = "none";
-  $("#cancelar-edicao-tarefa").style.display = "none";
   $("#salvar-tarefa-status").textContent = "";
 }
 
-function editarTarefa(t) {
+async function editarTarefa(t) {
+  await mostrarFormularioTarefa();
   $("#tarefa-form-titulo").textContent = `Editar tarefa ${idCurto(t.tarefa_id)}`;
   $("#salvar-tarefa").textContent = "Salvar tarefa";
   $("#salvar-tarefa").dataset.tarefaId = t.tarefa_id;
@@ -3828,7 +3881,6 @@ function editarTarefa(t) {
   $("#tarefa-descricao").value = t.descricao || "";
   $("#tarefa-observacoes").value = t.observacoes || "";
   $("#tarefa-status-campo").style.display = "";
-  $("#cancelar-edicao-tarefa").style.display = "";
   $("#salvar-tarefa-status").textContent = "";
   $("#tarefa-tipo").focus();
 }
@@ -3877,15 +3929,16 @@ async function salvarTarefa() {
       return;
     }
     resetFormularioTarefa();
-    await carregarTarefas();
-    $("#salvar-tarefa-status").textContent = "Salvo.";
+    voltarParaTarefas(tarefaId ? "Tarefa salva." : "Tarefa criada.");
   } finally {
     botao.disabled = false;
   }
 }
 
+$("#ir-nova-tarefa").addEventListener("click", abrirNovaTarefa);
 $("#salvar-tarefa").addEventListener("click", salvarTarefa);
-$("#cancelar-edicao-tarefa").addEventListener("click", resetFormularioTarefa);
+$("#cancelar-edicao-tarefa").addEventListener("click", () => voltarParaTarefas());
+$("#voltar-tarefas-do-form").addEventListener("click", () => voltarParaTarefas());
 $("#tarefas-vencimento").addEventListener("change", carregarTarefas);
 $("#tarefas-status").addEventListener("change", carregarTarefas);
 $("#tarefas-responsavel").addEventListener("change", carregarTarefas);
