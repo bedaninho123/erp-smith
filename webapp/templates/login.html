@@ -1,56 +1,11 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ERP Smith — Login</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
-<!-- Identidade visual Smith (preto/azul/branco da marca) por cima do
-     tema padrão do AdminLTE -- mesma paleta de
-     portal/templates/_portal_estilo.html, duplicada aqui de propósito
-     (mesmo padrão do resto do projeto: cada app Flask tem seu CSS
-     próprio, sem framework/build step comum). -->
-<style>
-  /* Tema 2026-09 -- o mesmo do painel e do Portal: papel claro, tinta,
-     um azul só, nada em maiúsculas, borda fina no lugar de sombra
-     pesada. O fundo continua escuro porque é onde o logo branco vive. */
-  :root { --tinta: #16181D; --aco: #5B6470; --linha: #E3E6E8;
-          --blue: #2F5FA7; --blue-deep: #244A85; --blue-soft: #E8EEF8; }
-  body, .login-card-body { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; color: var(--tinta); }
-  body.login-page { background: var(--tinta); }
-  .login-box { width: 360px; max-width: calc(100% - 32px); }
-  .login-logo { text-align: center; margin-bottom: 1.8rem; }
-  .login-logo img { height: 52px; }
-  .card { border: 0; border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.35); }
-  .login-card-body { padding: 28px; border-radius: 12px; }
-  .login-titulo { font-family: 'Big Shoulders', sans-serif; font-weight: 700; font-size: 28px;
-                  line-height: 1; margin: 0 0 4px; }
-  .login-sub { color: var(--aco); margin: 0 0 20px; }
-  label { font-size: 12px; font-weight: 600; color: var(--aco); margin-bottom: 4px; }
-  .form-control { height: 40px; font-size: 14px; border-radius: 8px; border-color: #D5D9DD; }
-  .form-control:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
-  .btn { height: 40px; font-size: 14px; font-weight: 600; border-radius: 8px;
-         display: inline-flex; align-items: center; justify-content: center; }
-  .btn-primary { background-color: var(--blue); border-color: var(--blue); }
-  .btn-primary:hover, .btn-primary:focus, .btn-primary:active { background-color: var(--blue-deep) !important; border-color: var(--blue-deep) !important; }
-  .btn-primary:focus-visible { box-shadow: 0 0 0 3px var(--blue-soft) !important; }
-  .alert-danger { background: #FBEDEB; color: #8E2A20; border-color: #F0C4BE; border-radius: 8px; }
-</style>
-</head>
-<body class="hold-transition login-page">
-<div class="login-box">
-  <div class="login-logo">
-    <img src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP" width="107" height="52">
-  </div>
-  <div class="card">
-    <div class="card-body login-card-body">
+{% extends "_acesso_base.html" %}
+{% block conteudo %}
       <h1 class="login-titulo">Entrar</h1>
       <p class="login-sub">Painel do Smith</p>
 
+      {% if aviso %}
+      <div class="alert alert-success py-2" role="status">{{ aviso }}</div>
+      {% endif %}
       {% if erro %}
       <div class="alert alert-danger py-2">{{ erro }}</div>
       {% endif %}
@@ -72,12 +27,5 @@
         </div>
         <button type="submit" class="btn btn-primary btn-block">Entrar</button>
       </form>
-    </div>
-  </div>
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
-</body>
-</html>
+      <p class="login-rodape"><a href="{{ url_for('esqueci_senha') }}">Esqueci minha senha</a></p>
+{% endblock %}

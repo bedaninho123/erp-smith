@@ -304,6 +304,8 @@ if __name__ == "__main__":
     print("Migração itens por processo:", _migrar_itens_por_processo(), flush=True)
     from core.db.migrar_codigo_portal import migrar as _migrar_codigo_portal
     print("Migração código do Portal:", _migrar_codigo_portal(), flush=True)
+    from core.db.migrar_convite_usuario import migrar as _migrar_convite_usuario
+    print("Migração convite de usuário:", _migrar_convite_usuario(), flush=True)
     threading.Thread(target=_loop_sincronizacao_habitualidade, daemon=True).start()
     threading.Thread(target=_loop_backup, daemon=True).start()
     threading.Thread(target=_loop_poller_email, daemon=True).start()

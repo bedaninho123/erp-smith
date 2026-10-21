@@ -4,10 +4,11 @@ Gestor (acesso total) e Atendente (opera casos/clientes/documentos, sem
 acesso administrativo) -- validado aqui, não por CHECK no schema, mesmo
 padrão do status do Caso em core/motor_casos.py.
 
-Este módulo nunca define senha -- isso continua exclusivo de
-webapp/definir_senha.py, rodado interativamente pelo próprio usuário
-(CLAUDE.md). Usuário criado aqui nasce com senha_hash=NULL, "login ainda
-não configurado".
+Este módulo nunca define senha. Usuário criado aqui nasce com
+senha_hash=NULL, "login ainda não configurado", e quem cria a senha é
+sempre a própria pessoa: pelo link do e-mail de convite
+(core/motor_convite_usuario.py, 2026-10-20) ou por
+webapp/definir_senha.py no terminal.
 
 Permissões granulares (2026-07-30): Gestor tem acesso total e intocável,
 sempre -- as funções abaixo só têm efeito para quem é Atendente. Sem

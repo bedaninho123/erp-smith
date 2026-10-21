@@ -1,7 +1,8 @@
 """Painel administrativo do ERP Smith: status do banco/módulos, testador
 do pipeline do Motor IA, e fila de aprovações pendentes. Protegido por
-login (usuario.senha_hash) -- ver webapp/definir_senha.py para cadastrar
-a senha de um usuário antes do primeiro acesso.
+login (usuario.senha_hash). A senha é criada pela própria pessoa, pelo
+link do e-mail de convite (core/motor_convite_usuario.py) ou por
+webapp/definir_senha.py no terminal.
 
 MULTI-TENANT (docs/schema_multi_tenant.md §6): a empresa vem do usuário
 que logou (`usuario.empresa_id` → `session["empresa_id"]`) e nunca da
@@ -34,6 +35,7 @@ from atendimento.processar import (
 )
 from core import (
     motor_checklist,
+    motor_convite_usuario,
     motor_conversas,
     motor_documentos,
     motor_log_administrativo,
@@ -334,13 +336,138 @@ def login():
             session["papel"] = linha["papel"]
             return redirect(request.args.get("proximo") or url_for("index"))
         erro = "E-mail ou senha incorretos."
-    return render_template("login.html", erro=erro)
+    aviso = "Senha criada. Agora é só entrar com o seu e-mail e a nova senha." \
+        if request.args.get("senha") == "criada" else None
+    return render_template("login.html", erro=erro, aviso=aviso)
 
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+# ---------------------------------------------------------------------
+# Senha criada pela própria pessoa, por link no e-mail (2026-10-20) --
+# ver core/motor_convite_usuario.py. Convite de usuário novo e "Esqueci
+# minha senha" são o mesmo mecanismo.
+# ---------------------------------------------------------------------
+ESQUECI_MAX_POR_IP = 5
+ESQUECI_MAX_POR_EMAIL = 3
+ESQUECI_JANELA_SEGUNDOS = 3600
+
+
+def _url_base_painel() -> str:
+    """Endereço do painel para o link do e-mail. Em produção sai da
+    configuração (PAINEL_HOST), nunca do cabeçalho da requisição: no
+    "Esqueci minha senha" quem faz a requisição pode ser qualquer um, e um
+    Host forjado mandaria o link de outra pessoa para um site alheio."""
+    configurado = os.environ.get("PAINEL_URL_BASE", "").strip().rstrip("/")
+    if configurado:
+        return configurado
+    host = os.environ.get("PAINEL_HOST", "").strip()
+    if host:
+        return f"https://{host}"
+    return request.url_root.rstrip("/")
+
+
+def _enviar_link_senha(empresa_id: str, link: dict) -> bool:
+    """Manda o e-mail com o link. False quando não deu para mandar
+    (Gmail não autorizado nesta máquina, ou falha dele) -- quem chamou
+    decide o que fazer, nunca vira erro 500."""
+    if not gmail_configurado():
+        return False
+    config = obter_configuracoes(empresa_id)
+    nome_empresa = config.get("nome_empresa", "nosso escritório")
+    url = f"{_url_base_painel()}/definir-senha/{link['token']}"
+    validade = datetime.strptime(link["expira_em"], "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=timezone.utc).astimezone().strftime("%d/%m às %H:%M")
+    if link["motivo"] == motor_convite_usuario.MOTIVO_CONVITE:
+        assunto = f"Seu acesso ao painel -- {nome_empresa}"
+        abertura = (f"Você foi cadastrado(a) no painel de {nome_empresa}. "
+                    "Para entrar, crie a sua senha neste link:")
+    else:
+        assunto = f"Nova senha do painel -- {nome_empresa}"
+        abertura = "Recebemos um pedido para criar uma nova senha do painel. Use este link:"
+    try:
+        enviar_email(
+            destinatario=link["email"],
+            assunto=assunto,
+            nome_remetente=config.get("nome_empresa"),
+            corpo=(
+                f"Olá {link['nome']},\n\n{abertura}\n\n{url}\n\n"
+                f"O link vale até {validade} e funciona uma vez só. "
+                "Se você não esperava este e-mail, pode ignorá-lo: "
+                "nada muda sem que alguém abra o link.\n\n"
+                f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
+            ),
+        )
+        return True
+    except Exception:
+        traceback.print_exc()
+        return False
+
+
+@app.route("/definir-senha/<token>")
+def definir_senha_link(token):
+    """Tira o link da barra de endereço logo na chegada: guarda na sessão
+    e redireciona. Assim ele não fica no histórico do navegador nem vai no
+    Referer de nada que a página carregar."""
+    session["token_senha"] = token
+    return redirect(url_for("definir_senha_tela"))
+
+
+@app.route("/definir-senha", methods=["GET", "POST"])
+def definir_senha_tela():
+    token = session.get("token_senha") or ""
+    dados = motor_convite_usuario.conferir_link(token) if token else None
+    if not dados:
+        session.pop("token_senha", None)
+        return render_template("definir_senha.html", invalido=True)
+
+    erro = None
+    if request.method == "POST":
+        if excedeu_limite(f"definir_senha:{request.remote_addr}", LOGIN_MAX_TENTATIVAS, LOGIN_JANELA_SEGUNDOS):
+            erro = "Muitas tentativas. Aguarde alguns minutos e tente novamente."
+        elif (request.form.get("senha") or "") != (request.form.get("confirmacao") or ""):
+            erro = "As duas senhas não são iguais."
+        else:
+            try:
+                motor_convite_usuario.definir_senha(token, request.form.get("senha") or "")
+            except ValueError as e:
+                erro = str(e)
+            else:
+                session.pop("token_senha", None)
+                return redirect(url_for("login", senha="criada"))
+    return render_template("definir_senha.html", nome=dados["nome"], email=dados["email"], erro=erro)
+
+
+@app.route("/esqueci-senha", methods=["GET", "POST"])
+def esqueci_senha():
+    if request.method == "GET":
+        return render_template("esqueci_senha.html")
+
+    email = (request.form.get("email") or "").strip().lower()
+    # Mesma resposta para tudo: cadastrado ou não, enviado ou não, limite
+    # estourado ou não. Qualquer diferença transformaria esta tela num
+    # jeito de descobrir quem tem acesso ao painel.
+    estourou = (
+        excedeu_limite(f"esqueci_senha_ip:{request.remote_addr}", ESQUECI_MAX_POR_IP, ESQUECI_JANELA_SEGUNDOS)
+        or excedeu_limite(f"esqueci_senha_email:{email}", ESQUECI_MAX_POR_EMAIL, ESQUECI_JANELA_SEGUNDOS)
+    )
+    usuario = None if estourou or "@" not in email else motor_convite_usuario.usuario_para_redefinir(email)
+    if usuario:
+        try:
+            link = motor_convite_usuario.criar_link(
+                usuario["empresa_id"], usuario["usuario_id"],
+                motor_convite_usuario.MOTIVO_REDEFINICAO,
+                pedido_por="Esqueci minha senha (tela de login)",
+                pela_tela_de_login=True,
+            )
+            _enviar_link_senha(usuario["empresa_id"], link)
+        except Exception:
+            traceback.print_exc()
+    return render_template("esqueci_senha.html", enviado=True)
 
 
 @app.route("/")
@@ -1660,7 +1787,29 @@ def configuracoes_atualizar(config_id):
 @login_required
 @gestor_required
 def usuarios_lista():
-    return jsonify(listar_usuarios(empresa_atual()))
+    empresa_id = empresa_atual()
+    pendentes = motor_convite_usuario.convites_pendentes(empresa_id)
+    usuarios = listar_usuarios(empresa_id)
+    for u in usuarios:
+        u["convite_valido_ate"] = pendentes.get(u["usuario_id"])
+    return jsonify(usuarios)
+
+
+def _mandar_convite(empresa_id: str, usuario_id: str, motivo: str) -> dict:
+    """Cria o link e tenta mandar. Se o e-mail não sair, o link volta
+    para a tela: o Gestor copia e entrega por outro caminho, em vez de a
+    pessoa ficar sem como entrar. Ele vê o LINK, nunca a senha -- quem
+    escolhe a senha continua sendo a pessoa."""
+    link = motor_convite_usuario.criar_link(
+        empresa_id, usuario_id, motivo,
+        pedido_por=session.get("usuario_nome", "Painel administrativo"),
+    )
+    if _enviar_link_senha(empresa_id, link):
+        return {"convite_enviado": True, "email": link["email"]}
+    return {
+        "convite_enviado": False, "email": link["email"],
+        "link": f"{_url_base_painel()}/definir-senha/{link['token']}",
+    }
 
 
 @app.route("/api/usuarios", methods=["POST"])
@@ -1668,13 +1817,33 @@ def usuarios_lista():
 @gestor_required
 def usuarios_criar():
     corpo = request.get_json(force=True)
+    empresa_id = empresa_atual()
     try:
         usuario = criar_usuario(
-            empresa_atual(), corpo.get("nome"), corpo.get("email"), corpo.get("papel"),
+            empresa_id, corpo.get("nome"), corpo.get("email"), corpo.get("papel"),
         )
+        usuario.update(_mandar_convite(empresa_id, usuario["usuario_id"], motor_convite_usuario.MOTIVO_CONVITE))
     except ValueError as e:
         return jsonify(erro=str(e)), 400
     return jsonify(usuario), 201
+
+
+@app.route("/api/usuarios/<usuario_id>/convite", methods=["POST"])
+@login_required
+@gestor_required
+def usuarios_reenviar_convite(usuario_id):
+    """Reenviar o convite (quem ainda não criou senha) ou mandar o link de
+    nova senha (quem esqueceu). Pode ser para si mesmo: não muda papel nem
+    acesso, só deixa a própria pessoa trocar a senha."""
+    empresa_id = empresa_atual()
+    ja_tem_senha = any(
+        u["usuario_id"] == usuario_id and u["login_configurado"] for u in listar_usuarios(empresa_id)
+    )
+    motivo = motor_convite_usuario.MOTIVO_REDEFINICAO if ja_tem_senha else motor_convite_usuario.MOTIVO_CONVITE
+    try:
+        return jsonify(_mandar_convite(empresa_id, usuario_id, motivo))
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
 
 
 @app.route("/api/usuarios/<usuario_id>", methods=["POST"])

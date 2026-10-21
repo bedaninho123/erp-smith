@@ -579,6 +579,24 @@ CREATE TABLE portal_token (
     tentativas_codigo INTEGER NOT NULL DEFAULT 0
 );
 
+-- Link de uso único para a própria pessoa criar a senha do painel
+-- (2026-10-20, core/motor_convite_usuario.py): convite de usuário novo e
+-- "Esqueci minha senha". Só o HASH do link é guardado. Pedir um link
+-- novo preenche `invalidado_em` dos anteriores ainda não usados.
+CREATE TABLE usuario_convite (
+    usuario_convite_id TEXT PRIMARY KEY,              -- UCV-000001
+    empresa_id         TEXT NOT NULL REFERENCES empresa(empresa_id),
+    usuario_id         TEXT NOT NULL REFERENCES usuario(usuario_id),
+    token_hash         TEXT NOT NULL UNIQUE,           -- sha256 do link, nunca o link
+    motivo             TEXT NOT NULL,                  -- 'convite' | 'redefinicao'
+    criado_em          TEXT NOT NULL,                  -- ISO 8601
+    expira_em          TEXT NOT NULL,                  -- ISO 8601
+    usado_em           TEXT,                           -- NULL até a senha ser criada
+    invalidado_em      TEXT                            -- substituído por um link mais novo
+);
+
+CREATE INDEX idx_usuario_convite_usuario ON usuario_convite(empresa_id, usuario_id);
+
 CREATE INDEX idx_portal_token_empresa_id ON portal_token(empresa_id);
 CREATE INDEX idx_portal_token_cliente_id ON portal_token(cliente_id);
 CREATE INDEX idx_portal_token_desafio ON portal_token(desafio);

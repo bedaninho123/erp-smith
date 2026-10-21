@@ -1,0 +1,24 @@
+{% extends "_acesso_base.html" %}
+{% block titulo %}ERP Smith — Esqueci minha senha{% endblock %}
+{% block conteudo %}
+      <h1 class="login-titulo">Esqueci minha senha</h1>
+  {% if enviado %}
+      <!-- Mesma frase com ou sem cadastro, de propósito (ver esqueci_senha
+           em app.py): a tela não pode dizer quem tem acesso ao painel. -->
+      <div class="alert alert-success py-2 mt-3" role="status">
+        Se este e-mail tiver acesso ao painel, mandamos um link para criar
+        uma nova senha. Ele vale por 1 hora. Confira também a caixa de spam.
+      </div>
+  {% else %}
+      <p class="login-sub">Digite o e-mail que você usa para entrar. Mandamos um link para você criar uma senha nova.</p>
+      <form method="post">
+        <div class="form-group mb-4">
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" class="form-control"
+            autocomplete="username" spellcheck="false" required autofocus>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Enviar link</button>
+      </form>
+  {% endif %}
+      <p class="login-rodape"><a href="{{ url_for('login') }}">Voltar para Entrar</a></p>
+{% endblock %}

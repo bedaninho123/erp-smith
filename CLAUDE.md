@@ -93,6 +93,7 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.migrar_conversas_crm          # idempotente, liga mensagens antigas a conversas (tela Atendimentos)
 .venv\Scripts\python.exe -m core.db.migrar_encerrado_em           # idempotente, preenche caso.encerrado_em a partir do historico (Dashboard)
 .venv\Scripts\python.exe -m core.db.migrar_codigo_portal          # idempotente, codigo de 6 digitos do login do Portal (roda sozinha em producao)
+.venv\Scripts\python.exe -m core.db.migrar_convite_usuario        # idempotente, tabela do convite por e-mail para criar senha do painel (roda sozinha em producao)
 # Permite documento pertencer ao CLIENTE e não a um caso (dossiê). RECONSTRÓI
 # a tabela documento -- ver tests/test_migracao_dossie.py
 .venv\Scripts\python.exe -m core.db.migrar_dossie_cliente
@@ -676,7 +677,7 @@ a pessoa, é a chave da vida digital dela. `core/motor_credenciais.py`:
 
 ### webapp/ é o painel administrativo real, não uma ferramenta descartável
 
-Flask + Jinja + JS puro (sem build step, sem framework front-end) servido via CDN para o tema AdminLTE 3. Autenticação por sessão simples (`werkzeug.security`, `usuario.senha_hash`) — sem biblioteca de auth adicional. Todas as rotas `/api/*` exigem login (`@login_required`); a senha de um usuário nunca é definida por código, só via `webapp/definir_senha.py` rodado interativamente pelo próprio usuário. A UI inteira é uma SPA de uma página só (`webapp/templates/index.html`) alternando divs `.view` via JS — não há rotas de URL por tela.
+Flask + Jinja + JS puro (sem build step, sem framework front-end) servido via CDN para o tema AdminLTE 3. Autenticação por sessão simples (`werkzeug.security`, `usuario.senha_hash`) — sem biblioteca de auth adicional. Todas as rotas `/api/*` exigem login (`@login_required`); a senha de um usuário nunca é definida por código nem por outra pessoa — só pelo próprio usuário, pelo link do convite/"Esqueci minha senha" ou via `webapp/definir_senha.py` no terminal. A UI inteira é uma SPA de uma página só (`webapp/templates/index.html`) alternando divs `.view` via JS — não há rotas de URL por tela.
 
 ### Dois papéis, Gestor e Atendente, validados em código, não no schema
 
@@ -699,8 +700,17 @@ decorator.
 
 Criar usuário é feito pela própria tela (Configurações → Usuários, Gestor
 only), mas isso não inclui senha: nasce com `senha_hash=NULL` ("login
-ainda não configurado") e continua exigindo `webapp/definir_senha.py`
-rodado pelo próprio dono — regra inegociável, não muda com esta mudança.
+ainda não configurado"). **Quem cria a senha é sempre a própria pessoa**
+— regra inegociável. Desde 2026-10-20 (com o painel no Railway, o
+terminal deixou de ser caminho viável) isso acontece por **convite por
+e-mail** (`core/motor_convite_usuario.py`): criar o usuário manda um link
+de uso único (48h) para a pessoa escolher a senha; o mesmo mecanismo é o
+"Esqueci minha senha" da tela de login (link de 1h, resposta igual com ou
+sem cadastro). Só o hash do link vai para o banco (`usuario_convite`),
+link novo mata os anteriores, usuário/empresa desativados não usam link.
+Se o Gmail falhar, a tela mostra o LINK para o Gestor copiar — nunca uma
+senha. `webapp/definir_senha.py` continua existindo para uso local.
+Banco em uso: `core.db.migrar_convite_usuario` (roda sozinha em produção).
 Um Gestor não consegue mudar o próprio papel nem se desativar (bloqueio
 na rota, comparando `usuario_id` do alvo com `session["usuario_id"]`) —
 sem isso a empresa poderia ficar sem ninguém com acesso administrativo.

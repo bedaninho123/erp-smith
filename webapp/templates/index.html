@@ -2224,7 +2224,7 @@
         <div class="container-fluid">
           <section class="cfg-grupo">
             <h2 class="cfg-grupo-titulo">Usuários</h2>
-            <p class="cfg-ajuda mb-3">Quem acessa o painel e o que cada um pode fazer. Depois de criado, rode <code>definir_senha</code> no terminal para liberar o login dessa pessoa.</p>
+            <p class="cfg-ajuda mb-3">Quem acessa o painel e o que cada um pode fazer. Ao criar, a pessoa recebe um e-mail com um link para ela mesma criar a senha (vale 48 horas).</p>
             <div class="cartao-cfg p-3 mb-4">
               <form id="usr-form-novo" class="usr-novo">
                 <input type="text" id="usr-novo-nome" class="form-control form-control-sm" placeholder="Nome" aria-label="Nome do novo usuário" autocomplete="off" required>
@@ -6274,8 +6274,11 @@ async function carregarUsuarios() {
         <div class="cfg-info">
           <span class="cfg-nome">${escapeHtml(u.nome)}</span>
           <span class="cfg-chave-tag">${escapeHtml(u.email)}</span>
-          ${!u.login_configurado ? '<p class="cfg-ajuda">Login ainda não configurado -- rode definir_senha no terminal.</p>' : ''}
+          ${!u.login_configurado ? `<p class="cfg-ajuda">${u.convite_valido_ate
+              ? `Convite enviado, aguardando a pessoa criar a senha (o link vale até ${dataHoraBr(u.convite_valido_ate)}).`
+              : "Ainda sem senha, e o convite venceu ou não foi enviado. Use \"Reenviar convite\"."}</p>` : ''}
           ${proprio ? '<p class="cfg-ajuda">Você não pode alterar seu próprio acesso.</p>' : ''}
+          <div class="usr-convite-link" hidden></div>
         </div>
         <div class="cfg-controle">
           <select class="form-control form-control-sm usr-campo" data-campo="papel" aria-label="Papel de ${escapeHtml(u.nome)}" ${proprio ? 'disabled' : ''}>
@@ -6285,6 +6288,9 @@ async function carregarUsuarios() {
           <div class="cfg-acoes">
             <button class="btn btn-sm btn-primary usr-salvar" hidden>Salvar</button>
             ${u.papel === 'Atendente' ? `<button type="button" class="btn btn-sm btn-outline-secondary usr-permissoes-toggle" data-usr="${u.usuario_id}">Permissões</button>` : ''}
+            ${u.ativo === 'Sim' ? `<button type="button" class="btn btn-sm btn-outline-secondary usr-convite"
+                title="${u.login_configurado ? "Manda um link para a pessoa criar uma senha nova" : "Manda de novo o e-mail para a pessoa criar a senha"}">
+                ${u.login_configurado ? "Enviar link de nova senha" : "Reenviar convite"}</button>` : ''}
             <span class="cfg-status" data-status aria-live="polite"></span>
           </div>
         </div>
@@ -6312,6 +6318,50 @@ function ligarTelaUsuarios() {
     if (botaoPerm) {
       botaoPerm.addEventListener("click", () => alternarPermissoes(botaoPerm.dataset.usr));
     }
+
+    const botaoConvite = linha.querySelector(".usr-convite");
+    if (botaoConvite) {
+      botaoConvite.addEventListener("click", async () => {
+        const statusEl = linha.querySelector("[data-status]");
+        botaoConvite.disabled = true;
+        statusEl.textContent = "Enviando…";
+        try {
+          const r = await fetch(`/api/usuarios/${linha.dataset.usr}/convite`, { method: "POST" });
+          const d = await r.json();
+          if (!r.ok) { statusEl.textContent = ""; alert("Erro: " + d.erro); return; }
+          statusEl.textContent = "";
+          avisoConvite(linha, d);
+        } finally {
+          botaoConvite.disabled = false;
+        }
+      });
+    }
+  });
+}
+
+// Resultado do envio do convite. Quando o e-mail não sai (Gmail fora do
+// ar, ou não autorizado nesta máquina), o link aparece para o Gestor
+// copiar e mandar por outro caminho -- é o link, nunca a senha: quem
+// escolhe a senha continua sendo a pessoa.
+function avisoConvite(linha, d) {
+  const caixa = linha.querySelector(".usr-convite-link");
+  if (!caixa) return;
+  caixa.hidden = false;
+  if (d.convite_enviado) {
+    caixa.innerHTML = `<p class="cfg-ajuda text-success">E-mail enviado para ${escapeHtml(d.email)}.</p>`;
+    return;
+  }
+  caixa.innerHTML = `
+    <p class="cfg-ajuda text-danger mb-1">Não foi possível mandar o e-mail. Copie o link abaixo e envie para ${escapeHtml(d.email)} por outro caminho (WhatsApp, por exemplo). Ele funciona uma vez só.</p>
+    <div class="d-flex" style="gap:var(--e2)">
+      <input type="text" class="form-control form-control-sm mono" readonly value="${escapeHtml(d.link)}" aria-label="Link do convite">
+      <button type="button" class="btn btn-sm btn-outline-secondary usr-copiar-link">Copiar</button>
+    </div>`;
+  caixa.querySelector(".usr-copiar-link").addEventListener("click", async (ev) => {
+    const campo = caixa.querySelector("input");
+    campo.select();
+    try { await navigator.clipboard.writeText(campo.value); ev.target.textContent = "Copiado"; }
+    catch (e) { document.execCommand("copy"); ev.target.textContent = "Copiado"; }
   });
 }
 
@@ -6417,7 +6467,9 @@ $("#usr-form-novo").addEventListener("submit", async (e) => {
   }
   statusEl.textContent = "";
   $("#usr-form-novo").reset();
-  carregarUsuarios();
+  await carregarUsuarios();
+  const linha = $("#usuarios-lista").querySelector(`.cfg-linha[data-usr="${d.usuario_id}"]`);
+  if (linha) avisoConvite(linha, d);
 });
 
 // Toda falha de rede precisa APAGAR o "Carregando…" e dizer o que houve.
