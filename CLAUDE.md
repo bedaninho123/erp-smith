@@ -94,6 +94,7 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.migrar_encerrado_em           # idempotente, preenche caso.encerrado_em a partir do historico (Dashboard)
 .venv\Scripts\python.exe -m core.db.migrar_codigo_portal          # idempotente, codigo de 6 digitos do login do Portal (roda sozinha em producao)
 .venv\Scripts\python.exe -m core.db.migrar_convite_usuario        # idempotente, tabela do convite por e-mail para criar senha do painel (roda sozinha em producao)
+.venv\Scripts\python.exe -m core.db.migrar_documento_final        # idempotente, processo.documento_final_id -- documento pronto entregue ao cliente (roda sozinha em producao)
 # Permite documento pertencer ao CLIENTE e não a um caso (dossiê). RECONSTRÓI
 # a tabela documento -- ver tests/test_migracao_dossie.py
 .venv\Scripts\python.exe -m core.db.migrar_dossie_cliente
@@ -625,6 +626,30 @@ não distinguia "já venceu" de "vai vencer".
 clientes da MESMA empresa não se enxergam (o filtro de `empresa_id` não
 cobre isso), e o `?inline=1` não virou caminho paralelo sem checagem de
 dono.
+
+### Documento pronto: o que o cliente pagou para receber
+
+(2026-10-20.) Terminada a renovação do CRAF (ou qualquer serviço), o
+despachante sobe o documento produzido e conclui o processo no MESMO
+gesto: botão "Concluir processo" no cartão do processo →
+`POST /api/processos/<id>/concluir` →
+`core/motor_processos.py::concluir_com_documento`. No Portal, o processo
+aparece "Concluído" com o documento ao lado (visualizar/imprimir e
+salvar), e na lista do Despachante "<tipo> pronto para salvar".
+
+- **O arquivo mora no DOSSIÊ do cliente** (é dele, para sempre, e aparece
+  também em "Minha conta"), e o processo aponta para ele por
+  `processo.documento_final_id`. Não é documento de caso: o checklist é o
+  que o cliente MANDA; isto é o que ele RECEBE.
+- O dono é o cliente do processo, lido do banco. O Portal ainda exige no
+  JOIN que o documento seja do mesmo cliente do processo — um vínculo
+  errado nunca vira arquivo de outra pessoa na tela.
+- Concluir pelo "Editar" sem documento continua possível (serviço que não
+  gera papel), mas pede confirmação explícita.
+- Tirar o documento do dossiê solta o vínculo antes do DELETE.
+
+Banco em uso: `core.db.migrar_documento_final` (roda sozinha em produção).
+Coberto por `tests/test_documento_final.py`.
 
 ### Abrir caso à mão: o caminho que faltava
 

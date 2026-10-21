@@ -476,6 +476,9 @@
     /* Esconde o <input type=file> nativo -- quem abre o seletor é o
        <label> com cara de botão, que tem a altura da régua. */
     .arquivo-checklist { display: none; }
+    /* O documento que o processo entregou ao cliente (2026-10-20). */
+    .documento-final { font-size: 13px; color: var(--ok); }
+    .documento-final b { color: var(--tinta); }
   }
   .resumo-acao { cursor: pointer; font-weight: 600; color: var(--blue); }
   [data-painel] > details { padding: var(--e4); }
@@ -2495,7 +2498,11 @@ const badgesStatus = {
   "Aberto": "badge-info", "Em triagem": "badge-secondary", "Em andamento": "badge-info",
   "Aguardando cliente": "badge-secondary", "Aguardando terceiro": "badge-secondary", "Suspenso": "badge-secondary",
   "Encerrado": "badge-success", "Cancelado": "badge-danger",
+  // Status de PROCESSO (texto livre, ver core/motor_processos.py) que
+  // também passa por este mapa no cartão do processo.
+  "Concluído": "badge-success",
 };
+const PROCESSO_ENCERRADO = ["Concluído", "Cancelado"];
 
 async function carregarCasos() {
   const status = $("#filtro-status").value;
@@ -2870,14 +2877,33 @@ async function abrirCaso(casoId) {
              p.prazo_estimado ? `prazo ${dataBr(p.prazo_estimado)}` : "",
              p.proxima_acao ? escapeHtml(p.proxima_acao) : ""].filter(Boolean).join(" · ") || "Sem protocolo nem próxima ação."}
         </small>
+        ${p.documento_final_id ? `
+          <div class="documento-final mt-2">
+            <i class="fas fa-file-circle-check mr-1" aria-hidden="true"></i>
+            Entregue ao cliente: <b>${escapeHtml(p.documento_final_tipo || "documento")}</b>
+            <button type="button" class="btn btn-link btn-sm p-0 ml-1 btn-ver-documento"
+              data-documento="${escapeHtml(p.documento_final_id)}" data-nome="${escapeHtml(p.documento_final_nome || '')}">ver</button>
+          </div>` : ""}
+        <div class="concluir-processo mt-3" hidden></div>
       </div>
       <div class="text-nowrap">
         ${d.processos.length > 1 && p.checklist.length
           ? '<button class="btn btn-outline-primary btn-sm btn-checklist-processo">Ver checklist</button>' : ''}
+        ${!PROCESSO_ENCERRADO.includes(p.status) || !p.documento_final_id && p.status === "Concluído"
+          ? `<button class="btn btn-outline-success btn-sm btn-concluir-processo ml-1">${
+              p.status === "Concluído" ? "Anexar documento pronto" : "Concluir processo"}</button>` : ''}
         <button class="btn btn-outline-secondary btn-sm btn-editar-processo ml-1">Editar</button>
       </div>
     </div>
   `).join("") : `<p class="text-muted mb-0">Nenhum processo neste caso ainda. Adicione abaixo o serviço que o cliente contratou.</p>`;
+
+  ligarBotoesVerDocumento($("#caso-processos-body"));
+  $("#caso-processos-body").querySelectorAll(".btn-concluir-processo").forEach(btn => {
+    btn.addEventListener("click", (ev) => {
+      const linha = ev.target.closest(".linha-processo");
+      abrirConcluirProcesso(linha, JSON.parse(linha.dataset.processo), d);
+    });
+  });
 
   $("#caso-processos-body").querySelectorAll(".btn-editar-processo").forEach(btn => {
     btn.addEventListener("click", (ev) => {
@@ -4192,6 +4218,16 @@ async function salvarProcesso() {
     observacoes: $("#processo-observacoes").value.trim(),
   };
 
+  // Concluir pelo Editar não entrega documento nenhum ao cliente. Pode
+  // ser o certo (serviço que não gera papel), mas tem que ser escolha,
+  // não esquecimento -- o caminho com documento é "Concluir processo".
+  const atual = casoProcessosAtuais.find(p => p.processo_id === processoId);
+  if (corpo.status === "Concluído" && atual && atual.status !== "Concluído" && !atual.documento_final_id
+      && !confirm("Concluir sem documento?\n\nO cliente vai ver \"Concluído\" no Portal, mas sem arquivo para salvar ou imprimir. " +
+                  "Para entregar o documento pronto, cancele e use o botão \"Concluir processo\".")) {
+    return;
+  }
+
   statusEl.textContent = "Salvando…";
   botao.disabled = true;
   try {
@@ -4212,6 +4248,89 @@ async function salvarProcesso() {
   } finally {
     botao.disabled = false;
   }
+}
+
+// Sugestão de tipo pelo nome do serviço: "Renovação de CRAF" já abre com
+// CRAF escolhido. É só o ponto de partida -- o campo continua editável.
+function tipoSugeridoParaServico(nomeServico, catalogo) {
+  const nome = (nomeServico || "").toLowerCase();
+  const regras = [
+    [/craf/, /^CRAF/], [/guia/, /^Guia de Tráfego/],
+    [/autoriza|aquisi|compra/, /^Autorização de compra/],
+    [/\bcr\b|certificado de registro/, /^CR —/],
+  ];
+  for (const [noServico, noCatalogo] of regras) {
+    if (noServico.test(nome)) return catalogo.find(t => noCatalogo.test(t)) || "";
+  }
+  return "";
+}
+
+// "Concluir processo" (2026-10-20): o despachante sobe o documento que o
+// cliente pagou para receber, e o processo vira Concluído no mesmo
+// gesto. O arquivo vai para o dossiê do cliente; no Portal ele aparece ao
+// lado do "Concluído", para salvar ou imprimir.
+function abrirConcluirProcesso(linha, p, d) {
+  const caixa = linha.querySelector(".concluir-processo");
+  if (!caixa.hidden) { caixa.hidden = true; return; }
+  const sugerido = tipoSugeridoParaServico(p.nome_servico, d.catalogo_dossie);
+  caixa.innerHTML = `
+    <div class="cartao-cfg p-3">
+      <p class="mb-2"><b>Documento pronto</b> — o cliente vai ver o processo como concluído e este arquivo ao lado, no Portal, para salvar ou imprimir. Ele também fica no dossiê do cliente.</p>
+      <div class="row">
+        <div class="col-md-6 form-group">
+          <label>Arquivo (PDF ou foto)</label>
+          <input type="file" class="form-control-file cp-arquivo" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp">
+        </div>
+        <div class="col-md-6 form-group">
+          <label>Que documento é</label>
+          <input type="text" class="form-control cp-tipo" list="cp-tipos-${escapeHtml(p.processo_id)}" value="${escapeHtml(sugerido)}" placeholder="Ex.: CRAF">
+          <datalist id="cp-tipos-${escapeHtml(p.processo_id)}">${d.catalogo_dossie.map(t => `<option value="${escapeHtml(t)}">`).join("")}</datalist>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-4 form-group">
+          <label>Validade (se tiver)</label>
+          <input type="date" class="form-control cp-validade">
+        </div>
+        <div class="col-md-4 form-group">
+          <label>De qual arma (se for de arma)</label>
+          <input type="text" class="form-control cp-referencia" placeholder="Ex.: Pistola Taurus G2C">
+        </div>
+        <div class="col-md-4 form-group">
+          <label>Acervo</label>
+          <select class="form-control cp-finalidade"><option value="">—</option>
+            ${d.finalidades_arma.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("")}</select>
+        </div>
+      </div>
+      <button type="button" class="btn btn-success cp-confirmar">Concluir e entregar ao cliente</button>
+      <button type="button" class="btn btn-outline-secondary ml-2 cp-cancelar">Cancelar</button>
+      <span class="text-muted ml-2 cp-status" aria-live="polite"></span>
+    </div>`;
+  caixa.hidden = false;
+  caixa.querySelector(".cp-cancelar").addEventListener("click", () => { caixa.hidden = true; });
+  caixa.querySelector(".cp-confirmar").addEventListener("click", async (ev) => {
+    const arquivo = caixa.querySelector(".cp-arquivo").files[0];
+    const tipo = caixa.querySelector(".cp-tipo").value.trim();
+    const status = caixa.querySelector(".cp-status");
+    if (!arquivo) { alert("Escolha o arquivo do documento pronto."); return; }
+    if (!tipo) { alert("Diga que documento é (ex.: CRAF)."); caixa.querySelector(".cp-tipo").focus(); return; }
+    const dados = new FormData();
+    dados.append("arquivo", arquivo);
+    dados.append("tipo_documento", tipo);
+    dados.append("data_validade", caixa.querySelector(".cp-validade").value);
+    dados.append("referencia", caixa.querySelector(".cp-referencia").value.trim());
+    dados.append("finalidade", caixa.querySelector(".cp-finalidade").value);
+    ev.target.disabled = true;
+    status.textContent = "Enviando…";
+    try {
+      const r = await fetch(`/api/processos/${encodeURIComponent(p.processo_id)}/concluir`, { method: "POST", body: dados });
+      const resposta = await r.json().catch(() => ({}));
+      if (!r.ok) { status.textContent = ""; alert("Erro: " + (resposta.erro || "falha desconhecida")); return; }
+      await abrirCaso(p.caso_id);
+    } finally {
+      ev.target.disabled = false;
+    }
+  });
 }
 
 $("#salvar-processo").addEventListener("click", salvarProcesso);

@@ -157,7 +157,11 @@ CREATE TABLE processo (
     proxima_acao      TEXT,
     responsavel_id    TEXT REFERENCES usuario(usuario_id),
     ultima_atualizacao TEXT NOT NULL,                     -- ISO 8601
-    observacoes       TEXT
+    observacoes       TEXT,
+    -- O documento que o processo PRODUZIU (2026-10-20): o CRAF renovado,
+    -- a guia emitida. Mora no dossiê do cliente (é dele, para sempre) e é
+    -- ligado aqui -- ver core/motor_processos.py::concluir_com_documento.
+    documento_final_id TEXT REFERENCES documento(documento_id)
 );
 
 CREATE INDEX idx_processo_empresa_id ON processo(empresa_id);

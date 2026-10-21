@@ -143,3 +143,68 @@ def atualizar_processo(
         return status_antigo, linha["caso_id"]
     finally:
         con.close()
+
+
+STATUS_CONCLUIDO = "Concluído"
+
+
+def concluir_com_documento(
+    empresa_id: str,
+    processo_id: str,
+    conteudo: bytes,
+    nome_arquivo: str,
+    tipo_documento: str,
+    data_validade: Optional[str] = None,
+    referencia: Optional[str] = None,
+    finalidade: Optional[str] = None,
+    concluido_por: str = "Painel administrativo",
+) -> dict:
+    """Entrega o que o cliente pagou para receber (2026-10-20): o CRAF
+    renovado, a guia emitida. Guarda o arquivo no DOSSIÊ da pessoa -- é
+    dela, para sempre, e aparece em "Minha conta" no Portal -- e liga ao
+    processo, que vira Concluído no mesmo gesto. No Portal o cliente vê o
+    "Concluído" com o documento ao lado.
+
+    O dono do documento é o cliente DO PROCESSO, lido do banco, nunca de
+    quem chamou: é isso que garante que o arquivo só aparece para ele.
+
+    Devolve {status_anterior, caso_id, documento_id}.
+    """
+    from core.motor_documentos import salvar_no_dossie
+
+    con = conectar(empresa_id)
+    try:
+        linha = con.execute(
+            "SELECT caso_id, cliente_id, status FROM processo "
+            "WHERE processo_id = ? AND empresa_id = ?",
+            (processo_id, empresa_id),
+        ).fetchone()
+    finally:
+        con.close()
+    if not linha:
+        raise ValueError(f"Processo não encontrado: {processo_id}")
+
+    documento_id = salvar_no_dossie(
+        empresa_id, linha["cliente_id"], conteudo, nome_arquivo,
+        tipo_documento=tipo_documento, data_validade=data_validade,
+        referencia=referencia, finalidade=finalidade,
+    )
+
+    con = conectar(empresa_id)
+    try:
+        con.execute(
+            "UPDATE processo SET status = ?, documento_final_id = ?, ultima_atualizacao = ? "
+            "WHERE processo_id = ? AND empresa_id = ?",
+            (STATUS_CONCLUIDO, documento_id, _agora_iso(), processo_id, empresa_id),
+        )
+        _registrar_historico_caso(
+            con, empresa_id, linha["caso_id"], "outro",
+            f"Processo {processo_id} concluído com o documento {tipo_documento.strip()} "
+            f"({documento_id}) entregue ao cliente.",
+            criado_por=concluido_por,
+        )
+        con.commit()
+    finally:
+        con.close()
+    return {"status_anterior": linha["status"], "caso_id": linha["caso_id"],
+            "documento_id": documento_id}

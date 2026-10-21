@@ -89,6 +89,7 @@
         <h4 class="grupo-processo-servico">{{ p.nome_servico }}</h4>
         <div class="grupo-processo-meta">
           <span class="selo selo--{{ p.status_classe }}" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem;">{{ p.status }}</span>
+          {% if p.documento_final_id %}<span style="color:var(--blue-deep); font-weight:600;">{{ p.documento_final_tipo }} pronto para salvar</span>{% endif %}
           {% if p.protocolo %}<span class="mono">protocolo {{ p.protocolo }}</span>{% endif %}
           {% if p.prazo_estimado_fmt %}<span class="mono">prazo {{ p.prazo_estimado_fmt }}</span>{% endif %}
           {% if p.checklist_total %}<span>{{ p.checklist_recebidos }}/{{ p.checklist_total }} documentos</span>{% endif %}

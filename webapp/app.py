@@ -52,7 +52,9 @@ from core.motor_casos import (
     atualizar_responsavel, atualizar_status, criar_caso,
 )
 from core.motor_notificacoes import destinatario_para_notificar
-from core.motor_processos import atualizar_processo, criar_processo
+from core.motor_processos import (
+    STATUS_CONCLUIDO, atualizar_processo, concluir_com_documento, criar_processo,
+)
 from core.motor_usuarios import (
     FUNCOES_VALIDAS, atualizar_ativo, atualizar_papel, atualizar_permissoes,
     criar_usuario, listar_permissoes, listar_usuarios, tem_permissao,
@@ -867,8 +869,11 @@ def caso_detalhe(caso_id):
         return jsonify(erro=f"Caso não encontrado: {caso_id}"), 404
 
     processos = con.execute(
-        "SELECT p.*, s.nome_servico FROM processo p "
+        "SELECT p.*, s.nome_servico, df.tipo_documento AS documento_final_tipo, "
+        "df.nome_arquivo AS documento_final_nome FROM processo p "
         "JOIN servico s ON s.service_id = p.servico_id "
+        "LEFT JOIN documento df ON df.documento_id = p.documento_final_id "
+        "     AND df.empresa_id = p.empresa_id "
         "WHERE p.caso_id = ? AND p.empresa_id = ? ORDER BY p.data_abertura",
         (caso_id, empresa_id),
     ).fetchall()
@@ -937,6 +942,10 @@ def caso_detalhe(caso_id):
         usuarios=[dict(r) for r in usuarios],
         servicos=[dict(r) for r in servicos],
         catalogo_documentos=[r["item"] for r in catalogo_documentos],
+        # Para "Concluir processo" (2026-10-20): o documento pronto vai
+        # para o dossiê, então o tipo sugerido é o do catálogo do dossiê.
+        catalogo_dossie=documentos_cac.nomes(),
+        finalidades_arma=list(documentos_cac.FINALIDADES_ARMA),
         # Botão "Ver filiado" (2026-09-24): só o CPF, e só se a pessoa
         # passou pelo clube E quem está logado pode abrir a tela de
         # Filiados -- sem a segunda condição o botão levaria a um 403.
@@ -1065,6 +1074,42 @@ def processo_atualizar(processo_id):
     if status_antigo != novo_status:
         _notificar_cliente_mudanca_status(empresa_id, caso_id)
     return jsonify(ok=True)
+
+
+@app.route("/api/processos/<processo_id>/concluir", methods=["POST"])
+@login_required
+@funcao_required("casos")
+def processo_concluir(processo_id):
+    """Concluir entregando o documento pronto (2026-10-20) -- ver
+    motor_processos.concluir_com_documento. O arquivo é obrigatório
+    aqui: concluir SEM documento continua sendo pelo Editar do processo."""
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        return jsonify(erro="Selecione o arquivo do documento pronto."), 400
+    extensao = Path(arquivo.filename).suffix.lower()
+    if extensao not in DOCUMENTO_EXTENSOES_ACEITAS:
+        return jsonify(erro=f"Tipo de arquivo não aceito: {extensao or '(sem extensão)'}. Use PDF ou foto."), 400
+    conteudo = arquivo.read()
+    if not conteudo:
+        return jsonify(erro="Arquivo vazio."), 400
+    if len(conteudo) > DOCUMENTO_TAMANHO_MAXIMO:
+        return jsonify(erro="Arquivo maior que 15MB."), 400
+
+    empresa_id = empresa_atual()
+    try:
+        saida = concluir_com_documento(
+            empresa_id, processo_id, conteudo, arquivo.filename,
+            tipo_documento=(request.form.get("tipo_documento") or "").strip(),
+            data_validade=(request.form.get("data_validade") or "").strip() or None,
+            referencia=(request.form.get("referencia") or "").strip() or None,
+            finalidade=(request.form.get("finalidade") or "").strip() or None,
+            concluido_por=session.get("usuario_nome", "Painel administrativo"),
+        )
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    if saida["status_anterior"] != STATUS_CONCLUIDO:
+        _notificar_cliente_mudanca_status(empresa_id, saida["caso_id"])
+    return jsonify(ok=True, documento_id=saida["documento_id"])
 
 
 # ---------------------------------------------------------------------
@@ -1581,6 +1626,14 @@ def dossie_remover(documento_id):
         return jsonify(erro="Documento não encontrado no dossiê."), 404
 
     con = conectar(empresa_id)
+    # Se era o documento pronto de um processo, o processo perde o vínculo
+    # (o cliente deixa de ver o arquivo no Portal) -- sem isto o DELETE
+    # esbarraria na chave estrangeira de processo.documento_final_id.
+    con.execute(
+        "UPDATE processo SET documento_final_id = NULL "
+        "WHERE documento_final_id = ? AND empresa_id = ?",
+        (documento_id, empresa_id),
+    )
     con.execute(
         "DELETE FROM documento WHERE documento_id = ? AND empresa_id = ?",
         (documento_id, empresa_id),

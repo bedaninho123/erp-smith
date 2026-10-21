@@ -29,6 +29,14 @@
     margin: .3rem 0 .5rem 0;
   }
 
+  /* Documento pronto do processo (2026-10-20): o resultado do serviço,
+     então ganha destaque -- é a melhor notícia da tela. */
+  .entrega { display: flex; justify-content: space-between; align-items: center; gap: .8rem; flex-wrap: wrap;
+             margin-top: .7rem; padding: .8rem 1rem; border-radius: var(--radius);
+             background: var(--blue-soft); border: 1px solid var(--line); }
+  .entrega-texto { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+  .entrega-rotulo { font-size: .78rem; color: var(--steel); }
+
   .ficha-form, .ficha-tabela { padding: 1.3rem 1.4rem; }
   .campo { margin-bottom: 1rem; }
   .campo:last-of-type { margin-bottom: 1.2rem; }
@@ -58,6 +66,29 @@
       {% if processo.protocolo %}<span class="processo-protocolo mono">protocolo {{ processo.protocolo }}</span>{% endif %}
       <span class="selo selo--{{ processo.status_classe }}" style="min-width:auto; font-size:.62rem; padding:.2rem .5rem;">{{ processo.status }}</span>
     </div>
+    {% if processo.documento_final_id %}
+    <!-- O que o cliente pagou para receber (2026-10-20): o documento
+         pronto, ao lado do "Concluído". Mesmo endereço de download de
+         "Minha conta", com a mesma checagem de dono. -->
+    <div class="entrega">
+      <div class="entrega-texto">
+        <span class="entrega-rotulo">Seu documento está pronto</span>
+        <b>{{ processo.documento_final_tipo }}</b>
+      </div>
+      <div class="doc-acoes">
+        <button type="button" class="doc-botao doc-botao--principal btn-ver"
+                data-url="{{ url_for('download_documento', documento_id=processo.documento_final_id) }}?inline=1"
+                data-nome="{{ processo.documento_final_nome or processo.documento_final_tipo }}"
+                data-imagem="{{ '1' if processo.documento_final_e_imagem else '0' }}"
+                data-baixar="{{ url_for('download_documento', documento_id=processo.documento_final_id) }}">
+          Visualizar e imprimir
+        </button>
+        <a class="doc-botao" href="{{ url_for('download_documento', documento_id=processo.documento_final_id) }}">
+          Salvar arquivo
+        </a>
+      </div>
+    </div>
+    {% endif %}
     {% if processo.prazo_estimado_fmt %}<p class="processo-proxima mono" style="color:var(--steel); font-size:.8rem;">prazo estimado: {{ processo.prazo_estimado_fmt }}</p>{% endif %}
     {% if processo.proxima_acao %}<p class="processo-proxima"><b>Próxima ação:</b> {{ processo.proxima_acao }}</p>{% endif %}
 
@@ -166,4 +197,6 @@
     </tbody>
   </table>
 </div>
+
+{% include "_portal_visor.html" %}
 {% endblock %}

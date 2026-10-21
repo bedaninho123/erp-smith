@@ -96,6 +96,10 @@ ENV_PATH = BASE_DIR / ".env"
 DOCUMENTO_EXTENSOES_ACEITAS = {".pdf", ".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp"}
 DOCUMENTO_TAMANHO_MAXIMO = 15 * 1024 * 1024  # 15 MB
 
+# Processo nestes status já terminou: não pede documento ao cliente nem
+# conta como pendência dele (2026-10-20).
+PROCESSO_ENCERRADO = ("Concluído", "Cancelado")
+
 MESES_PT = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
@@ -520,20 +524,36 @@ def _processos_com_checklist(con, empresa_id: str, caso_id: str) -> list:
     """Processos de um caso, cada um já com o checklist de documentos e
     as contagens pra o alvo de progresso -- usado tanto no resumo do
     dashboard (agregado por caso) quanto na tela de detalhe (completo)."""
+    # O documento pronto (2026-10-20) vem junto, e o JOIN exige que ele
+    # seja da MESMA pessoa do processo: o vínculo é gravado pelo painel,
+    # mas é aqui que um erro viraria arquivo de outra pessoa na tela.
     processos = con.execute(
         "SELECT p.processo_id, p.protocolo, p.status, p.prazo_estimado, "
-        "p.proxima_acao, s.nome_servico "
+        "p.proxima_acao, s.nome_servico, df.documento_id AS documento_final_id, "
+        "df.tipo_documento AS documento_final_tipo, df.nome_arquivo AS documento_final_nome "
         "FROM processo p JOIN servico s ON s.service_id = p.servico_id "
+        "LEFT JOIN documento df ON df.documento_id = p.documento_final_id "
+        "     AND df.empresa_id = p.empresa_id AND df.cliente_id = p.cliente_id "
         "WHERE p.caso_id = ? AND p.empresa_id = ? ORDER BY p.data_abertura",
         (caso_id, empresa_id),
     ).fetchall()
     resultado = []
     for linha_processo in processos:
         processo = dict(linha_processo)
+        processo["documento_final_e_imagem"] = (processo["documento_final_nome"] or "").lower().endswith(
+            (".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif")
+        )
+        # Processo concluído ou cancelado não pede mais nada ao cliente: o
+        # checklist some da tela e sai das contagens de "faltando" (sem
+        # isso, quem acabou de receber o CRAF pronto via "0/16 faltando").
+        processo["encerrado"] = processo["status"] in PROCESSO_ENCERRADO
         processo["status_classe"] = _classe_selo(processo["status"])
         processo["prazo_estimado_fmt"] = _data_br(processo["prazo_estimado"])
         checklist = motor_checklist.status_checklist(con, empresa_id, processo["processo_id"])
         processo["checklist"] = checklist
+        if processo["encerrado"]:
+            checklist = []
+            processo["checklist"] = checklist
         processo["checklist_total"] = len(checklist)
         processo["checklist_recebidos"] = sum(1 for item in checklist if item["recebido"])
         processo["checklist_pct"] = (
@@ -672,11 +692,14 @@ def dashboard():
     documentos_pendentes = 0
     for linha in processos_rows:
         proc = dict(linha)
+        # Processo encerrado não deixa "documento pendente" para o cliente
+        # -- ver o mesmo cuidado em _processos_com_checklist.
+        if proc["status"] in PROCESSO_ENCERRADO:
+            continue
         checklist = motor_checklist.status_checklist(con, empresa_id, proc["processo_id"])
         documentos_pendentes += sum(1 for item in checklist if not item["recebido"])
-        if proc["status"] not in ("Concluído", "Cancelado"):
-            proc["status_classe"] = _classe_selo(proc["status"])
-            processos_em_andamento.append(proc)
+        proc["status_classe"] = _classe_selo(proc["status"])
+        processos_em_andamento.append(proc)
     con.close()
 
     proximos_campeonatos = _proximos_campeonatos(empresa_id)

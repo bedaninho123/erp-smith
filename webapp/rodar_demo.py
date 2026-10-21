@@ -204,6 +204,31 @@ def _criar_banco_core() -> None:
     _marcar_checklist_demo(processos["CAS-000002"], "CAS-000002", "CLI-000002")
     _popular_auditoria_demo()
     _popular_dossie_demo()
+    _concluir_processo_demo()
+
+
+def _concluir_processo_demo() -> None:
+    """Um processo da Helena já concluído, com o documento pronto entregue
+    (2026-10-20). Sem ele, o Portal de demonstração nunca mostraria o
+    "Concluído" com o documento ao lado -- e o painel e o Portal de
+    demonstração são processos separados, cada um com o seu banco, então
+    concluir no painel não aparece no Portal. Pelo motor, não por INSERT."""
+    from datetime import date, timedelta
+
+    from core.motor_processos import concluir_com_documento, criar_processo
+
+    processo_id = criar_processo(
+        EMPRESA, "CAS-000001", "CLI-000001", "SER-000005",
+        responsavel_id="USR-000001", criado_por="demonstração",
+    )
+    concluir_com_documento(
+        EMPRESA, processo_id, _pdf_exemplo(), "CRAF renovado.pdf",
+        tipo_documento="CRAF — Certificado de Registro de Arma de Fogo",
+        data_validade=(date.today() + timedelta(days=3650)).isoformat(),
+        referencia="Carabina .22 (documento de exemplo)", finalidade="Tiro",
+        concluido_por="Gestor de Demonstração",
+    )
+    print("  Processo concluído com documento pronto: CRAF da Helena")
 
 
 def _criar_tarefas_demo() -> None:
