@@ -288,6 +288,46 @@ def _loop_backup() -> None:
         time.sleep(_INTERVALO_BACKUP_SEGUNDOS)
 
 
+# Cópia dos documentos nas pastas de cliente do Drive (2026-10-20, ver
+# integracoes/espelho_documentos_drive.py). A cada 10 min: o documento
+# aparece na pasta da pessoa pouco depois de subir, sem pesar no envio.
+_INTERVALO_ESPELHO_SEGUNDOS = 10 * 60
+_ATRASO_INICIAL_ESPELHO_SEGUNDOS = 120
+
+
+def _loop_espelho_documentos() -> None:
+    from core import saude
+    from core.motor_empresas import listar_empresas
+    from integracoes import google_drive
+    from integracoes.espelho_documentos_drive import espelhar
+
+    time.sleep(_ATRASO_INICIAL_ESPELHO_SEGUNDOS)
+    while True:
+        if not google_drive.drive_configurado():
+            _log("Google Drive não autorizado -- cópia dos documentos pulada.",
+                 origem="documentos-drive")
+        else:
+            tudo_certo = True
+            for empresa in listar_empresas():
+                try:
+                    saida = espelhar(empresa["empresa_id"])
+                    if saida["enviados"] or saida["falhas"]:
+                        _log(f"{empresa['empresa_id']}: {saida['enviados']} enviado(s), "
+                             f"{saida['falhas']} falha(s), {saida['faltando']} na fila.",
+                             origem="documentos-drive")
+                    # Batimento só se o Drive respondeu: arquivo que falhou
+                    # sozinho não acusa, mas rodada inteira falhando sim.
+                    if saida["falhas"] and not saida["enviados"]:
+                        tudo_certo = False
+                except Exception:
+                    tudo_certo = False
+                    _log(f"Falhou para {empresa['empresa_id']}:", origem="documentos-drive")
+                    traceback.print_exc()
+            if tudo_certo:
+                saude.registrar("documentos_drive")
+        time.sleep(_INTERVALO_ESPELHO_SEGUNDOS)
+
+
 def _loop_poller_email() -> None:
     # atendimento.poller.loop() já é o loop pronto (verificar a cada 60s,
     # try/except por rodada) -- rodar como thread aqui é só trocar QUEM
@@ -308,7 +348,10 @@ if __name__ == "__main__":
     print("Migração convite de usuário:", _migrar_convite_usuario(), flush=True)
     from core.db.migrar_documento_final import migrar as _migrar_documento_final
     print("Migração documento final do processo:", _migrar_documento_final(), flush=True)
+    from core.db.migrar_espelho_drive import migrar as _migrar_espelho_drive
+    print("Migração cópia de documentos no Drive:", _migrar_espelho_drive(), flush=True)
     threading.Thread(target=_loop_sincronizacao_habitualidade, daemon=True).start()
+    threading.Thread(target=_loop_espelho_documentos, daemon=True).start()
     threading.Thread(target=_loop_backup, daemon=True).start()
     threading.Thread(target=_loop_poller_email, daemon=True).start()
 

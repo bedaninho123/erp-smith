@@ -21,7 +21,9 @@ def _saude_zerada(monkeypatch):
 
 
 def test_recem_subido_e_aguardando_nao_falha():
-    assert saude.avaliar(agora=AGORA + 60) == {"email": "aguardando", "backup": "aguardando"}
+    assert saude.avaliar(agora=AGORA + 60) == {
+        "email": "aguardando", "backup": "aguardando", "documentos_drive": "aguardando",
+    }
 
 
 def test_email_que_nunca_rodou_vira_atrasado_depois_do_prazo():
@@ -102,7 +104,8 @@ def test_tudo_bem_responde_200_sem_login(anonimo, monkeypatch):
     assert resposta.status_code == 200
     assert resposta.get_json() == {
         "status": "ok",
-        "partes": {"email": "aguardando", "backup": "aguardando", "banco": "ok"},
+        "partes": {"email": "aguardando", "backup": "aguardando",
+                   "documentos_drive": "aguardando", "banco": "ok"},
     }
 
 

@@ -95,6 +95,7 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.migrar_codigo_portal          # idempotente, codigo de 6 digitos do login do Portal (roda sozinha em producao)
 .venv\Scripts\python.exe -m core.db.migrar_convite_usuario        # idempotente, tabela do convite por e-mail para criar senha do painel (roda sozinha em producao)
 .venv\Scripts\python.exe -m core.db.migrar_documento_final        # idempotente, processo.documento_final_id -- documento pronto entregue ao cliente (roda sozinha em producao)
+.venv\Scripts\python.exe -m core.db.migrar_espelho_drive          # idempotente, tabelas da copia dos documentos em pasta por cliente no Drive (roda sozinha em producao)
 # Permite documento pertencer ao CLIENTE e não a um caso (dossiê). RECONSTRÓI
 # a tabela documento -- ver tests/test_migracao_dossie.py
 .venv\Scripts\python.exe -m core.db.migrar_dossie_cliente
@@ -849,6 +850,19 @@ levantou cinco pontos, todos corrigidos:
   `drive.file`), mantendo os últimos 14. Apaga o antigo só depois de o
   novo subir. O backup local do PC (G:\ do Drive para desktop) copia o
   banco do PC, que deixou de ser o de produção em 2026-09-08.
+  **Pasta por cliente no Drive (2026-10-20):** além do `.zip` diário, cada
+  documento ganha uma cópia avulsa em `ERP Smith - Documentos dos
+  Clientes/<Nome> (CLI-xxxxxx)/<data> - <tipo> (DOC-xxxxxx).pdf`
+  (`integracoes/espelho_documentos_drive.py`, thread de `webapp/servir.py`
+  a cada 10 min, até 50 por rodada). O `.zip` restaura o sistema; a pasta
+  é para uma pessoa achar os papéis de alguém. Regras: nada sobe duas
+  vezes (`drive_documento`); apagar no painel **não** apaga no Drive
+  (cópia de segurança); nome do cliente mudou → pasta renomeada; pasta
+  apagada no Drive → recriada; o código do cliente no nome da pasta
+  separa homônimos. **Sem comando de terminal de propósito**: rodado no
+  PC, mandaria o banco local para o Drive da produção. Batimento
+  `documentos_drive` no `/saude` (2h). Banco em uso:
+  `core.db.migrar_espelho_drive` (roda sozinha em produção).
 - **Monitor de saúde** (2026-10-14): `/saude` no painel, sem login, para
   um monitor externo (UptimeRobot). Responde 503 se o banco não abre, se
   a caixa de e-mail não foi LIDA com sucesso em 15 min ou se o backup não

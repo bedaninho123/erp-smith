@@ -97,6 +97,45 @@ def enviar_backup(arquivo: Path, manter_ultimos: int) -> dict:
     return {"id": enviado["id"], "tamanho": int(enviado.get("size") or 0), "apagados": apagados}
 
 
+def servico():
+    """O cliente da API, para quem faz várias operações seguidas (o
+    espelho de documentos) sem renovar o token a cada uma."""
+    return _servico()
+
+
+def pasta_utilizavel(servico, pasta_id: str) -> bool:
+    """A pasta ainda existe e não está na lixeira? A pessoa pode apagar
+    pelo Drive uma pasta que o sistema criou; aí ela é criada de novo, em
+    vez de os arquivos irem para dentro de algo que ninguém vê."""
+    from googleapiclient.errors import HttpError
+
+    try:
+        dados = servico.files().get(fileId=pasta_id, fields="trashed").execute()
+    except HttpError as e:
+        if getattr(e, "status_code", None) == 404 or getattr(getattr(e, "resp", None), "status", None) == 404:
+            return False
+        raise
+    return not dados.get("trashed")
+
+
+def criar_pasta(servico, nome: str, pai_id: Optional[str] = None) -> str:
+    corpo = {"name": nome, "mimeType": MIME_PASTA}
+    if pai_id:
+        corpo["parents"] = [pai_id]
+    return servico.files().create(body=corpo, fields="id").execute()["id"]
+
+
+def renomear(servico, arquivo_id: str, nome: str) -> None:
+    servico.files().update(fileId=arquivo_id, body={"name": nome}, fields="id").execute()
+
+
+def enviar_arquivo(servico, caminho: Path, nome: str, pasta_id: str, mimetype: str) -> str:
+    midia = MediaFileUpload(str(caminho), mimetype=mimetype, resumable=True)
+    return servico.files().create(
+        body={"name": nome, "parents": [pasta_id]}, media_body=midia, fields="id",
+    ).execute()["id"]
+
+
 def listar_backups() -> Optional[list[dict]]:
     """Para conferir de fora (diagnóstico): nome, data e tamanho, sem
     baixar nada. None quando o Drive não está autorizado."""

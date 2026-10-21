@@ -601,6 +601,26 @@ CREATE TABLE usuario_convite (
 
 CREATE INDEX idx_usuario_convite_usuario ON usuario_convite(empresa_id, usuario_id);
 
+-- Cópia dos documentos no Google Drive, uma pasta por cliente
+-- (2026-10-20, integracoes/espelho_documentos_drive.py). `drive_pasta`
+-- guarda o id das pastas que o sistema criou ('raiz' ou o cliente_id) e
+-- o nome com que foram criadas, para renomear quando o nome do cliente
+-- mudar. `drive_documento` marca o que já subiu: nada sobe duas vezes.
+CREATE TABLE drive_pasta (
+    empresa_id     TEXT NOT NULL REFERENCES empresa(empresa_id),
+    chave          TEXT NOT NULL,                     -- 'raiz' ou CLI-000001
+    drive_pasta_id TEXT NOT NULL,
+    nome           TEXT NOT NULL,
+    PRIMARY KEY (empresa_id, chave)
+);
+
+CREATE TABLE drive_documento (
+    documento_id     TEXT PRIMARY KEY,                -- sem FK: a cópia sobrevive ao documento apagado
+    empresa_id       TEXT NOT NULL REFERENCES empresa(empresa_id),
+    drive_arquivo_id TEXT NOT NULL,
+    enviado_em       TEXT NOT NULL                     -- ISO 8601
+);
+
 CREATE INDEX idx_portal_token_empresa_id ON portal_token(empresa_id);
 CREATE INDEX idx_portal_token_cliente_id ON portal_token(cliente_id);
 CREATE INDEX idx_portal_token_desafio ON portal_token(desafio);

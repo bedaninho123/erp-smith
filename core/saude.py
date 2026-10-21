@@ -24,6 +24,10 @@ from typing import Optional
 LIMITES_SEGUNDOS = {
     "email": 15 * 60,
     "backup": 26 * 60 * 60,
+    # Cópia dos documentos para as pastas de cliente no Drive (2026-10-20):
+    # roda a cada 10 min; 2h sem uma rodada boa é Drive fora do ar ou
+    # autorização vencida, não instabilidade.
+    "documentos_drive": 2 * 60 * 60,
 }
 
 _trava = threading.Lock()
