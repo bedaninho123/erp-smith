@@ -152,6 +152,38 @@ def test_token_chega_pelo_ambiente_e_vira_arquivo(tmp_path, monkeypatch):
     assert destino.read_text(encoding="utf-8") == '{"token": "renovado"}'
 
 
+def test_renovar_mantem_o_arquivo_mas_autorizacao_nova_o_substitui(tmp_path, monkeypatch):
+    """Renovar troca só o `token` de acesso: o arquivo renovado vale mais
+    que a variável. Autorizar de novo traz outro `refresh_token` -- aí é a
+    variável que vale, senão o volume seguiria com o acesso revogado."""
+    destino = tmp_path / "volume" / "drive_token.json"
+    monkeypatch.setattr(google_drive, "TOKEN_PATH", destino)
+    monkeypatch.setenv(
+        "ERP_DRIVE_TOKEN_JSON", '{"token": "a1", "refresh_token": "antigo"}')
+    google_drive.drive_configurado()
+
+    renovado = '{"token": "a2", "refresh_token": "antigo"}'
+    destino.write_text(renovado, encoding="utf-8")
+    google_drive.drive_configurado()
+    assert destino.read_text(encoding="utf-8") == renovado
+
+    nova = '{"token": "b1", "refresh_token": "novo"}'
+    monkeypatch.setenv("ERP_DRIVE_TOKEN_JSON", nova)
+    google_drive.drive_configurado()
+    assert destino.read_text(encoding="utf-8") == nova
+
+
+def test_variavel_quebrada_nao_apaga_o_token_bom(tmp_path, monkeypatch):
+    destino = tmp_path / "drive_token.json"
+    bom = '{"token": "a1", "refresh_token": "antigo"}'
+    destino.write_text(bom, encoding="utf-8")
+    monkeypatch.setattr(google_drive, "TOKEN_PATH", destino)
+    monkeypatch.setenv("ERP_DRIVE_TOKEN_JSON", "colado pela metade {")
+
+    google_drive.drive_configurado()
+    assert destino.read_text(encoding="utf-8") == bom
+
+
 def test_rotina_do_servidor_nao_cai_sem_drive(tmp_path, monkeypatch, capsys):
     """Sem autorização a rotina diária registra e segue -- o backup local
     da rodada já foi salvo antes."""
