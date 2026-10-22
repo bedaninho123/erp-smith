@@ -17,8 +17,10 @@ não pode derrubar a outra. Na hospedagem o caminho aponta para o volume
 
 Se o arquivo ainda não existe no volume e a variável ERP_DRIVE_TOKEN_JSON
 estiver definida, ele nasce dela -- é como o token chega ao Railway sem
-precisar copiar arquivo por SSH.
+precisar copiar arquivo por SSH. Autorização nova na variável (outro
+`refresh_token`) substitui o arquivo; ver `_semear_token_do_ambiente`.
 """
+import json
 import os
 from pathlib import Path
 from typing import Optional
@@ -37,11 +39,30 @@ PASTA_BACKUP = "ERP Smith - Backups Produção"
 MIME_PASTA = "application/vnd.google-apps.folder"
 
 
+def _refresh_token(conteudo: str) -> Optional[str]:
+    try:
+        return json.loads(conteudo).get("refresh_token")
+    except (ValueError, AttributeError):
+        return None
+
+
 def _semear_token_do_ambiente() -> None:
+    """O arquivo nasce da variável e, dali em diante, só é trocado por ela
+    quando a AUTORIZAÇÃO mudou -- outro `refresh_token`. Renovar mexe só
+    no `token` de acesso, então o arquivo renovado continua valendo mais
+    que o da variável. Sem a troca, revogar o acesso e autorizar de novo
+    (incidente do Railway, 2026-10-22) não tinha efeito: o volume seguia
+    lendo o token revogado e a variável nova era ignorada."""
     conteudo = os.environ.get("ERP_DRIVE_TOKEN_JSON", "").strip()
-    if conteudo and not TOKEN_PATH.exists():
-        TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        TOKEN_PATH.write_text(conteudo, encoding="utf-8")
+    if not conteudo:
+        return
+    if TOKEN_PATH.exists():
+        do_arquivo = _refresh_token(TOKEN_PATH.read_text(encoding="utf-8"))
+        do_ambiente = _refresh_token(conteudo)
+        if do_ambiente is None or do_ambiente == do_arquivo:
+            return
+    TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TOKEN_PATH.write_text(conteudo, encoding="utf-8")
 
 
 def drive_configurado() -> bool:
