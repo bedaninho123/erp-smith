@@ -163,3 +163,56 @@ def test_rotina_do_servidor_nao_cai_sem_drive(tmp_path, monkeypatch, capsys):
     servir._enviar_backup_ao_drive(tmp_path)
 
     assert "Google Drive não autorizado" in capsys.readouterr().out
+
+
+def _rodada_com(monkeypatch, falha_local=False, falha_envio=False):
+    """Prepara _rodada_backup com backup local e envio falsos; devolve as
+    listas de chamadas para conferir o que cada tentativa fez."""
+    from webapp import servir
+
+    feitos, enviados = [], []
+
+    def main_falso(incluir_documentos):
+        if falha_local:
+            raise OSError("disco cheio")
+        feitos.append(f"pasta{len(feitos) + 1}")
+        return feitos[-1]
+
+    def enviar_falso(pasta):
+        enviados.append(pasta)
+        if falha_envio:
+            raise ConnectionError("Drive fora do ar")
+
+    monkeypatch.setattr(modulo_backup, "main", main_falso)
+    monkeypatch.setattr(servir, "_enviar_backup_ao_drive", enviar_falso)
+    return servir, feitos, enviados
+
+
+def test_rodada_que_da_certo_espera_um_dia(monkeypatch):
+    servir, feitos, enviados = _rodada_com(monkeypatch)
+    espera, pendente = servir._rodada_backup()
+    assert espera == servir._INTERVALO_BACKUP_SEGUNDOS
+    assert pendente is None
+    assert enviados == ["pasta1"]
+
+
+def test_backup_local_que_falha_tenta_de_novo_em_uma_hora(monkeypatch):
+    servir, feitos, enviados = _rodada_com(monkeypatch, falha_local=True)
+    espera, pendente = servir._rodada_backup()
+    assert espera == servir._NOVA_TENTATIVA_BACKUP_SEGUNDOS
+    assert pendente is None
+    assert enviados == []
+
+
+def test_envio_que_falha_reenvia_a_mesma_pasta_sem_novo_backup_local(monkeypatch):
+    """Uma pasta por hora com o Drive fora do ar apagaria, pela rotação por
+    contagem, as duas semanas de histórico local."""
+    servir, feitos, enviados = _rodada_com(monkeypatch, falha_envio=True)
+    espera, pendente = servir._rodada_backup()
+    assert espera == servir._NOVA_TENTATIVA_BACKUP_SEGUNDOS
+    assert pendente == "pasta1"
+
+    espera, pendente = servir._rodada_backup(pendente)
+    assert feitos == ["pasta1"]
+    assert enviados == ["pasta1", "pasta1"]
+    assert espera == servir._NOVA_TENTATIVA_BACKUP_SEGUNDOS

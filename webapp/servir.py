@@ -240,6 +240,8 @@ def _loop_sincronizacao_habitualidade() -> None:
 # ainda que valha a pena copiar.
 _INTERVALO_BACKUP_SEGUNDOS = 24 * 60 * 60
 _ATRASO_INICIAL_BACKUP_SEGUNDOS = 300
+# Rodada que falhou não espera o dia seguinte (ver _rodada_backup).
+_NOVA_TENTATIVA_BACKUP_SEGUNDOS = 60 * 60
 
 
 def _enviar_backup_ao_drive(pasta_backup) -> None:
@@ -270,22 +272,41 @@ def _enviar_backup_ao_drive(pasta_backup) -> None:
          f"{len(saida['apagados'])} antigo(s) apagado(s).", origem="backup-drive")
 
 
-def _loop_backup() -> None:
+def _rodada_backup(pendente=None):
+    """Uma rodada: backup local + envio ao Drive. Devolve (espera, pendente).
+
+    Falhou, tenta de novo em 1h, não em 24h (2026-10-23): numa
+    instabilidade do Railway a rodada do dia caiu e o sistema ficou um dia
+    inteiro sem backup fora do volume, com o /saude acusando falha.
+
+    Se só o ENVIO falhou, a próxima tentativa manda a MESMA pasta em vez de
+    fazer outro backup local: a rotação guarda os últimos 14 por contagem,
+    e uma tarde de Drive fora do ar faria uma pasta por hora e apagaria as
+    duas semanas de histórico local."""
     from core.db import backup as modulo_backup
 
+    try:
+        if pendente is None:
+            pendente = modulo_backup.main(incluir_documentos=False)
+    except Exception:
+        _log("Falhou; nova tentativa em 1h:", origem="backup")
+        traceback.print_exc()
+        return _NOVA_TENTATIVA_BACKUP_SEGUNDOS, None
+    try:
+        _enviar_backup_ao_drive(pendente)
+    except Exception:
+        _log("Falhou o envio ao Drive; nova tentativa em 1h:", origem="backup-drive")
+        traceback.print_exc()
+        return _NOVA_TENTATIVA_BACKUP_SEGUNDOS, pendente
+    return _INTERVALO_BACKUP_SEGUNDOS, None
+
+
+def _loop_backup() -> None:
     time.sleep(_ATRASO_INICIAL_BACKUP_SEGUNDOS)
+    pendente = None
     while True:
-        try:
-            pasta = modulo_backup.main(incluir_documentos=False)
-            try:
-                _enviar_backup_ao_drive(pasta)
-            except Exception:
-                _log("Falhou o envio ao Drive:", origem="backup-drive")
-                traceback.print_exc()
-        except Exception:
-            _log("Falhou:", origem="backup")
-            traceback.print_exc()
-        time.sleep(_INTERVALO_BACKUP_SEGUNDOS)
+        espera, pendente = _rodada_backup(pendente)
+        time.sleep(espera)
 
 
 # Cópia dos documentos nas pastas de cliente do Drive (2026-10-20, ver
