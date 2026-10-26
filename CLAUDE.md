@@ -865,8 +865,10 @@ levantou cinco pontos, todos corrigidos:
   `core.db.migrar_espelho_drive` (roda sozinha em produção).
 - **Monitor de saúde** (2026-10-14): `/saude` no painel, sem login, para
   um monitor externo (UptimeRobot). Responde 503 se o banco não abre, se
-  a caixa de e-mail não foi LIDA com sucesso em 15 min ou se o backup não
-  chegou ao Drive em 26h (`core/saude.py`). O batimento do e-mail sai
+  a caixa de e-mail não foi LIDA com sucesso em 15 min, se o backup não
+  chegou ao Drive em 26h ou se a sincronização do clube com o Shooting
+  House não teve uma rodada boa em 8h (`core/saude.py`; a habitualidade
+  entrou em 2026-10-26, e chave geral desligada também acusa). O batimento do e-mail sai
   depois de o Gmail responder, não da rotina rodar: em julho a rotina
   rodava e a caixa ficou dois meses sem ser lida. Só mostra "ok"/"falha"
   por parte, nunca dado nem texto de erro.
@@ -1190,7 +1192,9 @@ fabricar critério que ninguém confirmou. Aqui o custo de errar é dizer a
 um atirador que está em dia quando não está.
 
 A sincronização (`domain/clube_tiro/sincronizar_habitualidade.py`) roda
-por Tarefa Agendada 4x ao dia e atende por rodada os `--limite` filiados
+em produção a cada 3h (thread de `webapp/servir.py`; era 6h até
+2026-10-26, quando participação nova levava ~2 dias para aparecer) e
+atende por rodada os 150 filiados ativos
 **há mais tempo sem sincronizar** — é o rodízio que cobre 900 pessoas sem
 despejar tudo na API de uma vez. Falha de um não derruba a rodada nem
 apaga o retrato anterior dele.

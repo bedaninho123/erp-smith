@@ -28,6 +28,10 @@ LIMITES_SEGUNDOS = {
     # roda a cada 10 min; 2h sem uma rodada boa é Drive fora do ar ou
     # autorização vencida, não instabilidade.
     "documentos_drive": 2 * 60 * 60,
+    # Sincronização do clube com o Shooting House (2026-10-26): roda a
+    # cada 3h. 8h tolera UMA rodada perdida (a API às vezes falha logo
+    # depois de um deploy) e acusa quando duas seguidas falham.
+    "habitualidade": 8 * 60 * 60,
 }
 
 _trava = threading.Lock()

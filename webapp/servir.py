@@ -197,10 +197,14 @@ def _despachar_por_prefixo(environ, start_response):
         return portal_app.wsgi_app(environ, start_response)
     return painel_app.wsgi_app(environ, start_response)
 
-# Mesmo ritmo "4x ao dia" da Tarefa Agendada local (a cada 6h). A primeira
-# rodada espera só 60s -- suficiente pro processo terminar de subir --
-# em vez de esperar 6h pra ter o primeiro dado.
-_INTERVALO_SEGUNDOS = 6 * 60 * 60
+# A cada 3h (2026-10-26). Era 6h, o ritmo da Tarefa Agendada local: com
+# ~1000 ativos e 150 por rodada, cada pessoa só era reconsultada a cada
+# ~1,7 dia, e participação nova levava dois dias para aparecer. Mais
+# rodadas do MESMO tamanho, não rodadas maiores: 150 é o que a API já
+# aguenta há meses, e a lista do clube (que traz o Financeiro) passa a
+# vir 8x ao dia de carona. A primeira rodada espera só 60s -- suficiente
+# pro processo terminar de subir.
+_INTERVALO_SEGUNDOS = 3 * 60 * 60
 _ATRASO_INICIAL_SEGUNDOS = 60
 _LIMITE_POR_RODADA = 150  # mesmo padrão default do script local
 
@@ -210,27 +214,59 @@ def _log(mensagem: str, origem: str = "sincronizador-habitualidade") -> None:
     print(f"[{origem} {agora}] {mensagem}", flush=True)
 
 
-def _loop_sincronizacao_habitualidade() -> None:
+def _rodada_habitualidade() -> None:
+    """Uma rodada de sincronização do clube.
+
+    Lista que não veio é dita com o motivo (2026-10-26): antes o log
+    imprimia "lista 0 filiados, habitualidade consultada em 0" -- igual a
+    um clube vazio, e sem dizer o que o Shooting House respondeu. O texto
+    do erro já sai limpo de _chamar_api (sem CPF nem credencial).
+
+    Batimento no /saude só quando a lista veio e a habitualidade não falhou
+    inteira. Chave geral desligada também não bate: o panorama de fato não
+    está atualizando, e o /saude dizer isso é o certo."""
+    from core import saude
     from core.motor_empresas import listar_empresas
     from domain.clube_tiro.sincronizar_habitualidade import sincronizar
     from integracoes.config import shooting_house_ativo
 
+    if not shooting_house_ativo():
+        _log("Shooting House em modo simulado -- pulando rodada "
+             "(nunca grava habitualidade simulada em filiado real).")
+        return
+    tudo_certo = True
+    for empresa in listar_empresas():
+        empresa_id = empresa["empresa_id"]
+        try:
+            saida = sincronizar(empresa_id, limite=_LIMITE_POR_RODADA)
+        except Exception:
+            tudo_certo = False
+            _log(f"Falhou para {empresa_id}:")
+            traceback.print_exc()
+            continue
+        lista = saida["lista"]
+        if lista["erro"]:
+            tudo_certo = False
+            _log(f"{empresa_id}: a lista de filiados não veio -- {lista['erro']} "
+                 f"Habitualidade não consultada nesta rodada.")
+            continue
+        hab = saida["habitualidade"] or {}
+        _log(f"{empresa_id}: lista {lista['total']} filiados, habitualidade "
+             f"consultada em {hab.get('consultados', 0)}, "
+             f"{hab.get('falhas', 0)} falha(s).")
+        if hab.get("falhas") and not hab.get("consultados"):
+            tudo_certo = False
+        modalidades = saida.get("modalidades") or {}
+        if modalidades.get("erro"):
+            _log(f"{empresa_id}: catálogo de modalidades não veio -- {modalidades['erro']}")
+    if tudo_certo:
+        saude.registrar("habitualidade")
+
+
+def _loop_sincronizacao_habitualidade() -> None:
     time.sleep(_ATRASO_INICIAL_SEGUNDOS)
     while True:
-        if not shooting_house_ativo():
-            _log("Shooting House em modo simulado -- pulando rodada "
-                 "(nunca grava habitualidade simulada em filiado real).")
-        else:
-            for empresa in listar_empresas():
-                try:
-                    saida = sincronizar(empresa["empresa_id"], limite=_LIMITE_POR_RODADA)
-                    hab = saida.get("habitualidade") or {}
-                    _log(f"{empresa['empresa_id']}: lista {saida['lista']['total']} "
-                         f"filiados, habitualidade consultada em "
-                         f"{hab.get('consultados', 0)}.")
-                except Exception:
-                    _log(f"Falhou para {empresa['empresa_id']}:")
-                    traceback.print_exc()
+        _rodada_habitualidade()
         time.sleep(_INTERVALO_SEGUNDOS)
 
 
