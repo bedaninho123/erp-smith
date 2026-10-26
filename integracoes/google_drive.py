@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -44,17 +45,41 @@ def _semear_token_do_ambiente() -> None:
         TOKEN_PATH.write_text(conteudo, encoding="utf-8")
 
 
+def _trocar_pelo_token_do_ambiente() -> bool:
+    """O arquivo do volume foi recusado pelo Google; se a variável traz
+    OUTRO token, ele passa a valer (2026-10-24). Sem isso, autorizar de
+    novo e trocar ERP_DRIVE_TOKEN_JSON não tinha efeito nenhum: o arquivo
+    antigo já existia, a variável nunca era lida, e o backup ficou dias sem
+    chegar ao Drive depois de o acesso antigo ser revogado no incidente do
+    Railway. Só troca na recusa -- um arquivo que funciona nunca é tocado."""
+    conteudo = os.environ.get("ERP_DRIVE_TOKEN_JSON", "").strip()
+    if not conteudo or conteudo == TOKEN_PATH.read_text(encoding="utf-8").strip():
+        return False
+    TOKEN_PATH.write_text(conteudo, encoding="utf-8")
+    return True
+
+
 def drive_configurado() -> bool:
     _semear_token_do_ambiente()
     return TOKEN_PATH.exists()
 
 
-def _servico():
-    _semear_token_do_ambiente()
+def _credenciais() -> Credentials:
     creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
         TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
+    return creds
+
+
+def _servico():
+    _semear_token_do_ambiente()
+    try:
+        creds = _credenciais()
+    except RefreshError:
+        if not _trocar_pelo_token_do_ambiente():
+            raise
+        creds = _credenciais()
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 

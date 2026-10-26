@@ -216,3 +216,57 @@ def test_envio_que_falha_reenvia_a_mesma_pasta_sem_novo_backup_local(monkeypatch
     assert feitos == ["pasta1"]
     assert enviados == ["pasta1", "pasta1"]
     assert espera == servir._NOVA_TENTATIVA_BACKUP_SEGUNDOS
+
+
+def _drive_com_token_recusado(tmp_path, monkeypatch, token_no_ambiente):
+    """Arquivo do volume com o token 'velho', que o Google recusa; o
+    'novo' funciona. Nenhuma chamada sai daqui."""
+    from google.auth.exceptions import RefreshError
+
+    arquivo = tmp_path / "drive_token.json"
+    arquivo.write_text('{"token": "velho"}', encoding="utf-8")
+    monkeypatch.setattr(google_drive, "TOKEN_PATH", arquivo)
+    if token_no_ambiente is None:
+        monkeypatch.delenv("ERP_DRIVE_TOKEN_JSON", raising=False)
+    else:
+        monkeypatch.setenv("ERP_DRIVE_TOKEN_JSON", token_no_ambiente)
+
+    def credenciais_falsas():
+        if "velho" in arquivo.read_text(encoding="utf-8"):
+            raise RefreshError("invalid_grant: Token has been expired or revoked.")
+        return "credencial-nova"
+
+    monkeypatch.setattr(google_drive, "_credenciais", credenciais_falsas)
+    monkeypatch.setattr(google_drive, "build", lambda *a, **k: k["credentials"])
+    return arquivo
+
+
+def test_token_revogado_no_volume_da_lugar_ao_novo_da_variavel(tmp_path, monkeypatch):
+    """Autorizar de novo e trocar a variável precisa ter efeito: antes o
+    arquivo antigo existia, a variável nunca era lida e o backup parava."""
+    arquivo = _drive_com_token_recusado(tmp_path, monkeypatch, '{"token": "novo"}')
+    assert google_drive._servico() == "credencial-nova"
+    assert arquivo.read_text(encoding="utf-8") == '{"token": "novo"}'
+
+
+def test_token_revogado_sem_token_novo_mostra_o_erro(tmp_path, monkeypatch):
+    from google.auth.exceptions import RefreshError
+
+    arquivo = _drive_com_token_recusado(tmp_path, monkeypatch, '{"token": "velho"}')
+    with pytest.raises(RefreshError):
+        google_drive._servico()
+    assert arquivo.read_text(encoding="utf-8") == '{"token": "velho"}'
+
+
+def test_token_que_funciona_nunca_e_trocado_pela_variavel(tmp_path, monkeypatch):
+    """O arquivo é renovado no volume; a variável é a foto da autorização.
+    Trocar um arquivo bom por ela jogaria fora a renovação."""
+    arquivo = tmp_path / "drive_token.json"
+    arquivo.write_text('{"token": "renovado"}', encoding="utf-8")
+    monkeypatch.setattr(google_drive, "TOKEN_PATH", arquivo)
+    monkeypatch.setenv("ERP_DRIVE_TOKEN_JSON", '{"token": "outro"}')
+    monkeypatch.setattr(google_drive, "_credenciais", lambda: "credencial")
+    monkeypatch.setattr(google_drive, "build", lambda *a, **k: k["credentials"])
+
+    assert google_drive._servico() == "credencial"
+    assert arquivo.read_text(encoding="utf-8") == '{"token": "renovado"}'
