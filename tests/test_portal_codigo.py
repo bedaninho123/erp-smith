@@ -170,7 +170,8 @@ def _pedir_acesso(cliente_http, identificador="111.111.111-11"):
 
 
 def test_login_pelo_codigo_abre_a_sessao_do_dono(anonimo, codigo_fixo):
-    assert 'name="codigo"' in _pedir_acesso(anonimo).get_data(as_text=True)
+    _pedir_acesso(anonimo)
+    assert 'name="codigo"' in anonimo.get("/portal/login").get_data(as_text=True)
 
     resposta = anonimo.post("/portal/login/codigo", data={"codigo": codigo_fixo})
 
@@ -260,3 +261,63 @@ def test_service_worker_so_guarda_arquivos_publicos(anonimo):
 
     for caminho in json.loads(lista):
         assert caminho == "/portal/offline" or caminho.startswith("/portal/static/"), caminho
+
+
+# --------------------------------------------------------------------
+# Toque repetido e recarga (2026-10-26)
+#
+# O relato: no app do iPhone, a pessoa digita o código e vê "Código
+# incorreto ou expirado"; fecha e reabre, e às vezes está logada. O que
+# acontecia: o código entrava, mas a tela inicial consulta o Shooting
+# House ao vivo e demora uns segundos -- com o formulário ainda na tela,
+# o segundo toque em "Entrar" mandava o código já usado e mostrava o
+# erro por cima de uma sessão que estava aberta.
+# --------------------------------------------------------------------
+
+def test_segundo_toque_em_entrar_ja_logado_vai_para_o_inicio(anonimo, codigo_fixo):
+    _pedir_acesso(anonimo)
+    anonimo.post("/portal/login/codigo", data={"codigo": codigo_fixo})
+
+    segundo = anonimo.post("/portal/login/codigo", data={"codigo": codigo_fixo})
+
+    assert segundo.status_code == 302
+    assert segundo.headers["Location"] == "/portal"
+
+
+def test_tela_de_login_com_sessao_aberta_vai_para_o_inicio(anonimo, codigo_fixo):
+    _pedir_acesso(anonimo)
+    anonimo.post("/portal/login/codigo", data={"codigo": codigo_fixo})
+
+    resposta = anonimo.get("/portal/login")
+
+    assert resposta.status_code == 302
+    assert resposta.headers["Location"] == "/portal"
+
+
+def test_recarregar_depois_de_pedir_nao_manda_outro_codigo(anonimo, codigo_fixo):
+    """O pedido responde com redirecionamento: recarregar a tela (ou o
+    iPhone reabrindo o app nela) refaz um GET, nunca um novo envio --
+    que trocaria o código e invalidaria o do e-mail que a pessoa tem."""
+    resposta = _pedir_acesso(anonimo)
+
+    assert resposta.status_code == 303
+    assert resposta.headers["Location"] == "/portal/login"
+    tela = anonimo.get("/portal/login").get_data(as_text=True)
+    assert 'name="codigo"' in tela
+    assert "enviamos um e-mail com um link e um código" in tela
+    # Recarregou: continua no campo do código, sem o aviso repetido
+    assert 'name="codigo"' in anonimo.get("/portal/login").get_data(as_text=True)
+    con = conectar_admin()
+    assert con.execute("SELECT COUNT(*) FROM portal_token").fetchone()[0] == 1
+    con.close()
+
+
+def test_botoes_do_login_travam_no_primeiro_toque(anonimo):
+    """Sem isto, um segundo toque enquanto o e-mail sai pedia um segundo
+    código -- e o primeiro e-mail deixava de valer."""
+    pedido = anonimo.get("/portal/login").get_data(as_text=True)
+    _pedir_acesso(anonimo)
+    codigo = anonimo.get("/portal/login").get_data(as_text=True)
+
+    for tela in (pedido, codigo):
+        assert "data-trava-envio" in tela

@@ -242,7 +242,7 @@ def test_login_cria_cliente_para_filiado_sem_cadastro_previo(banco):
     cliente_http = app.test_client()
 
     resposta = cliente_http.post("/portal/login", data={"identificador": "william@example.com"})
-    assert resposta.status_code == 200
+    assert resposta.status_code == 303
 
     from core.conexao import conectar
     con = conectar(EMPRESA_A)

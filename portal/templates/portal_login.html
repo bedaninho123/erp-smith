@@ -44,7 +44,7 @@
           continua funcionando para quem está no navegador. -#}
       {% if mensagem %}<div class="aviso" style="margin-bottom:1rem;">{{ mensagem }}</div>{% endif %}
       {% if erro %}<div class="msg-flash msg-flash--erro" role="alert" style="margin-bottom:1rem;">{{ erro }}</div>{% endif %}
-      <form method="post" action="{{ url_for('entrar_com_codigo') }}">
+      <form method="post" action="{{ url_for('entrar_com_codigo') }}" data-trava-envio="Entrando…">
         <label for="codigo">Código de 6 dígitos do e-mail</label>
         <!-- one-time-code: o iPhone e o Android oferecem o código direto
              do e-mail/SMS acima do teclado, sem a pessoa trocar de app. -->
@@ -58,7 +58,7 @@
       {% elif mensagem %}
       <div class="aviso">{{ mensagem }}</div>
       {% else %}
-      <form method="post">
+      <form method="post" data-trava-envio="Enviando…">
         <label for="identificador">CPF ou e-mail cadastrado</label>
         <!-- autocomplete=username: é o identificador de acesso, então o
              navegador e o gerenciador de senhas podem oferecer o que a
@@ -79,6 +79,29 @@
     </p>
   </div>
 </div>
+<script>
+  // Um envio por toque (2026-10-26). Pedir acesso espera o e-mail sair, e
+  // entrar espera o Início consultar o Shooting House: nos dois, segundos
+  // sem nada mudar na tela. O segundo toque pedia outro código (e o do
+  // e-mail parava de valer) ou reenviava um código já usado.
+  document.querySelectorAll("form[data-trava-envio]").forEach(function (form) {
+    var botao = form.querySelector("button[type=submit]");
+    var texto = botao.textContent;
+    form.addEventListener("submit", function (evento) {
+      if (form.dataset.enviando) { evento.preventDefault(); return; }
+      form.dataset.enviando = "1";
+      botao.disabled = true;
+      botao.textContent = form.dataset.travaEnvio;
+    });
+    // Voltar para esta tela (botão voltar, app reaberto da memória) não
+    // pode deixar o botão travado para sempre.
+    window.addEventListener("pageshow", function () {
+      delete form.dataset.enviando;
+      botao.disabled = false;
+      botao.textContent = texto;
+    });
+  });
+</script>
 {% include "_portal_convite_app.html" %}
 </body>
 </html>

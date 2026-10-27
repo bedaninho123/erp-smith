@@ -38,7 +38,8 @@ from typing import Optional
 
 from dotenv import load_dotenv, set_key
 from flask import (
-    Flask, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for,
+    Flask, Response, flash, get_flashed_messages, jsonify, redirect, render_template, request,
+    send_file, session, url_for,
 )
 
 from core import motor_checklist, motor_documentos
@@ -344,11 +345,19 @@ def login():
                 print(f"[PORTAL] Gmail não configurado -- código de acesso: {codigo}")
         # Mensagem sempre igual, ache ou não o cliente -- não dá pista se
         # um CPF/e-mail está cadastrado (evita enumeração de clientes).
-        mensagem = (
+        flash(
             "Se encontrarmos esse CPF ou e-mail no nosso cadastro, enviamos "
-            "um e-mail com um link e um código de acesso."
+            "um e-mail com um link e um código de acesso.",
+            "aviso",
         )
-        return render_template("portal_login.html", mensagem=mensagem, etapa_codigo=True)
+        # Redireciona em vez de mostrar a tela daqui (2026-10-26): recarregar
+        # uma resposta de POST manda o pedido de novo, e um pedido novo troca
+        # o código -- o do e-mail que a pessoa foi buscar deixava de valer.
+        return redirect(url_for("login"), code=303)
+    # Já entrou (2026-10-26): no app, o login pode ficar na tela depois de
+    # o código ter funcionado, enquanto o Início carrega.
+    if session.get("cliente_id"):
+        return redirect(url_for("dashboard"))
     # O iPhone pode tirar o app da memória enquanto a pessoa vai ao e-mail
     # buscar o código, e aí ele reabre do zero, nesta tela. Se o pedido é
     # recente, ela volta direto ao campo do código em vez de ao do CPF.
@@ -356,8 +365,10 @@ def login():
     # não revela nada.)
     pedido_em = session.get("desafio_em") or 0
     pedido_recente = time.time() - pedido_em < TOKEN_VALIDADE_MINUTOS * 60
+    avisos = get_flashed_messages(category_filter=["aviso"])
     return render_template(
         "portal_login.html",
+        mensagem=avisos[0] if avisos else None,
         etapa_codigo=pedido_recente and session.get("desafio_login") and not request.args.get("novo"),
     )
 
@@ -366,6 +377,12 @@ def login():
 def entrar_com_codigo():
     """A segunda porta do mesmo acesso (ver core/motor_portal_auth.py):
     o código do e-mail, digitado no aparelho que pediu."""
+    # Segundo toque em "Entrar" com a sessão já aberta (2026-10-26): o
+    # código funcionou no primeiro, mas o Início consulta o Shooting House
+    # ao vivo e demora; com o formulário ainda na tela, o segundo envio
+    # mostrava "código incorreto" por cima de quem já estava dentro.
+    if session.get("cliente_id"):
+        return redirect(url_for("dashboard"))
     if excedeu_limite(f"codigo_portal:{request.remote_addr}", CODIGO_MAX_TENTATIVAS_IP, LOGIN_JANELA_SEGUNDOS):
         return render_template(
             "portal_login.html", etapa_codigo=True,
