@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from core.conexao import conectar
+from core.motor_log_administrativo import registrar
 
 # Texto livre no schema (sem CHECK), lista controlada aqui -- mesmo
 # padrão do resto do Core.
@@ -51,6 +52,48 @@ def _proximo_id(con, tabela: str, coluna_id: str, prefixo: str) -> str:
         f"SELECT MAX(CAST(SUBSTR({coluna_id}, {len(prefixo) + 2}) AS INTEGER)) FROM {tabela}"
     ).fetchone()[0] or 0
     return f"{prefixo}-{maior + 1:06d}"
+
+
+_EMAIL_VALIDO = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def atualizar_email(empresa_id: str, cliente_id: str, email: str, alterado_por: str) -> bool:
+    """Corrige o e-mail do cadastro (2026-11-04). É para ele que vai o
+    acesso ao Portal, e o primeiro acesso de um filiado copia o endereço do
+    Shooting House uma vez só: corrigir lá depois não muda nada aqui.
+
+    Mudar para onde vai o login é sensível: fica na Auditoria, e os acessos
+    ainda não usados morrem, porque foram enviados ao endereço antigo.
+    Devolve False se o cliente não é da empresa; levanta ClienteInvalido
+    para endereço malformado."""
+    email = (email or "").strip().lower()
+    if not _EMAIL_VALIDO.match(email):
+        raise ClienteInvalido("Informe um e-mail válido.")
+    con = conectar(empresa_id)
+    try:
+        linha = con.execute(
+            "SELECT email FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+            (cliente_id, empresa_id),
+        ).fetchone()
+        if not linha:
+            return False
+        if (linha["email"] or "").lower() == email:
+            return True
+        con.execute(
+            "UPDATE cliente SET email = ? WHERE cliente_id = ? AND empresa_id = ?",
+            (email, cliente_id, empresa_id),
+        )
+        con.execute(
+            "UPDATE portal_token SET usado_em = ? "
+            "WHERE cliente_id = ? AND empresa_id = ? AND usado_em IS NULL",
+            (_agora_iso(), cliente_id, empresa_id),
+        )
+        registrar(con, empresa_id, "EMAIL_CLIENTE_ALTERADO", cliente_id,
+                  "E-mail do cliente corrigido pelo painel", linha["email"], email, alterado_por)
+        con.commit()
+        return True
+    finally:
+        con.close()
 
 
 def limpar_cpf(cpf: Optional[str]) -> str:

@@ -195,6 +195,13 @@ def _criar_banco_core() -> None:
         ("CFG-000001", EMPRESA, "revisao_humana_ativa", "Sim", "atendimento",
          "Enquanto 'Sim', toda resposta escrita pela IA espera aprovação humana.", "Sim"),
     )
+    con.execute(
+        "INSERT INTO configuracoes (config_id, empresa_id, chave, valor, categoria, "
+        "descricao, ativo) VALUES (?,?,?,?,?,?,?)",
+        ("CFG-000002", EMPRESA, "portal_envio_codigos_pausado", "Não", "portal",
+         "Ligado, o Portal para de enviar códigos por e-mail e mostra um aviso na tela "
+         "de login. Desligue quando o envio de e-mail voltar ao normal.", "Sim"),
+    )
     con.commit()
     con.close()
 

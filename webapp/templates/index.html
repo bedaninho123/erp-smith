@@ -1757,6 +1757,9 @@
             <div class="card-body" id="cliente-cabecalho"></div>
           </div>
           <div class="card">
+            <div class="card-body" id="cliente-acesso-portal"></div>
+          </div>
+          <div class="card">
             <div class="card-body" id="cliente-senha-govbr"></div>
           </div>
           <div class="card">
@@ -4067,6 +4070,8 @@ const ROTULOS_EVENTO = {
   "permissao_alterada": "Permissão",
   "configuracao_alterada": "Configuração",
   "ACESSO_DADO_SENSIVEL": "Acesso a dado sensível",
+  "LINK_PORTAL_GERADO": "Link de acesso ao Portal gerado",
+  "EMAIL_CLIENTE_ALTERADO": "E-mail do cliente corrigido",
   "SENHA_GOVBR_REVELADA": "Senha do gov.br exibida",
   "SENHA_GOVBR_CADASTRADA": "Senha do gov.br cadastrada",
   "SENHA_GOVBR_ALTERADA": "Senha do gov.br trocada",
@@ -5007,7 +5012,8 @@ async function abrirFiliado(cpf) {
       </div>
     </div>`;
 
-  const blocoSenha = !f ? "" : `<div class="card"><div class="card-body" id="filiado-senha-govbr"></div></div>`;
+  const blocoSenha = !f ? "" : `<div class="card"><div class="card-body" id="filiado-acesso-portal"></div></div>
+    <div class="card"><div class="card-body" id="filiado-senha-govbr"></div></div>`;
 
   $("#filiado-ficha").innerHTML = simulado + cabecalho + blocoCr + blocoSenha + armas + documentos + habitualidade;
 
@@ -5019,6 +5025,7 @@ async function abrirFiliado(cpf) {
       urlEnviar: `/api/filiados/${cpfUrl}/dossie`,
     };
     carregarDossieGenerico(cfgDossie);
+    montarAcessoPortal($("#filiado-acesso-portal"), `/api/filiados/${cpfUrl}/acesso-portal`);
     montarSenhaGov($("#filiado-senha-govbr"), `/api/filiados/${cpfUrl}/senha-govbr`);
     $("#salvar-fdossie").addEventListener("click", () => salvarDossieGenerico(cfgDossie));
 
@@ -5905,6 +5912,84 @@ async function salvarDossieGenerico(cfg) {
 // na Auditoria, e some sozinho depois de 30s para não ficar exposto numa
 // tela esquecida aberta. `autocomplete="new-password"` impede o navegador
 // de oferecer guardar a senha do CLIENTE como se fosse do usuário.
+// Acesso ao Portal (2026-11-04): para quem o e-mail não alcança. O link abre
+// a conta inteira da pessoa, então vale uma vez só e fica na Auditoria.
+async function montarAcessoPortal(container, base) {
+  container.innerHTML = `<p class="text-muted mb-0">Carregando…</p>`;
+  const resposta = await buscarJson(base);
+  if (!resposta.ok) {
+    container.innerHTML = `<p class="text-muted mb-0">${escapeHtml((resposta.dados || {}).erro || "Não foi possível carregar o acesso ao Portal.")}</p>`;
+    return;
+  }
+  const email = resposta.dados.email || "";
+  container.innerHTML = `
+    <h5 class="mb-1">Acesso ao Portal</h5>
+    <div class="d-flex flex-wrap align-items-center mb-2" style="gap:var(--e2)">
+      <span>E-mail de acesso: <span class="mono">${escapeHtml(email || "não cadastrado")}</span></span>
+      <button type="button" class="btn btn-outline-secondary btn-sm" data-acao="corrigir">Corrigir</button>
+    </div>
+    <div data-area="email"></div>
+    <button type="button" class="btn btn-primary" data-acao="gerar">Gerar link de acesso</button>
+    <div data-area="link" class="mt-2"></div>
+    <span class="text-muted" data-area="status" aria-live="polite"></span>`;
+
+  const status = container.querySelector('[data-area="status"]');
+  const postar = async (sufixo, corpo) => {
+    const r = await fetch(base + sufixo, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo || {}),
+    });
+    const dados = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(dados.erro || `erro ${r.status}`);
+    return dados;
+  };
+
+  container.onclick = async (ev) => {
+    const botao = ev.target.closest("button[data-acao]");
+    if (!botao) return;
+    const acao = botao.dataset.acao;
+    status.textContent = "";
+    try {
+      if (acao === "corrigir") {
+        container.querySelector('[data-area="email"]').innerHTML = `
+          <div class="d-flex flex-wrap align-items-end mb-2" style="gap:var(--e2)">
+            <div>
+              <label class="sr-only" for="acesso-email-campo">E-mail do cliente</label>
+              <input id="acesso-email-campo" type="email" class="form-control" autocomplete="off"
+                     value="${escapeHtml(email)}" style="min-width:280px">
+            </div>
+            <button type="button" class="btn btn-primary" data-acao="salvar-email">Salvar e-mail</button>
+          </div>`;
+        container.querySelector("#acesso-email-campo").focus();
+      } else if (acao === "salvar-email") {
+        await postar("/email", { email: container.querySelector("#acesso-email-campo").value });
+        await montarAcessoPortal(container, base);
+        container.querySelector('[data-area="status"]').textContent = "E-mail corrigido.";
+      } else if (acao === "gerar") {
+        const d = await postar("/link");
+        container.querySelector('[data-area="link"]').innerHTML = `
+          <div class="d-flex flex-wrap align-items-end" style="gap:var(--e2)">
+            <div>
+              <label class="sr-only" for="acesso-link-campo">Link de acesso</label>
+              <input id="acesso-link-campo" type="text" class="form-control mono" readonly
+                     value="${escapeHtml(d.link)}" style="min-width:320px">
+            </div>
+            <button type="button" class="btn btn-outline-primary" data-acao="copiar">Copiar link</button>
+          </div>
+          <small class="text-muted d-block mt-1">Vale por ${d.validade_horas} horas e uma vez só. Envie apenas para a
+            própria pessoa, no WhatsApp dela. Gerar outro cancela este. Fica registrado na Auditoria.</small>`;
+      } else if (acao === "copiar") {
+        const campo = container.querySelector("#acesso-link-campo");
+        campo.select();
+        await navigator.clipboard.writeText(campo.value);
+        status.textContent = "Link copiado.";
+      }
+    } catch (e) {
+      status.textContent = e.message || "Não foi possível concluir.";
+    }
+  };
+}
+
 async function montarSenhaGov(container, base) {
   container.innerHTML = `<p class="text-muted mb-0">Carregando…</p>`;
   const resposta = await buscarJson(base);
@@ -6010,6 +6095,7 @@ async function abrirCliente(clienteId) {
   const resposta = await buscarJson(`/api/clientes/${clienteId}`);
   const d = resposta.dados;
   carregarDossie(clienteId);
+  montarAcessoPortal($("#cliente-acesso-portal"), `/api/clientes/${encodeURIComponent(clienteId)}/acesso-portal`);
   montarSenhaGov($("#cliente-senha-govbr"), `/api/clientes/${encodeURIComponent(clienteId)}/senha-govbr`);
   if (!resposta.ok) {
     $("#cliente-cabecalho").innerHTML = resposta.falhou
@@ -6202,6 +6288,7 @@ const NOMES_CATEGORIA = {
 // vem daqui e o parágrafo vira texto de ajuda embaixo.
 const NOMES_CONFIG = {
   revisao_humana_ativa: "Revisar respostas da IA antes de enviar",
+  portal_envio_codigos_pausado: "Pausar o envio de códigos do Portal",
   notificar_cliente_mudanca_status: "Avisar o cliente quando o status mudar",
 };
 

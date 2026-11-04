@@ -27,11 +27,17 @@
     <div class="ficha">
       <span class="selo selo--signal">Link expirado</span>
       <h1 style="font-size:1.1rem; margin:.9rem 0 0;">Esse link não funciona mais</h1>
+      {% if assistido %}
+      <p class="subtitulo">
+        Ele já foi usado ou venceu, por segurança. Peça um novo à secretaria do clube.
+      </p>
+      {% else %}
       <p class="subtitulo">
         Ele vale por 15 minutos e só pode ser usado uma vez, por segurança —
         sem problema, é rápido pedir outro.
       </p>
-      <a href="{{ url_for('login') }}" class="botao" style="display:block; width:100%; text-decoration:none;">Pedir novo link</a>
+      {% endif %}
+      {% if not assistido %}<a href="{{ url_for('login') }}" class="botao" style="display:block; width:100%; text-decoration:none;">Pedir novo link</a>{% endif %}
     </div>
   </div>
 </div>

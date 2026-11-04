@@ -95,6 +95,7 @@ atendimento\remover_tarefa_agendada.bat
 .venv\Scripts\python.exe -m core.db.migrar_codigo_portal          # idempotente, codigo de 6 digitos do login do Portal (roda sozinha em producao)
 .venv\Scripts\python.exe -m core.db.migrar_convite_usuario        # idempotente, tabela do convite por e-mail para criar senha do painel (roda sozinha em producao)
 .venv\Scripts\python.exe -m core.db.migrar_documento_final        # idempotente, processo.documento_final_id -- documento pronto entregue ao cliente (roda sozinha em producao)
+.venv\Scripts\python.exe -m core.db.migrar_pausa_envio_portal     # idempotente, configuracao que pausa o envio de codigos do Portal; nasce ligada (roda sozinha em producao)
 .venv\Scripts\python.exe -m core.db.migrar_espelho_drive          # idempotente, tabelas da copia dos documentos em pasta por cliente no Drive (roda sozinha em producao)
 # Permite documento pertencer ao CLIENTE e não a um caso (dossiê). RECONSTRÓI
 # a tabela documento -- ver tests/test_migracao_dossie.py
@@ -957,6 +958,25 @@ existe; no do painel, `/portal...` redireciona pro Portal; o endereço
 `*.up.railway.app` segue dividido por prefixo, como antes, porque e-mail
 já enviado e a política de privacidade cadastrada no Google apontam pra
 ele. Variáveis vazias = comportamento antigo inteiro.
+
+### Quando o e-mail de acesso não chega (2026-11-04)
+
+No dia do anúncio ao clube, o Google bloqueou a conta de e-mail às 15:09,
+com menos de 30 envios em 10 minutos, muito abaixo dos 500 por dia que ele
+publica. O Gmail aceita o envio e só devolve depois, então o Portal seguia
+dizendo "enviamos" e o `/saude` seguia "ok". Daí três ferramentas:
+
+- **Pausa** (`portal_envio_codigos_pausado`, tela de Configurações): o login
+  mostra um aviso e não tenta enviar. Resposta igual para todo mundo.
+- **Link pela secretaria** (ficha do cliente e do filiado): 24h, uso único,
+  na Auditoria, e gerar outro mata os acessos em aberto. Entra por
+  `/portal/acesso/<token>`, onde **abrir não consome**: só o toque no botão.
+  O WhatsApp abre o link sozinho para montar a prévia, e gastaria o uso único.
+- **Corrigir o e-mail** (mesmo bloco): o primeiro acesso de um filiado copia
+  o endereço do Shooting House uma vez só, e corrigir lá depois não muda
+  `cliente.email`. Corrigir mata os acessos em aberto do endereço antigo.
+
+Coberto por `tests/test_portal_acesso_assistido.py`.
 
 ### Checklist de documento: quem liga o arquivo ao item define o estado
 

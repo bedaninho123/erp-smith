@@ -57,6 +57,12 @@
       <p class="ajuda"><a href="{{ url_for('login', novo=1) }}" style="color:var(--blue-deep);">Não chegou? Pedir um novo código</a></p>
       {% elif mensagem %}
       <div class="aviso">{{ mensagem }}</div>
+      {% elif envio_pausado %}
+      <div class="aviso">
+        <b>O envio de códigos por e-mail está pausado por enquanto.</b><br>
+        A procura foi grande. Não é problema no seu cadastro, e não precisa pedir de novo agora.
+        Se for urgente, fale com a secretaria do clube.
+      </div>
       {% else %}
       <form method="post" data-trava-envio="Enviando…">
         <label for="identificador">CPF ou e-mail cadastrado</label>

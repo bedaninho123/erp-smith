@@ -46,7 +46,7 @@ from core.motor_identidade import mascarar_cpf
 from core.conexao import conectar
 from core.configuracoes import atualizar_configuracao, obter_configuracoes
 from core.limitador_tentativas import excedeu_limite
-from core import motor_credenciais, motor_indicadores
+from core import motor_credenciais, motor_indicadores, motor_portal_auth
 from core.motor_casos import (
     CANAIS_ORIGEM, PRIORIDADES_VALIDAS, STATUS_VALIDOS, atualizar_descricao,
     atualizar_responsavel, atualizar_status, criar_caso,
@@ -70,7 +70,13 @@ from domain.clube_tiro.motor_campeonatos import (
 from domain.clube_tiro.motor_resultados import (
     atualizar_resultado, criar_resultado, listar_resultados, remover_resultado,
 )
-from core.motor_clientes import ClienteInvalido, ClienteJaExiste, criar_cliente, informar_cpf
+from core.motor_clientes import (
+    ClienteInvalido,
+    ClienteJaExiste,
+    atualizar_email,
+    criar_cliente,
+    informar_cpf,
+)
 from core.motor_marketplace import (
     AnuncioInvalido, aprovar as aprovar_anuncio, editar_anuncio,
     listar_anuncios, obter_anuncio, recusar as recusar_anuncio,
@@ -2593,9 +2599,131 @@ def cliente_senha_remover(cliente_id):
         empresa_atual(), cliente_id, session.get("usuario_nome", "Painel administrativo"))))
 
 
+def _quem_mexeu() -> str:
+    return session.get("usuario_nome", "Painel administrativo")
+
+
+def _link_de_acesso(cliente_id: str):
+    """Acesso ao Portal gerado pelo painel (2026-11-04), para quem o e-mail
+    não alcança. no-store pelo mesmo motivo da senha do gov.br: este link
+    abre a conta inteira da pessoa."""
+    try:
+        token = motor_portal_auth.criar_link_assistido(empresa_atual(), cliente_id, _quem_mexeu())
+    except ValueError:
+        return jsonify(erro="Cliente não encontrado."), 404
+    resposta = jsonify(
+        link=f"{PORTAL_URL_BASE}/portal/acesso/{token}",
+        validade_horas=motor_portal_auth.LINK_ASSISTIDO_VALIDADE_HORAS,
+    )
+    resposta.headers["Cache-Control"] = "no-store"
+    return resposta
+
+
+def _corrigir_email(cliente_id: str):
+    email = (request.get_json(force=True) or {}).get("email")
+    try:
+        if not atualizar_email(empresa_atual(), cliente_id, email, _quem_mexeu()):
+            return jsonify(erro="Cliente não encontrado."), 404
+    except ClienteInvalido as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(ok=True)
+
+
+@app.route("/api/clientes/<cliente_id>/acesso-portal")
+@login_required
+@funcao_required("clientes")
+def cliente_acesso_portal(cliente_id):
+    empresa_id = empresa_atual()
+    con = conectar(empresa_id)
+    linha = con.execute(
+        "SELECT email FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+        (cliente_id, empresa_id),
+    ).fetchone()
+    con.close()
+    if not linha:
+        return jsonify(erro="Cliente não encontrado."), 404
+    return jsonify(email=linha["email"])
+
+
+@app.route("/api/clientes/<cliente_id>/acesso-portal/link", methods=["POST"])
+@login_required
+@funcao_required("clientes")
+def cliente_acesso_portal_link(cliente_id):
+    return _link_de_acesso(cliente_id)
+
+
+@app.route("/api/clientes/<cliente_id>/acesso-portal/email", methods=["POST"])
+@login_required
+@funcao_required("clientes")
+def cliente_acesso_portal_email(cliente_id):
+    return _corrigir_email(cliente_id)
+
+
 def _filiado_da_rota(cpf: str):
     digitos = _cpf_da_rota(cpf)
     return motor_filiados.obter_por_cpf(empresa_atual(), digitos) if digitos else None
+
+
+def _cliente_para_acesso(filiado: dict) -> str:
+    """Filiado que ainda não é cliente ganha cadastro neste gesto, como no
+    login do Portal: só se estiver ATIVO. Levanta ClienteInvalido."""
+    empresa_id = empresa_atual()
+    cliente_id = _cliente_do_filiado(empresa_id, filiado["cpf"])
+    if cliente_id:
+        return cliente_id
+    if filiado.get("status_filiacao") != "Ativo":
+        raise ClienteInvalido("Filiado inativo não ganha acesso novo ao Portal.")
+    cliente_id, _criado = _garantir_cliente_do_filiado(
+        empresa_id, filiado, "ao gerar o acesso ao Portal pelo painel",
+    )
+    return cliente_id
+
+
+@app.route("/api/filiados/<cpf>/acesso-portal")
+@login_required
+@funcao_required("habitualidade")
+def filiado_acesso_portal(cpf):
+    filiado = _filiado_da_rota(cpf)
+    if not filiado:
+        return jsonify(erro="Filiado não encontrado."), 404
+    empresa_id = empresa_atual()
+    cliente_id = _cliente_do_filiado(empresa_id, filiado["cpf"])
+    email = filiado.get("email")
+    if cliente_id:
+        con = conectar(empresa_id)
+        linha = con.execute(
+            "SELECT email FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+            (cliente_id, empresa_id),
+        ).fetchone()
+        con.close()
+        email = linha["email"] if linha else email
+    return jsonify(email=email)
+
+
+@app.route("/api/filiados/<cpf>/acesso-portal/link", methods=["POST"])
+@login_required
+@funcao_required("habitualidade")
+def filiado_acesso_portal_link(cpf):
+    filiado = _filiado_da_rota(cpf)
+    if not filiado:
+        return jsonify(erro="Filiado não encontrado."), 404
+    try:
+        return _link_de_acesso(_cliente_para_acesso(filiado))
+    except ClienteInvalido as e:
+        return jsonify(erro=str(e)), 400
+
+
+@app.route("/api/filiados/<cpf>/acesso-portal/email", methods=["POST"])
+@login_required
+@funcao_required("habitualidade")
+def filiado_acesso_portal_email(cpf):
+    filiado = _filiado_da_rota(cpf)
+    if not filiado:
+        return jsonify(erro="Filiado não encontrado."), 404
+    try:
+        return _corrigir_email(_cliente_para_acesso(filiado))
+    except ClienteInvalido as e:
+        return jsonify(erro=str(e)), 400
 
 
 @app.route("/api/filiados/<cpf>/senha-govbr")

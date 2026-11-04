@@ -38,6 +38,7 @@ from typing import Optional
 
 from dotenv import load_dotenv, set_key
 from flask import (
+    make_response,
     Flask, Response, flash, get_flashed_messages, jsonify, redirect, render_template, request,
     send_file, session, url_for,
 )
@@ -61,6 +62,7 @@ from core.motor_marketplace import (
 from core.motor_portal_auth import (
     TOKEN_VALIDADE_MINUTOS,
     criar_acesso,
+    envio_codigos_pausado,
     localizar_cliente_por_cpf_ou_email,
     validar_e_consumir_codigo,
     validar_e_consumir_token,
@@ -240,6 +242,11 @@ def raiz():
 @app.route("/portal/login", methods=["GET", "POST"])
 def login():
     mensagem = None
+    pausado = envio_codigos_pausado(PORTAL_EMPRESA_ID)
+    # Pausado, nem tenta: não cria cadastro nem acesso, e a resposta é a
+    # mesma para todo mundo, então não revela se o CPF existe.
+    if request.method == "POST" and pausado:
+        return render_template("portal_login.html", envio_pausado=True)
     if request.method == "POST":
         if excedeu_limite(f"login_portal:{request.remote_addr}", LOGIN_MAX_TENTATIVAS, LOGIN_JANELA_SEGUNDOS):
             return render_template(
@@ -370,6 +377,7 @@ def login():
         "portal_login.html",
         mensagem=avisos[0] if avisos else None,
         etapa_codigo=pedido_recente and session.get("desafio_login") and not request.args.get("novo"),
+        envio_pausado=pausado,
     )
 
 
@@ -407,6 +415,25 @@ def entrar(token):
     if not cliente_id or not _abrir_sessao(cliente_id):
         return render_template("portal_expirado.html")
     return redirect(url_for("dashboard"))
+
+
+@app.route("/portal/acesso/<token>", methods=["GET", "POST"])
+def acesso_assistido(token):
+    """O link gerado pelo painel e enviado pela secretaria (2026-11-04).
+
+    Abrir NÃO consome: só o toque no botão. O WhatsApp abre o link sozinho
+    para montar a prévia, e sem esta tela essa visita gastaria o uso único
+    (e abriria a sessão no robô) antes de a pessoa tocar nele."""
+    if request.method == "POST":
+        cliente_id = validar_e_consumir_token(PORTAL_EMPRESA_ID, token)
+        if not cliente_id or not _abrir_sessao(cliente_id):
+            return render_template("portal_expirado.html", assistido=True)
+        return redirect(url_for("dashboard"))
+    resposta = make_response(render_template("portal_acesso.html"))
+    resposta.headers["Cache-Control"] = "no-store"
+    resposta.headers["Referrer-Policy"] = "no-referrer"
+    resposta.headers["X-Robots-Tag"] = "noindex"
+    return resposta
 
 
 def _abrir_sessao(cliente_id: str) -> bool:

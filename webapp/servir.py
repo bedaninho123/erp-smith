@@ -405,6 +405,8 @@ if __name__ == "__main__":
     print("Migração convite de usuário:", _migrar_convite_usuario(), flush=True)
     from core.db.migrar_documento_final import migrar as _migrar_documento_final
     print("Migração documento final do processo:", _migrar_documento_final(), flush=True)
+    from core.db.migrar_pausa_envio_portal import migrar as _migrar_pausa_envio_portal
+    print("Migração pausa do envio do Portal:", _migrar_pausa_envio_portal(), flush=True)
     from core.db.migrar_espelho_drive import migrar as _migrar_espelho_drive
     print("Migração cópia de documentos no Drive:", _migrar_espelho_drive(), flush=True)
     threading.Thread(target=_loop_sincronizacao_habitualidade, daemon=True).start()

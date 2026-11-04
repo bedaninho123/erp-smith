@@ -31,9 +31,18 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from core.conexao import conectar
+from core.configuracoes import obter_configuracoes
+from core.motor_log_administrativo import registrar
 
 TOKEN_VALIDADE_MINUTOS = 15
 CODIGO_MAX_TENTATIVAS = 5
+
+# Link gerado pelo painel (2026-11-04): vai pelo WhatsApp, e a pessoa pode
+# só abrir horas depois. Continua sendo de uso único.
+LINK_ASSISTIDO_VALIDADE_HORAS = 24
+
+# Chave de `configuracoes`, ligada pelo Gestor na tela de Configurações.
+CHAVE_PAUSA_ENVIO = "portal_envio_codigos_pausado"
 
 
 def _agora() -> datetime:
@@ -98,6 +107,14 @@ def _hash_codigo(token: str, codigo: str) -> str:
     return hmac.new(token.encode(), codigo.encode(), hashlib.sha256).hexdigest()
 
 
+def envio_codigos_pausado(empresa_id: str) -> bool:
+    """Freio do envio de códigos (2026-11-04): em 04/11 o Google bloqueou a
+    conta de e-mail depois de um pico de pedidos, e cada pedido seguinte
+    voltava calado enquanto a tela dizia "enviamos". Linha ausente é "não
+    pausado": ninguém perde o login por falta de configuração."""
+    return obter_configuracoes(empresa_id).get(CHAVE_PAUSA_ENVIO) == "Sim"
+
+
 def criar_token(empresa_id: str, cliente_id: str) -> str:
     """Só o link, sem código -- usado pelo Portal de demonstração e pelos
     testes antigos. O login de verdade usa criar_acesso."""
@@ -105,7 +122,10 @@ def criar_token(empresa_id: str, cliente_id: str) -> str:
     return token
 
 
-def criar_acesso(empresa_id: str, cliente_id: str, desafio: Optional[str]) -> tuple[str, Optional[str]]:
+def criar_acesso(
+    empresa_id: str, cliente_id: str, desafio: Optional[str],
+    validade_minutos: int = TOKEN_VALIDADE_MINUTOS,
+) -> tuple[str, Optional[str]]:
     """Cria um acesso de uso único e devolve (token do link, código).
     Sem `desafio` não existe código (devolve None no lugar): código sem
     aparelho a que se prender seria um segredo de 6 dígitos valendo em
@@ -123,7 +143,7 @@ def criar_acesso(empresa_id: str, cliente_id: str, desafio: Optional[str]) -> tu
         codigo = _gerar_codigo() if desafio else None
         novo_id = _proximo_id(con)
         agora = _agora()
-        expira = agora + timedelta(minutes=TOKEN_VALIDADE_MINUTOS)
+        expira = agora + timedelta(minutes=validade_minutos)
         con.execute(
             "INSERT INTO portal_token (portal_token_id, empresa_id, token, cliente_id, "
             "criado_em, expira_em, usado_em, codigo_hash, desafio) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -134,6 +154,36 @@ def criar_acesso(empresa_id: str, cliente_id: str, desafio: Optional[str]) -> tu
         return token, codigo
     finally:
         con.close()
+
+
+def criar_link_assistido(empresa_id: str, cliente_id: str, gerado_por: str) -> str:
+    """Link de acesso gerado por alguém do clube, para quem o e-mail não
+    alcança. Abre a conta inteira da pessoa, então: o registro na Auditoria
+    é gravado ANTES de o link existir, e o link novo mata todo acesso ainda
+    não usado desse cliente. Levanta ValueError se o cliente não é da empresa."""
+    con = conectar(empresa_id)
+    try:
+        dono = con.execute(
+            "SELECT 1 FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+            (cliente_id, empresa_id),
+        ).fetchone()
+        if not dono:
+            raise ValueError(f"Cliente não encontrado nesta empresa: {cliente_id}")
+        con.execute(
+            "UPDATE portal_token SET usado_em = ? "
+            "WHERE cliente_id = ? AND empresa_id = ? AND usado_em IS NULL",
+            (_iso(_agora()), cliente_id, empresa_id),
+        )
+        registrar(con, empresa_id, "LINK_PORTAL_GERADO", cliente_id,
+                  "Link de acesso ao Portal gerado pelo painel", None, None, gerado_por)
+        con.commit()
+    finally:
+        con.close()
+    token, _codigo = criar_acesso(
+        empresa_id, cliente_id, desafio=None,
+        validade_minutos=LINK_ASSISTIDO_VALIDADE_HORAS * 60,
+    )
+    return token
 
 
 def validar_e_consumir_token(empresa_id: str, token: str) -> Optional[str]:

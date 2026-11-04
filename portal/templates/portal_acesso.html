@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Portal do Cliente — Smith Clube de Tiro</title>
+{% include "_portal_estilo.html" %}
+<style>
+  .pagina-login {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background: var(--ink-deep);
+  }
+  .caixa-login { width: 100%; max-width: 380px; }
+  .caixa-login .marca-logo { margin: 0 auto 1.6rem; }
+  .caixa-login .ficha { padding: 1.8rem 1.6rem; text-align: center; }
+  .subtitulo { color: var(--steel); font-size: .88rem; margin: .5rem 0 1.5rem; }
+</style>
+</head>
+<body>
+<div class="pagina-login">
+  <div class="caixa-login">
+    <img class="marca-logo marca-logo--grande" width="900" height="439" src="{{ url_for('static', filename='img/logo_smith_white.png') }}" alt="Smith Clube de Tiro — Marília SP">
+    <div class="ficha">
+      <h1 style="font-size:1.25rem; margin:0;">Portal do Cliente</h1>
+      <p class="subtitulo">
+        A secretaria do clube gerou este acesso para você. Ele só funciona uma vez,
+        então não repasse este link a ninguém.
+      </p>
+      <form method="post" id="form-acesso">
+        <button type="submit" class="botao" style="width:100%;">Entrar no Portal</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+  // Um envio por toque: o segundo encontraria o link já usado.
+  document.getElementById("form-acesso").addEventListener("submit", function (evento) {
+    var botao = evento.target.querySelector("button");
+    if (botao.disabled) { evento.preventDefault(); return; }
+    botao.disabled = true;
+    botao.textContent = "Entrando…";
+  });
+  window.addEventListener("pageshow", function () {
+    var botao = document.querySelector("#form-acesso button");
+    botao.disabled = false;
+    botao.textContent = "Entrar no Portal";
+  });
+</script>
+</body>
+</html>
