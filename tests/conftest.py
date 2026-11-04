@@ -57,6 +57,7 @@ os.environ.setdefault("WEBAPP_SECRET_KEY", "chave-de-teste-webapp")
 # de produção, consultando CPF de gente real como efeito colateral de
 # rodar pytest.
 os.environ["SHOOTING_HOUSE_ATIVO"] = ""
+os.environ["RESEND_API_KEY"] = ""
 os.environ["SHOOTING_HOUSE_USER"] = ""
 os.environ["SHOOTING_HOUSE_PASSWORD"] = ""
 

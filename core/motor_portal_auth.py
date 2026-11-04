@@ -31,7 +31,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from core.conexao import conectar
-from core.configuracoes import obter_configuracoes
+from core.configuracoes import atualizar_configuracao, obter_configuracoes
 from core.motor_log_administrativo import registrar
 
 TOKEN_VALIDADE_MINUTOS = 15
@@ -113,6 +113,23 @@ def envio_codigos_pausado(empresa_id: str) -> bool:
     voltava calado enquanto a tela dizia "enviamos". Linha ausente é "não
     pausado": ninguém perde o login por falta de configuração."""
     return obter_configuracoes(empresa_id).get(CHAVE_PAUSA_ENVIO) == "Sim"
+
+
+def pausar_envio_codigos(empresa_id: str, alterado_por: str) -> bool:
+    """Liga a pausa pelo mesmo caminho da tela de Configurações, então fica
+    na Auditoria. Devolve False se a linha não existe nesta empresa."""
+    con = conectar(empresa_id)
+    try:
+        linha = con.execute(
+            "SELECT config_id FROM configuracoes WHERE empresa_id = ? AND chave = ?",
+            (empresa_id, CHAVE_PAUSA_ENVIO),
+        ).fetchone()
+    finally:
+        con.close()
+    if not linha:
+        return False
+    atualizar_configuracao(empresa_id, linha["config_id"], "Sim", "Sim", alterado_por=alterado_por)
+    return True
 
 
 def criar_token(empresa_id: str, cliente_id: str) -> str:

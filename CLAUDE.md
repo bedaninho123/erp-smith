@@ -978,6 +978,17 @@ dizendo "enviamos" e o `/saude` seguia "ok". Daí três ferramentas:
 
 Coberto por `tests/test_portal_acesso_assistido.py`.
 
+**O e-mail de acesso saiu do Gmail** (`integracoes/email_acesso.py`): vai pelo
+Resend, de `acesso@envio.smithclubedetiro.com.br`, quando `RESEND_API_KEY` e
+`EMAIL_ACESSO_REMETENTE` existem. Só o acesso: o resto segue no Gmail. O Brevo
+foi descartado porque a política dele proíbe conteúdo que promova ou venda
+armas, e o Portal tem Marketplace. No plano grátis são 100 por dia e 3.000 por
+mês; a cota reinicia à meia-noite UTC. O Resend recusa na hora quando a cota
+acaba, então `CotaEsgotada` liga a pausa sozinha, com alerta e registro na
+Auditoria, e quem desliga é o Gestor. Devolução de e-mail (endereço errado) só
+aparece no painel do Resend, ainda não há webhook. Coberto por
+`tests/test_email_acesso.py`.
+
 ### Checklist de documento: quem liga o arquivo ao item define o estado
 
 `documento_checklist` liga um arquivo recebido a um item de `documento_exigido`. Quem cria essa ligação determina em que estado ela nasce, e essa é a regra inteira: marcação feita no painel nasce `Aprovado` (o funcionário abriu o arquivo pra decidir — a conferência aconteceu no mesmo gesto), envio pelo Portal nasce `Aguardando aprovação` (é uma afirmação do cliente, ninguém conferiu). `Recusado` guarda o `motivo_recusa`, que é mostrado ao cliente, e para efeito de checklist conta como faltando. **Pendente não conta na contagem X/Y nem no anel de progresso** — contar infla o progresso com trabalho que ninguém fez. A decisão continua sendo sempre humana: a IA nunca decide que um PDF é a certidão X.

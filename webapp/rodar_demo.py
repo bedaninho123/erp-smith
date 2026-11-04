@@ -47,6 +47,7 @@ from cryptography.fernet import Fernet  # noqa: E402
 os.environ["ERP_CHAVE_SENHAS"] = Fernet.generate_key().decode()
 # Integração externa desligada: a demonstração usa o modo simulado.
 os.environ["SHOOTING_HOUSE_ATIVO"] = ""
+os.environ["RESEND_API_KEY"] = ""
 # E-mail desligado também (2026-10-20): com o convite de usuário, criar
 # alguém na demonstração mandaria e-mail de verdade pela conta do
 # atendimento. Sem token, o painel cai no caminho "copie o link".

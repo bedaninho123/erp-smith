@@ -63,11 +63,18 @@ from core.motor_portal_auth import (
     TOKEN_VALIDADE_MINUTOS,
     criar_acesso,
     envio_codigos_pausado,
+    pausar_envio_codigos,
     localizar_cliente_por_cpf_ou_email,
     validar_e_consumir_codigo,
     validar_e_consumir_token,
 )
 from domain.clube_tiro.categorias_marketplace import CATEGORIA_ARMA, CATEGORIAS
+from integracoes.email_acesso import (
+    CotaEsgotada,
+    EnvioAcessoFalhou,
+    email_acesso_configurado,
+    enviar_email_acesso,
+)
 from domain.clube_tiro.motor_campeonatos import listar_campeonatos, obter_campeonato
 from domain.clube_tiro.motor_filiados import (
     PERIODOS_MESES,
@@ -305,49 +312,11 @@ def login():
         if cliente:
             token, codigo = criar_acesso(PORTAL_EMPRESA_ID, cliente["cliente_id"], desafio)
             link = f"{URL_BASE}/portal/entrar/{token}"
-            if gmail_configurado():
-                config = obter_configuracoes(PORTAL_EMPRESA_ID)
-                nome_empresa = config.get("nome_empresa", "nosso escritório")
-                try:
-                    enviar_email(
-                        destinatario=cliente["email"],
-                        # Assunto curto e sem pontuação de enfeite: o nome da
-                        # empresa já aparece no remetente, logo ao lado (sem o
-                        # "nosso escritório" de reserva: remetente com esse nome
-                        # é pior que remetente sem nome).
-                        assunto="Seu link de acesso ao Portal do Cliente",
-                        nome_remetente=config.get("nome_empresa"),
-                        corpo=(
-                            f"Olá {cliente['nome']},\n\n"
-                            "Use o link abaixo para acessar o Portal (válido por 15 minutos, "
-                            "uso único):\n\n"
-                            f"{link}\n\n"
-                            "Está usando o app do Portal no celular? Digite este código lá:\n\n"
-                            f"    {codigo}\n\n"
-                            "Se você não solicitou esse acesso, é só ignorar este e-mail.\n\n"
-                            f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
-                        ),
-                    )
-                except Exception:
-                    # gmail_configurado() só confere que token.json existe,
-                    # não que ele ainda é válido -- um token expirado ou
-                    # revogado do lado do Google (RefreshError) só aparece
-                    # aqui, na hora de enviar. Sem este try/except, essa
-                    # falha derrubava a rota inteira com 500 ANTES de
-                    # chegar na mensagem única de baixo -- e um 500 só
-                    # quando o CPF/e-mail existe seria um jeito novo de
-                    # descobrir se alguém está cadastrado, furando o mesmo
-                    # cuidado contra enumeração que essa mensagem protege.
-                    # O token já foi criado e ninguém vai usá-lo -- expira
-                    # sozinho em 15 minutos, sem risco. Fica só registrado
-                    # no console pra alguém notar que o Gmail parou.
-                    import traceback
-                    traceback.print_exc()
-                    print(f"[PORTAL] Falha ao enviar e-mail de acesso -- link (não entregue): {link}")
+            if email_acesso_configurado() or gmail_configurado():
+                _enviar_email_de_acesso(cliente, link, codigo)
             else:
-                # Gmail ainda não autorizado nesta máquina (uso local/dev)
-                # -- imprime o link no console pra dar pra testar sem
-                # depender de e-mail real chegando.
+                # Sem nenhum envio configurado (uso local/dev) -- imprime o
+                # link no console pra dar pra testar sem e-mail de verdade.
                 print(f"[PORTAL] Gmail não configurado -- link de acesso: {link}")
                 print(f"[PORTAL] Gmail não configurado -- código de acesso: {codigo}")
         # Mensagem sempre igual, ache ou não o cliente -- não dá pista se
@@ -379,6 +348,69 @@ def login():
         etapa_codigo=pedido_recente and session.get("desafio_login") and not request.args.get("novo"),
         envio_pausado=pausado,
     )
+
+
+def _enviar_email_de_acesso(cliente: dict, link: str, codigo: str) -> None:
+    """Pelo Resend quando configurado, senão pelo Gmail. Falha aqui nunca
+    muda a resposta da tela: um erro só quando o CPF existe revelaria quem
+    está cadastrado. Por isso o texto do log também não leva o link, que
+    daria acesso a quem lesse o log."""
+    config = obter_configuracoes(PORTAL_EMPRESA_ID)
+    nome_empresa = config.get("nome_empresa", "nosso escritório")
+    # Assunto curto e sem pontuação de enfeite: o nome da empresa já aparece
+    # no remetente, logo ao lado (sem o "nosso escritório" de reserva:
+    # remetente com esse nome é pior que remetente sem nome).
+    assunto = "Seu link de acesso ao Portal do Cliente"
+    corpo = (
+        f"Olá {cliente['nome']},\n\n"
+        "Use o link abaixo para acessar o Portal (válido por 15 minutos, "
+        "uso único):\n\n"
+        f"{link}\n\n"
+        "Está usando o app do Portal no celular? Digite este código lá:\n\n"
+        f"    {codigo}\n\n"
+        "Se você não solicitou esse acesso, é só ignorar este e-mail.\n\n"
+        f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
+    )
+    try:
+        if email_acesso_configurado():
+            enviar_email_acesso(
+                cliente["email"], assunto, corpo,
+                nome_remetente=config.get("nome_empresa"),
+                responder_para=config.get("email_atendimento"),
+            )
+        else:
+            enviar_email(
+                destinatario=cliente["email"], assunto=assunto, corpo=corpo,
+                nome_remetente=config.get("nome_empresa"),
+            )
+    except CotaEsgotada as e:
+        _pausar_por_cota(str(e))
+    except EnvioAcessoFalhou as e:
+        print(f"[PORTAL] Falha ao enviar e-mail de acesso: {e}")
+    except Exception:
+        # gmail_configurado() só confere que token.json existe, não que ele
+        # ainda é válido: token revogado (RefreshError) só aparece aqui.
+        import traceback
+        traceback.print_exc()
+        print("[PORTAL] Falha ao enviar e-mail de acesso pelo Gmail.")
+
+
+def _pausar_por_cota(detalhe: str) -> None:
+    """Cota esgotada: liga a pausa sozinho. Daí em diante todo mundo lê o
+    mesmo aviso, em vez de "enviamos" para um e-mail que não saiu. Quem
+    desliga é o Gestor, em Configurações, e fica na Auditoria."""
+    print(f"[PORTAL] Cota de e-mail esgotada, envio pausado: {detalhe}")
+    pausar_envio_codigos(PORTAL_EMPRESA_ID, "Sistema (cota de e-mail esgotada)")
+    try:
+        from atendimento.alertas import alertar_falha
+        alertar_falha(
+            "Portal: cota de e-mail esgotada",
+            f"{detalhe}. O envio de códigos foi pausado. Para voltar, desligue "
+            "'Pausar o envio de códigos do Portal' em Configurações.",
+        )
+    except Exception:
+        import traceback
+        traceback.print_exc()
 
 
 @app.route("/portal/login/codigo", methods=["POST"])
