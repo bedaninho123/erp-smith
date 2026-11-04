@@ -146,6 +146,16 @@ def test_configurado_sai_pelo_resend_e_nao_pelo_gmail(banco, anonimo, resend, gm
     assert "/portal/entrar/" in dados["text"]
 
 
+def test_email_traz_o_codigo_no_assunto_e_antes_do_link(banco, anonimo, resend, gmail):
+    _pedir(anonimo)
+
+    dados = resend["chamadas"][0]["json"]
+    codigo = dados["subject"].rsplit(" ", 1)[-1]
+    assert len(codigo) == 6 and codigo.isdigit()
+    assert dados["text"].index(codigo) < dados["text"].index("/portal/entrar/")
+    assert "Use o link abaixo" not in dados["text"]
+
+
 def test_sem_configurar_continua_pelo_gmail(banco, anonimo, monkeypatch, gmail):
     monkeypatch.delenv("RESEND_API_KEY", raising=False)
     _pedir(anonimo)

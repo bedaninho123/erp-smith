@@ -357,18 +357,19 @@ def _enviar_email_de_acesso(cliente: dict, link: str, codigo: str) -> None:
     daria acesso a quem lesse o log."""
     config = obter_configuracoes(PORTAL_EMPRESA_ID)
     nome_empresa = config.get("nome_empresa", "nosso escritório")
-    # Assunto curto e sem pontuação de enfeite: o nome da empresa já aparece
-    # no remetente, logo ao lado (sem o "nosso escritório" de reserva:
-    # remetente com esse nome é pior que remetente sem nome).
-    assunto = "Seu link de acesso ao Portal do Cliente"
+    # O código vem primeiro, e o link depois (2026-11-04): "use o link abaixo
+    # para acessar" vindo de domínio novo tem cara de golpe, e os primeiros
+    # e-mails caíram no Spam. O código no assunto não abre nada sozinho: ele
+    # só vale no aparelho que pediu (ver core/motor_portal_auth.py).
+    assunto = f"Código de acesso ao Portal: {codigo}"
+    primeiro_nome = (cliente["nome"] or "").split(" ")[0].title()
     corpo = (
-        f"Olá {cliente['nome']},\n\n"
-        "Use o link abaixo para acessar o Portal (válido por 15 minutos, "
-        "uso único):\n\n"
+        f"Olá {primeiro_nome},\n\n"
+        "Seu código de acesso ao Portal do Cliente é:\n\n"
+        f"{codigo}\n\n"
+        "Ele vale por 15 minutos. Se preferir, entre por este link:\n\n"
         f"{link}\n\n"
-        "Está usando o app do Portal no celular? Digite este código lá:\n\n"
-        f"    {codigo}\n\n"
-        "Se você não solicitou esse acesso, é só ignorar este e-mail.\n\n"
+        "Se não foi você quem pediu, é só ignorar este e-mail.\n\n"
         f"{config.get('assinatura_email', f'Equipe {nome_empresa}')}"
     )
     try:
