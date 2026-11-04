@@ -21,3 +21,6 @@ atendimento/documentos_recebidos/
 atendimento/marketplace_fotos/
 atendimento/poller.lock
 .pytest_cache/
+
+# Video do Portal: gerado por docs/video_portal/gravar_video.py
+docs/video_portal/*.mp4

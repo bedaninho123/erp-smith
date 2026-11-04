@@ -1069,7 +1069,11 @@ vira exceção e nunca lista vazia.)
 seria a afirmação "consultei, não tem nenhuma"); o Auditor tem um segundo
 freio determinístico, sem gastar IA, que manda isso pra humano. No Portal
 o mesmo cuidado aparece como um terceiro estado na tela: "consulta
-indisponível" é visualmente diferente de "sem registro de atirador".
+indisponível" é visualmente diferente de "sem registro de atirador". Quem
+liga esse estado é só a habitualidade (2026-11-04): `consultar_cr` levanta
+sempre no modo real, e contar isso como falha fazia todo filiado sem
+participação no período ler "Consulta indisponível". Falta de CR só tira o
+CR da tela. Coberto por `tests/test_portal_participacao_zerada.py`.
 
 **3. Portão de identidade (`core/motor_identidade.py`).** Para
 `CONSULTA_HABITUALIDADE`, `CONSULTA_CR` e `CONSULTA_DOCUMENTOS_VENCIMENTO`

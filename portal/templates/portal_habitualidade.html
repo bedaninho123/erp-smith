@@ -69,16 +69,6 @@
   </p>
 </div>
 
-{% elif not cr and not eventos %}
-<div class="ficha" style="padding:1.4rem 1.5rem;">
-  <p style="margin:0 0 .6rem;"><b>Você ainda não tem registro de atirador no clube.</b></p>
-  <p style="color:var(--steel); margin:0; font-size:.9rem;">
-    Habitualidade é a frequência mínima de treinos/competições exigida por lei pra manter o CR de atirador
-    desportivo em dia. Se você usa outro serviço do despachante (como transferência de arma) sem nunca ter
-    sido atirador ativo do clube, é esperado que essa tela venha vazia.
-  </p>
-</div>
-
 {% else %}
 
   {% if cr %}
@@ -166,7 +156,7 @@
   {% if not eventos and total_eventos %}
   <div class="ficha estado-vazio">Nenhuma participação nos últimos {{ meses }} meses. Escolha um período maior para ver as anteriores.</div>
   {% elif not eventos %}
-  <div class="ficha estado-vazio">Nenhuma participação registrada ainda.</div>
+  <div class="ficha estado-vazio">Nenhuma participação registrada nos últimos {{ periodos|max }} meses.</div>
   {% else %}
   <div class="ficha" style="padding: 0 1.3rem;">
     {% for ev in eventos %}

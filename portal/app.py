@@ -621,14 +621,17 @@ def _resumo_habitualidade(cpf: str) -> dict:
     é a ausência dela. Confundir os dois faria a tela dizer a um
     atirador em dia que ele não tem CR nem treino nenhum, sempre que a
     API estivesse fora do ar (ver ShootingHouseIndisponivel em
-    integracoes/shooting_house.py)."""
+    integracoes/shooting_house.py).
+
+    Só a HABITUALIDADE decide esse estado (2026-11-04). `consultar_cr`
+    ainda não tem modo real e levanta sempre: quando isso também contava,
+    todo filiado sem participação no período lia "Consulta indisponível",
+    com o Shooting House respondendo normalmente. Sem CR, o cartão só
+    deixa de mostrar o CR."""
     try:
         cr = consultar_cr(cpf)
     except ShootingHouseIndisponivel:
         cr = None
-        cr_indisponivel = True
-    else:
-        cr_indisponivel = False
 
     try:
         hab = consultar_habitualidade(cpf)
@@ -645,7 +648,7 @@ def _resumo_habitualidade(cpf: str) -> dict:
         "cr": cr,
         "total_participacoes": len(eventos),
         "tem_registro": bool(cr) or bool(eventos),
-        "indisponivel": cr_indisponivel,
+        "indisponivel": False,
     }
 
 
@@ -724,7 +727,10 @@ def dashboard():
     habitualidade_resumo = None
     filiacao_resumo = None
     if cliente and cliente["cpf"]:
-        habitualidade_resumo = _resumo_habitualidade(cliente["cpf"])
+        # Só filiado ativo: é a mesma regra do menu e da rota, e o cartão do
+        # Início levava quem não é filiado a uma resposta 403 crua.
+        if session.get("e_filiado_ativo"):
+            habitualidade_resumo = _resumo_habitualidade(cliente["cpf"])
         filiacao_resumo = _resumo_filiacao(cliente["cpf"])
 
     return render_template(
@@ -805,12 +811,13 @@ def _dados_habitualidade(meses: int) -> dict:
     # diferente de tela vazia por "você não tem registro nenhum" -- ver
     # _resumo_habitualidade. Sem este aviso, uma queda da API do Shooting
     # House apareceria pro atirador como um histórico de treinos zerado.
+    # Só a habitualidade liga este aviso, nunca o CR: ver _resumo_habitualidade.
     indisponivel = False
     if cpf:
         try:
             cr = consultar_cr(cpf)
         except ShootingHouseIndisponivel:
-            indisponivel = True
+            cr = None
         try:
             hab = consultar_habitualidade(cpf, data_inicio=inicio_consulta)
         except ShootingHouseIndisponivel:

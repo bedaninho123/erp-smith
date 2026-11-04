@@ -33,6 +33,7 @@
   </a>
   {% endif %}
 
+  {% if session.e_filiado_ativo %}
   <a class="ficha destaque-mini" href="{{ url_for('habitualidade') }}">
     <div class="destaque-mini-icone">
       <svg aria-hidden="true" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.7"/><circle cx="10" cy="10" r=".6" fill="currentColor" stroke="none"/></svg>
@@ -48,11 +49,13 @@
       <h3 class="destaque-mini-titulo">{{ habitualidade_resumo.total_participacoes }} participaç{{ 'ão' if habitualidade_resumo.total_participacoes == 1 else 'ões' }} registrada{{ '' if habitualidade_resumo.total_participacoes == 1 else 's' }}</h3>
       <p class="destaque-mini-meta">{% if habitualidade_resumo.cr %}CR — {{ habitualidade_resumo.cr.categoria_cr }}{% else %}Ver histórico completo{% endif %}</p>
       {% else %}
-      <h3 class="destaque-mini-titulo">Sem registro de atirador</h3>
-      <p class="destaque-mini-meta">Ver detalhes</p>
+      {# Consultou e não teve: filiado sem participação não é "sem registro". #}
+      <h3 class="destaque-mini-titulo">Nenhuma participação em 12 meses</h3>
+      <p class="destaque-mini-meta">Ver histórico completo</p>
       {% endif %}
     </div>
   </a>
+  {% endif %}
 
   {% if filiacao_resumo and filiacao_resumo.tem_registro %}
   {% set situacao = filiacao_resumo.status_filiacao %}
