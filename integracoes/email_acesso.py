@@ -48,6 +48,11 @@ def email_acesso_configurado() -> bool:
     return bool(_chave() and _remetente())
 
 
+def remetente_acesso() -> str:
+    """O endereço de onde o acesso sai, para a tela dizer qual procurar."""
+    return _remetente() if email_acesso_configurado() else ""
+
+
 def enviar_email_acesso(
     destinatario: str, assunto: str, corpo: str,
     nome_remetente: str = None, responder_para: str = None,

@@ -38,8 +38,9 @@ def habitualidade_falsa(monkeypatch):
 
 @pytest.fixture
 def portal_filiado(portal):
-    with portal.session_transaction() as sessao:
-        sessao["e_filiado_ativo"] = True
+    from tests.conftest import marcar_socio_conferido
+
+    marcar_socio_conferido(portal)
     return portal
 
 

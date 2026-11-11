@@ -370,6 +370,39 @@ def portal(banco):
     return cliente_http
 
 
+def semear_filiado(empresa_id: str, cpf: str, nome: str, status: str = "Ativo",
+                   anuidade_em_dia=None, anuidade_validade=None, email=None) -> None:
+    """Uma linha no retrato `dominio.filiado`. Com a chave geral do
+    Shooting House desligada (sempre, nos testes), é dela que o Portal tira
+    filiação e anuidade -- ver portal/app.py::_situacao_socio."""
+    import sqlite3
+
+    from motor_ia.conexao import DOMAIN_DB
+
+    con = sqlite3.connect(DOMAIN_DB)
+    con.execute(
+        "INSERT INTO filiado (filiado_id, empresa_id, nome, cpf, email, status_filiacao, "
+        "anuidade_em_dia, anuidade_validade, criado_em, atualizado_em) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (f"FIL-{empresa_id}-{cpf}", empresa_id, nome, cpf, email, status,
+         anuidade_em_dia, anuidade_validade, AGORA, AGORA),
+    )
+    con.commit()
+    con.close()
+
+
+def marcar_socio_conferido(portal_client, liberado: bool = True) -> None:
+    """Para teste de rota que não é sobre a anuidade: diz à sessão que a
+    situação de sócio acabou de ser conferida, como _conferir_socio faria.
+    Sem a hora, a sessão se confere de novo na primeira tela (é o que
+    impede o login de valer 30 dias) e desfaria o que o teste montou."""
+    import time
+
+    with portal_client.session_transaction() as sessao:
+        sessao["e_filiado_ativo"] = liberado
+        sessao["socio_conferido_em"] = time.time()
+
+
 @pytest.fixture
 def painel(banco):
     """Cliente HTTP do painel administrativo logado na EMPRESA_A, como

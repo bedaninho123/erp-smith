@@ -49,8 +49,10 @@ A suíte automatizada (`pytest`) cobre só o que dói perder: isolamento de dado
 .venv\Scripts\python.exe -m portal.app
 
 # Portal de DEMONSTRAÇÃO (localhost:5012) -- mesmo banco fictício do painel
-# demo, e já imprime o link mágico de entrada no console. É o único jeito de
-# ver o Portal sem usar o e-mail de um cliente de verdade.
+# demo, e já imprime os links mágicos de entrada no console (um por situação
+# de anuidade: em dia, na carência, vencida com despachante, vencida só
+# sócia). É o único jeito de ver o Portal sem usar o e-mail de um cliente
+# de verdade.
 .venv\Scripts\python.exe -m portal.rodar_demo
 
 # Verificar a caixa de entrada uma vez (usado pela Tarefa Agendada do Windows)
@@ -988,6 +990,34 @@ acaba, então `CotaEsgotada` liga a pausa sozinha, com alerta e registro na
 Auditoria, e quem desliga é o Gestor. Devolução de e-mail (endereço errado) só
 aparece no painel do Resend, ainda não há webhook. Coberto por
 `tests/test_email_acesso.py`.
+
+### Anuidade vencida: um mês de carência, depois perde o que é de sócio
+
+(2026-11-10, decisão do usuário.) A anuidade venceu: tudo continua por
+30 dias, com o cartão do Início em âmbar dizendo até quando renovar.
+Passou disso: **perde Habitualidade, Acervo e Marketplace** ("o
+diferencial de ser sócio") e os anúncios dele saem da vitrine, **pausados,
+não apagados**. Esses três nunca aparecem para quem é só cliente do
+despachante; Campeonatos fica aberto a todos.
+Renovou, volta tudo sozinho. O despachante não depende de anuidade: quem
+tem caso ou documento continua com o que é dele. Quem só era sócio (o
+cadastro que o Marketplace criou) fica só com a tela de renovação, com o
+menu escondido, e qualquer outra tela volta para ela.
+
+A regra mora em `domain/clube_tiro/regra_anuidade.py`, e cartão, menu,
+trava das rotas e vitrine leem todos dela. **Na dúvida, não corta**: só
+bloqueia quando a data passou há mais de 30 dias **e** o Shooting House
+marca 'Não'. Sem data, ou data vencida com o status "em dia" (os dois
+campos discordam para ~90 filiados reais), ninguém perde nada, e o cartão
+fica neutro.
+
+A situação de sócio deixou de ser decidida uma vez só, no login (a sessão
+dura 30 dias). `portal/app.py::_conferir_socio` confere de novo a cada 10
+minutos e sempre que o Início abre: ao vivo no modo real, pelo retrato no
+simulado. Shooting House fora do ar mantém o que já se sabia. A vitrine lê
+o retrato, porque são vários donos por tela, então um anúncio volta em até
+~3h depois da renovação. O Portal de demonstração mostra as quatro
+situações, com um link para cada. Coberto por `tests/test_anuidade_carencia.py`.
 
 ### Checklist de documento: quem liga o arquivo ao item define o estado
 

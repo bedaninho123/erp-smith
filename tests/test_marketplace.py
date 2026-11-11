@@ -16,7 +16,7 @@ import pytest
 
 from core import motor_marketplace
 from motor_ia.conexao import DOMAIN_DB
-from tests.conftest import AGORA, EMPRESA_A, EMPRESA_B
+from tests.conftest import AGORA, EMPRESA_A, EMPRESA_B, marcar_socio_conferido
 
 
 def _semear_filiado(empresa_id: str, cpf: str, nome: str, email: str = None, ativo: str = "Ativo") -> None:
@@ -31,10 +31,9 @@ def _semear_filiado(empresa_id: str, cpf: str, nome: str, email: str = None, ati
 
 
 def _tornar_filiado_ativo(portal_client) -> None:
-    """Simula o que entrar() calcula no login de verdade -- os testes de
-    rota não precisam refazer o fluxo de token pra isso, só o efeito."""
-    with portal_client.session_transaction() as sessao:
-        sessao["e_filiado_ativo"] = True
+    """Simula o que a conferência de sócio calcula de verdade -- os testes
+    de rota não precisam refazer o fluxo de token pra isso, só o efeito."""
+    marcar_socio_conferido(portal_client)
 
 
 # --------------------------------------------------------------------
@@ -50,8 +49,8 @@ def test_cliente_que_nao_e_filiado_nao_acessa_marketplace(banco, portal):
 
 def test_filiado_inativo_nao_acessa_marketplace(banco, portal):
     _semear_filiado(EMPRESA_A, "11111111111", "Ana Teste", ativo="Inativo")
-    with portal.session_transaction() as sessao:
-        sessao["e_filiado_ativo"] = False  # mesmo cálculo que entrar() faria: inativo = False
+    # Sem marcar nada na sessão: a conferência de sócio roda de verdade,
+    # lê o retrato e acha a Ana inativa.
     resposta = portal.get("/portal/marketplace")
     assert resposta.status_code == 403
 

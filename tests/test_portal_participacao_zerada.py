@@ -38,8 +38,12 @@ def como_em_producao(monkeypatch):
 
 @pytest.fixture
 def filiado(portal):
-    with portal.session_transaction() as sessao:
-        sessao["e_filiado_ativo"] = True
+    # O Início confere a situação de sócio toda vez que abre, então a Ana
+    # precisa ser filiada ativa de verdade no retrato -- marcar só a
+    # sessão seria desfeito na primeira tela.
+    from tests.conftest import EMPRESA_A, semear_filiado
+
+    semear_filiado(EMPRESA_A, "11111111111", "Ana Teste")
     return portal
 
 

@@ -54,7 +54,11 @@
         <button type="submit" class="botao" style="width:100%;">Entrar</button>
       </form>
       <p class="ajuda">Ou toque no link do mesmo e-mail. O código vale por 15 minutos.</p>
-      <p class="ajuda"><a href="{{ url_for('login', novo=1) }}" style="color:var(--blue-deep);">Não chegou? Pedir um novo código</a></p>
+      <!-- Vem antes do "pedir novo" de propósito (2026-11-04): o domínio novo
+           ainda cai no Spam, e pedir outro código não resolve isso. -->
+      <p class="ajuda"><b>Não achou o e-mail?</b> Olhe o Spam ou o Lixo eletrônico{% if remetente_acesso %}. Ele vem de {{ remetente_acesso }}{% endif %}.
+        Se estiver lá, marque como "Não é spam".</p>
+      <p class="ajuda"><a href="{{ url_for('login', novo=1) }}" style="color:var(--blue-deep);">Ainda não chegou? Pedir um novo código</a></p>
       {% elif mensagem %}
       <div class="aviso">{{ mensagem }}</div>
       {% elif envio_pausado %}

@@ -37,26 +37,99 @@ PORTA = 5012
 CLIENTE_DEMO = "CLI-000001"  # Helena Costa, a que tem dossiê montado
 
 
+def _anuidades_de_exemplo() -> list[tuple[str, str]]:
+    """Os três jeitos de estar com a anuidade (2026-11-10, ver
+    domain/clube_tiro/regra_anuidade.py), cada um numa pessoa inventada
+    que já é filiada na lista simulada do clube. Devolve (cliente_id,
+    descrição) de quem ganhou link de entrada.
+
+    A anuidade é escrita direto no retrato porque a lista simulada não traz
+    esses campos -- é o mesmo lugar de onde o Portal lê em modo simulado."""
+    import sqlite3
+    from datetime import date, timedelta
+
+    from core import motor_marketplace
+    from core.motor_casos import criar_caso
+
+    def dias(n):
+        return (date.today() + timedelta(days=n)).isoformat()
+
+    # (cpf, nome, situação da anuidade, validade, tem caso?, anúncio?, descrição)
+    pessoas = [
+        ("10000000006", "Helena Costa", "Sim", dias(240), None, None,
+         "anuidade em dia (cartão verde, tudo liberado)"),
+        ("10000000015", "William Cardoso", "Não", dias(-10), True, "Carabina .22 do William",
+         "venceu há 10 dias, na carência (cartão âmbar, ainda tudo liberado)"),
+        ("10000000020", "Larissa Barbosa", "Não", dias(-60), True, None,
+         "passou da carência, mas é cliente do despachante (fica só com o dela)"),
+        ("10000000014", "Vanessa Teixeira", "Não", dias(-60), False, "Pistola da Vanessa",
+         "passou da carência e só era sócia (só o aviso de renovação)"),
+    ]
+
+    con = sqlite3.connect(os.environ["ERP_DOMAIN_DB"])
+    for cpf, _nome, em_dia, validade, *_ in pessoas:
+        con.execute(
+            "UPDATE filiado SET anuidade_em_dia = ?, anuidade_validade = ? "
+            "WHERE empresa_id = ? AND cpf = ?",
+            (em_dia, validade, base.EMPRESA, cpf),
+        )
+    con.commit()
+    con.close()
+
+    links = [(CLIENTE_DEMO, pessoas[0][6])]
+    for numero, (cpf, nome, _em_dia, _validade, tem_caso, anuncio, descricao) in enumerate(pessoas[1:], start=60):
+        # Direto no banco, como base._criar_banco_core faz com a Helena: os
+        # CPFs da lista simulada do clube não têm dígito verificador válido,
+        # e criar_cliente (com razão) os recusaria.
+        cliente_id = f"CLI-{numero:06d}"
+        con = sqlite3.connect(os.environ["ERP_CORE_DB"])
+        con.execute(
+            "INSERT INTO cliente (cliente_id, empresa_id, nome, cpf, email, status, "
+            "atendimento_ia, data_cadastro) VALUES (?,?,?,?,?,?,?,?)",
+            (cliente_id, base.EMPRESA, nome, cpf, f"{nome.split()[0].lower()}@exemplo.local",
+             "Ativo", "Sim", base.AGORA),
+        )
+        con.commit()
+        con.close()
+        if tem_caso:
+            criar_caso(
+                base.EMPRESA, cliente_id, titulo=f"Renovação de CR — {nome.split()[0]}",
+                categoria="Regularização documental", origem="Painel",
+                canal_origem="Presencial", criado_por="Demonstração",
+            )
+        if anuncio:
+            anuncio_id = motor_marketplace.criar_anuncio(
+                base.EMPRESA, cliente_id, categoria="Arma", titulo=anuncio,
+                contato_telefone="(14) 99999-0000",
+            )
+            motor_marketplace.aprovar(base.EMPRESA, anuncio_id, revisado_por="Demonstração")
+        links.append((cliente_id, f"{nome} -- {descricao}"))
+    return links
+
+
 def main() -> None:
     base._criar_banco_core()
     base._criar_banco_dominio()
     base._popular_habitualidade()
-
-    # Token de verdade, pelo mesmo motor que o e-mail usaria -- não um
-    # atalho que pula a autenticação. Se o link mágico quebrar um dia,
-    # esta demonstração quebra junto, que é o comportamento certo.
-    token = criar_token(base.EMPRESA, CLIENTE_DEMO)
-    entrada = f"http://127.0.0.1:{PORTA}/portal/entrar/{token}"
+    pessoas = _anuidades_de_exemplo()
 
     print()
     print("=" * 68)
     print("PORTAL DO CLIENTE -- demonstração, banco temporário")
     print("=" * 68)
-    print(f"  Entre por este link (uso único, vale poucos minutos):")
-    print(f"  {entrada}")
+    print("  Links de entrada (uso único, valem poucos minutos):")
+    for cliente_id, descricao in pessoas:
+        # Token de verdade, pelo mesmo motor que o e-mail usaria -- não um
+        # atalho que pula a autenticação. Se o link mágico quebrar um dia,
+        # esta demonstração quebra junto, que é o comportamento certo.
+        token = criar_token(base.EMPRESA, cliente_id)
+        print()
+        print(f"  {descricao}")
+        print(f"  http://127.0.0.1:{PORTA}/portal/entrar/{token}")
     print()
-    print(f"  Cliente: Helena Costa (fictícia), com 6 documentos no dossiê")
-    print(f"  e um CRAF pronto entregue no caso dela (Despachante)")
+    print(f"  Helena tem 6 documentos no dossiê e um CRAF pronto (Despachante).")
+    print(f"  Na vitrine da Helena aparece o anúncio do William; o da Vanessa")
+    print(f"  está pausado pela anuidade (continua no banco, aprovado).")
     print(f"  Banco  : {base.PASTA}  (apagado ao fechar)")
     print("=" * 68)
     print()

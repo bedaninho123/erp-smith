@@ -443,6 +443,42 @@ def obter_por_cpf(empresa_id: str, cpf: Optional[str]) -> Optional[dict]:
         con.close()
 
 
+def cpfs_com_anuidade_bloqueada(empresa_id: str, cpfs, hoje) -> set:
+    """Dos CPFs pedidos, quais estão sem os benefícios de sócio pela
+    anuidade (domain/clube_tiro/regra_anuidade.py) -- é o que tira da
+    vitrine do Marketplace os anúncios de quem passou da carência.
+
+    Lê o RETRATO, e isso é de propósito: a vitrine mostra anúncios de
+    várias pessoas, e consultar o Shooting House ao vivo para cada dono a
+    cada tela aberta seria uma chamada por anúncio. O retrato do
+    Financeiro vem de carona na lista do clube, 8x ao dia, então quem
+    renovou volta para a vitrine em até umas 3h. Não é afirmação a
+    ninguém: o dono não vê a vitrine nesse estado, e quem vê só deixa de
+    ver um anúncio.
+
+    Uma consulta só, com o lado pequeno (os donos de anúncio, não o clube
+    inteiro)."""
+    from domain.clube_tiro.regra_anuidade import situacao_anuidade
+
+    digitos = sorted({re.sub(r"\D", "", c or "") for c in cpfs} - {""})
+    if not digitos:
+        return set()
+    con = conectar()
+    try:
+        marcas = ",".join("?" * len(digitos))
+        linhas = con.execute(
+            f"SELECT cpf, anuidade_em_dia, anuidade_validade FROM filiado "
+            f"WHERE empresa_id = ? AND cpf IN ({marcas})",
+            (empresa_id, *digitos),
+        ).fetchall()
+    finally:
+        con.close()
+    return {
+        l["cpf"] for l in linhas
+        if situacao_anuidade(l["anuidade_em_dia"], l["anuidade_validade"], hoje)["bloqueia"]
+    }
+
+
 def localizar_ativo_por_cpf_ou_email(empresa_id: str, identificador: str) -> Optional[dict]:
     """Busca exata (nunca aproximada) por CPF ou e-mail, só entre
     filiados ATIVOS -- usada pelo login do Portal (portal/app.py) quando

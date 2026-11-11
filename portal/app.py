@@ -39,7 +39,7 @@ from typing import Optional
 from dotenv import load_dotenv, set_key
 from flask import (
     make_response,
-    Flask, Response, flash, get_flashed_messages, jsonify, redirect, render_template, request,
+    Flask, Response, flash, g, get_flashed_messages, jsonify, redirect, render_template, request,
     send_file, session, url_for,
 )
 
@@ -74,18 +74,27 @@ from integracoes.email_acesso import (
     EnvioAcessoFalhou,
     email_acesso_configurado,
     enviar_email_acesso,
+    remetente_acesso,
 )
 from domain.clube_tiro.motor_campeonatos import listar_campeonatos, obter_campeonato
 from domain.clube_tiro.motor_filiados import (
     PERIODOS_MESES,
     contar_participacoes,
     contar_treinos_e_provas,
+    cpfs_com_anuidade_bloqueada,
     limite_janela,
     localizar_ativo_por_cpf_ou_email,
     obter_por_cpf as obter_filiado_por_cpf,
     periodo_valido,
 )
+from domain.clube_tiro.regra_anuidade import (
+    BLOQUEADA,
+    CARENCIA,
+    VENCIDA_SEM_CONFIRMACAO,
+    situacao_anuidade,
+)
 from domain.clube_tiro.motor_resultados import listar_resultados
+from integracoes.config import shooting_house_ativo
 from integracoes.gmail import enviar_email, gmail_configurado
 from integracoes.shooting_house import (
     ShootingHouseIndisponivel,
@@ -213,21 +222,206 @@ def cliente_login_required(f):
         if not (session.get("cliente_id") and session.get("empresa_id")):
             return redirect(url_for("login"))
         return f(*args, **kwargs)
+    # Marca lida por _conferir_socio(): é assim que ela sabe quais telas
+    # são "de dentro" do Portal sem manter uma segunda lista de rotas.
+    wrapper._exige_login = True
     return wrapper
 
 
 def filiado_ativo_required(f):
-    """Marketplace e Habitualidade são só pra quem é filiado ATIVO do
-    clube -- sempre depois de @cliente_login_required (mesma ordem de
-    login_required/gestor_required no painel). Cliente que não é filiado
-    (ex.: só fez transferência de arma) recebe 403, não 404 -- é acesso
-    negado, não "não existe"."""
+    """Habitualidade, Acervo e Marketplace são só pra quem é filiado ATIVO
+    do clube e está com a anuidade dentro do prazo -- sempre depois de
+    @cliente_login_required (mesma ordem de login_required/gestor_required
+    no painel). Cliente que não é filiado (ex.: só fez transferência de
+    arma) recebe 403, não 404 -- é acesso negado, não "não existe".
+
+    Quem passou da carência da anuidade recebe a tela que explica isso,
+    não um erro cru: quase sempre chegou por um link salvo ou pelo app
+    aberto de antes, e precisa saber o que fazer."""
     @wraps(f)
     def wrapper(*args, **kwargs):
+        if session.get("anuidade_bloqueada"):
+            if request.method == "GET":
+                return _tela_anuidade_vencida(tela_unica=False), 403
+            return jsonify(erro="Sua anuidade venceu. Renove com o clube para voltar a usar."), 403
         if not session.get("e_filiado_ativo"):
             return jsonify(erro="Este recurso é exclusivo de filiados ativos do clube."), 403
         return f(*args, **kwargs)
     return wrapper
+
+
+# A situação de sócio é conferida de novo a cada 10 minutos de uso, e
+# sempre que o Início abre (2026-11-10). Antes ela era decidida UMA vez, no
+# login, e a sessão dura 30 dias: quem ficava inativo continuava vendo
+# Marketplace e Habitualidade por até um mês. Com a carência da anuidade
+# isso virou dos dois lados -- quem renovou ficaria preso do lado de fora.
+# Dez minutos é uma consulta ao Shooting House a cada dez minutos de uso,
+# não uma por tela aberta.
+SOCIO_RECONFERIR_SEGUNDOS = 10 * 60
+
+# Telas que quem só tem a renovação pela frente ainda alcança (ver
+# _conferir_socio). O resto volta para o Início, que mostra o aviso.
+_TELAS_SEM_SOCIO = {"dashboard", "sair"}
+
+
+def _tela_anuidade_vencida(tela_unica: bool):
+    """A tela de renovação, pelas duas portas (ver o template)."""
+    meus = listar_anuncios(session["empresa_id"], cliente_id=session["cliente_id"])
+    return render_template(
+        "portal_anuidade_vencida.html",
+        cliente_nome=session.get("cliente_nome"),
+        validade=session.get("anuidade_validade_br"),
+        prazo=session.get("anuidade_prazo_br"),
+        tela_unica=tela_unica,
+        tem_anuncio_pausado=any(a["status"] == STATUS_APROVADO for a in meus),
+    )
+
+
+def _hoje_local():
+    """O dia de HOJE em Brasília. O servidor de produção roda em UTC, e às
+    21h o UTC já virou o dia -- a carência acabaria três horas antes."""
+    return datetime.now(_FUSO_BRASILIA).date()
+
+
+def _situacao_socio(empresa_id: str, cpf: Optional[str]) -> dict:
+    """Tudo o que o Portal precisa saber sobre a pessoa como SÓCIO do
+    clube, numa função só: o cartão do Início, o menu, a trava das rotas e
+    a tela de renovação leem daqui. Duas contas separadas acabariam com o
+    cartão dizendo "em dia" e o menu escondendo o Marketplace.
+
+    De onde vem:
+    - Modo real: da consulta AO VIVO (`consultar_ficha_completa`). É uma
+      afirmação à própria pessoa, e afirmação a filiado não sai do retrato
+      (ver CLAUDE.md, "Panorama de habitualidade").
+    - Modo simulado (chave geral desligada, testes, demonstração): do
+      retrato `dominio.filiado`. A ficha simulada só conhece meia dúzia
+      de CPFs de teste e diria "não é filiado" para todo o resto.
+    - Consulta indisponível: a filiação vem do retrato (como sempre foi no
+      login) e a anuidade fica sem resposta -- e sem resposta não corta.
+
+    `tem_registro=False` é "não é filiado"; `indisponivel=True` é "não
+    consegui perguntar agora". Nunca a mesma mensagem na tela."""
+    retrato = obter_filiado_por_cpf(empresa_id, cpf)
+    indisponivel = False
+    if shooting_house_ativo():
+        ficha = None
+        if cpf:
+            try:
+                ficha = consultar_ficha_completa(cpf)
+            except ShootingHouseIndisponivel:
+                indisponivel = True
+        fonte = ficha
+        tem_registro = bool(ficha)
+        # A filiação do retrato segura o caso de a ficha não dizer (ou não
+        # vir): é o que o login sempre usou para liberar as abas.
+        status = (ficha or {}).get("status_filiacao") or (retrato or {}).get("status_filiacao")
+    else:
+        fonte = retrato
+        tem_registro = bool(retrato)
+        status = (retrato or {}).get("status_filiacao")
+
+    anuidade = None
+    if fonte:
+        anuidade = situacao_anuidade(
+            fonte.get("anuidade_em_dia"), fonte.get("anuidade_validade"), _hoje_local(),
+        )
+    socio_ativo = status == "Ativo"
+    bloqueada = bool(socio_ativo and anuidade and anuidade["bloqueia"])
+    return {
+        "tem_registro": tem_registro,
+        "indisponivel": indisponivel and not tem_registro,
+        "status_filiacao": status,
+        "anuidade_em_dia": fonte.get("anuidade_em_dia") if fonte else None,
+        "anuidade": anuidade,
+        "socio_ativo": socio_ativo,
+        "anuidade_bloqueada": bloqueada,
+        "beneficios_liberados": socio_ativo and not bloqueada,
+    }
+
+
+def _e_cliente_do_despachante(empresa_id: str, cliente_id: str) -> bool:
+    """Tem caso ou documento com o despachante. É o que decide se quem
+    passou da carência ainda tem o que fazer no app: o despachante é
+    serviço à parte e não depende de anuidade. Quem ganhou cadastro só por
+    ser filiado (o Marketplace abriu essa porta) não tem nada disso."""
+    con = conectar(empresa_id)
+    try:
+        caso = con.execute(
+            "SELECT 1 FROM caso WHERE cliente_id = ? AND empresa_id = ? LIMIT 1",
+            (cliente_id, empresa_id),
+        ).fetchone()
+        if caso:
+            return True
+        documento = con.execute(
+            "SELECT 1 FROM documento WHERE cliente_id = ? AND empresa_id = ? LIMIT 1",
+            (cliente_id, empresa_id),
+        ).fetchone()
+        return bool(documento)
+    finally:
+        con.close()
+
+
+def _atualizar_socio_na_sessao() -> dict:
+    """Recalcula a situação de sócio e grava na sessão o que menu, rotas e
+    a tela de renovação precisam. Devolve a situação inteira para o Início
+    desenhar o cartão sem consultar o Shooting House duas vezes."""
+    cliente_id = session["cliente_id"]
+    empresa_id = session["empresa_id"]
+    con = conectar(empresa_id)
+    linha = con.execute(
+        "SELECT cpf FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
+        (cliente_id, empresa_id),
+    ).fetchone()
+    con.close()
+    situacao = _situacao_socio(empresa_id, linha["cpf"] if linha else None)
+
+    if situacao["indisponivel"] and "socio_conferido_em" in session:
+        # Shooting House fora do ar: fica valendo o que já se sabia. Sem
+        # isso, uma queda devolveria o Marketplace a quem passou da
+        # carência -- e a próxima conferência tenta de novo em 10 min.
+        session["socio_conferido_em"] = time.time()
+        return situacao
+
+    anuidade = situacao["anuidade"] or {}
+    # Nome antigo, significado de hoje: "pode usar Habitualidade e
+    # Marketplace". Os templates e os testes já leem esta chave.
+    session["e_filiado_ativo"] = situacao["beneficios_liberados"]
+    session["anuidade_bloqueada"] = situacao["anuidade_bloqueada"]
+    session["anuidade_validade_br"] = _data_br(
+        anuidade["validade"].isoformat() if anuidade.get("validade") else None
+    )
+    session["anuidade_prazo_br"] = _data_br(
+        anuidade["prazo"].isoformat() if anuidade.get("prazo") else None
+    )
+    session["so_renovacao"] = bool(
+        situacao["anuidade_bloqueada"] and not _e_cliente_do_despachante(empresa_id, cliente_id)
+    )
+    session["socio_conferido_em"] = time.time()
+    return situacao
+
+
+@app.before_request
+def _conferir_socio():
+    """Mantém a situação de sócio da sessão em dia (ver
+    SOCIO_RECONFERIR_SEGUNDOS) e leva quem só tem a renovação pela frente
+    de volta ao Início. Só age em tela de quem está logado: login, arquivos
+    do app e o service worker passam direto."""
+    visao = app.view_functions.get(request.endpoint)
+    if not getattr(visao, "_exige_login", False):
+        return None
+    if not (session.get("cliente_id") and session.get("empresa_id")):
+        return None
+    conferido_em = session.get("socio_conferido_em") or 0
+    if request.endpoint == "dashboard" or time.time() - conferido_em > SOCIO_RECONFERIR_SEGUNDOS:
+        g.situacao_socio = _atualizar_socio_na_sessao()
+    if session.get("so_renovacao") and request.endpoint not in _TELAS_SEM_SOCIO:
+        return redirect(url_for("dashboard"))
+    return None
+
+
+@app.context_processor
+def _dados_da_tela_de_login():
+    return {"remetente_acesso": remetente_acesso()}
 
 
 def empresa_atual() -> str:
@@ -489,19 +683,12 @@ def _abrir_sessao(cliente_id: str) -> bool:
     session["cliente_id"] = cliente_id
     session["cliente_nome"] = cliente["nome"]
     session["empresa_id"] = cliente["empresa_id"]
-    # Filiação é cruzada por CPF (mesmo cruzamento que o painel já faz na
-    # ficha do Cliente, bloco "NO CLUBE") -- decide o que aparece no menu
-    # (Habitualidade, Marketplace), NÃO decide login: um cliente que
-    # nunca foi filiado (ex.: só usou transferência de arma) continua
-    # entrando normal, só não vê essas duas abas.
-    con2 = conectar(cliente["empresa_id"])
-    cpf_cliente = con2.execute(
-        "SELECT cpf FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
-        (cliente_id, cliente["empresa_id"]),
-    ).fetchone()
-    con2.close()
-    filiado = obter_filiado_por_cpf(cliente["empresa_id"], cpf_cliente["cpf"] if cpf_cliente else None)
-    session["e_filiado_ativo"] = bool(filiado and filiado.get("status_filiacao") == "Ativo")
+    # Filiação e anuidade decidem o que aparece no menu (Habitualidade,
+    # Marketplace), NÃO decidem login: um cliente que nunca foi filiado
+    # (ex.: só usou transferência de arma) continua entrando normal. A
+    # conta é feita já na primeira tela (_conferir_socio, que o clear()
+    # acima obriga a rodar) e refeita a cada 10 minutos -- não mais uma
+    # vez só, aqui, valendo pelos 30 dias da sessão.
     return True
 
 
@@ -712,34 +899,38 @@ def _resumo_habitualidade(cpf: str) -> dict:
     }
 
 
-def _resumo_filiacao(cpf: str) -> dict:
-    """Situação de anuidade (o que o usuário chama de "validade da
-    filiação") pra tela Início -- mesmo padrão de _resumo_habitualidade:
-    consulta AO VIVO (`consultar_ficha_completa`), nunca o retrato
-    guardado em `dominio.filiado` (aquele existe pro panorama do clube
-    inteiro no painel, não pra afirmação a um cliente -- ver CLAUDE.md,
-    "Panorama de habitualidade").
+def _resumo_filiacao(situacao: dict) -> dict:
+    """Cartão "Filiação" do Início (o que o usuário chama de "validade da
+    filiação"), montado da MESMA situação que decide o menu e a trava das
+    rotas (`_situacao_socio`) -- o cartão não pode dizer uma coisa e o
+    menu fazer outra.
 
-    tem_registro=False é "não é filiado" (cliente que só fez
-    transferência de arma, por exemplo); indisponivel=True é "não
-    consegui perguntar agora" -- os dois nunca podem virar a mesma
-    mensagem na tela, senão uma falha de rede vira "você não é filiado"
-    pra um sócio de verdade."""
-    try:
-        ficha = consultar_ficha_completa(cpf)
-    except ShootingHouseIndisponivel:
-        return {"tem_registro": False, "indisponivel": True}
-    if not ficha:
-        return {"tem_registro": False, "indisponivel": False}
+    `tom` decide a cor: verde só para filiação ativa com anuidade em dia;
+    âmbar na carência; vermelho para inativo ou passou da carência. Data
+    vencida que o Shooting House não marca como atraso fica NEUTRA: os
+    dois campos discordam, e verde ou vermelho afirmaria um dos lados."""
+    anuidade = situacao["anuidade"] or {}
+    estado = anuidade.get("estado")
+    status = situacao["status_filiacao"]
+    if status == "Inativo" or estado == BLOQUEADA:
+        tom = "inativo"
+    elif estado == CARENCIA:
+        tom = "alerta"
+    elif status == "Ativo" and estado != VENCIDA_SEM_CONFIRMACAO:
+        tom = "ativo"
+    else:
+        tom = None
+    validade = anuidade.get("validade")
+    prazo = anuidade.get("prazo")
     return {
-        "tem_registro": True,
-        "indisponivel": False,
-        "anuidade_em_dia": ficha.get("anuidade_em_dia"),
-        "anuidade_validade": _data_br(ficha.get("anuidade_validade")),
-        # 'Ativo' / 'Inativo' / None -- decide a cor do cartão. None
-        # (o campo não veio) fica na cor neutra: pintar de verde
-        # afirmaria o que ninguém conferiu, e de vermelho acusaria.
-        "status_filiacao": ficha.get("status_filiacao"),
+        "tem_registro": situacao["tem_registro"],
+        "indisponivel": situacao["indisponivel"],
+        "status_filiacao": status,
+        "anuidade_em_dia": situacao["anuidade_em_dia"],
+        "estado": estado,
+        "anuidade_validade": _data_br(validade.isoformat()) if validade else None,
+        "prazo": _data_br(prazo.isoformat()) if prazo else None,
+        "tom": tom,
     }
 
 
@@ -748,8 +939,15 @@ def _resumo_filiacao(cpf: str) -> dict:
 def dashboard():
     cliente_id = session["cliente_id"]
     empresa_id = empresa_atual()
-    con = conectar(empresa_id)
+    # Conferida agora mesmo por _conferir_socio (o Início sempre confere).
+    situacao_socio = g.get("situacao_socio") or _atualizar_socio_na_sessao()
 
+    if session.get("so_renovacao"):
+        # Passou da carência e não tem nada com o despachante: o app
+        # inteiro era benefício de sócio, então sobra só o aviso.
+        return _tela_anuidade_vencida(tela_unica=True)
+
+    con = conectar(empresa_id)
     cliente = con.execute(
         "SELECT cpf FROM cliente WHERE cliente_id = ? AND empresa_id = ?",
         (cliente_id, empresa_id),
@@ -791,7 +989,7 @@ def dashboard():
         # Início levava quem não é filiado a uma resposta 403 crua.
         if session.get("e_filiado_ativo"):
             habitualidade_resumo = _resumo_habitualidade(cliente["cpf"])
-        filiacao_resumo = _resumo_filiacao(cliente["cpf"])
+        filiacao_resumo = _resumo_filiacao(situacao_socio)
 
     return render_template(
         "portal_home.html",
@@ -1021,10 +1219,15 @@ def _nome_empresa(empresa_id: str) -> str:
 
 @app.route("/portal/acervo")
 @cliente_login_required
+@filiado_ativo_required
 def acervo():
     """Armas do atirador -- consulta AO VIVO o Shooting House, mesmo
     princípio de habitualidade()/dashboard() acima: nunca guarda cópia
-    própria (CLAUDE.md, "consultar, não copiar"). Número de série e
+    própria (CLAUDE.md, "consultar, não copiar").
+
+    Só de sócio liberado, como Habitualidade e Marketplace (decisão do
+    usuário, 2026-11-10): cliente que é só do despachante não vê, nem
+    sócio que passou da carência da anuidade. Número de série e
     grupo são legítimos aqui -- é o dono da arma vendo o próprio acervo,
     protegido por login, e esta tela não passa perto de prompt de IA
     nenhum (mesma ressalva de core/motor_documentos.py::salvar_no_dossie
@@ -1520,6 +1723,38 @@ def _servico_transferencia_arma(empresa_id: str) -> Optional[str]:
     return None
 
 
+def _donos_fora_da_vitrine(empresa_id: str, cliente_ids) -> set:
+    """Donos de anúncio que passaram da carência da anuidade: o anúncio
+    deles fica PAUSADO -- some da vitrine, nada é apagado, e volta sozinho
+    quando a pessoa renova (decisão do usuário, 2026-11-10). Sem isso, um
+    comprador mandaria mensagem a quem não consegue mais entrar para
+    responder. Ver motor_filiados.cpfs_com_anuidade_bloqueada para o
+    porquê de ler o retrato aqui."""
+    ids = sorted(set(cliente_ids))
+    if not ids:
+        return set()
+    con = conectar(empresa_id)
+    marcas = ",".join("?" * len(ids))
+    linhas = con.execute(
+        f"SELECT cliente_id, cpf FROM cliente WHERE empresa_id = ? AND cliente_id IN ({marcas})",
+        (empresa_id, *ids),
+    ).fetchall()
+    con.close()
+    bloqueados = cpfs_com_anuidade_bloqueada(
+        empresa_id, [l["cpf"] for l in linhas], _hoje_local(),
+    )
+    return {l["cliente_id"] for l in linhas if l["cpf"] in bloqueados}
+
+
+def _anuncio_na_vitrine(empresa_id: str, anuncio: dict) -> bool:
+    """O que um filiado que NÃO é o dono pode abrir: aprovado e com o dono
+    fora da pausa da anuidade."""
+    return (
+        anuncio["status"] == STATUS_APROVADO
+        and anuncio["cliente_id"] not in _donos_fora_da_vitrine(empresa_id, [anuncio["cliente_id"]])
+    )
+
+
 @app.route("/portal/marketplace")
 @cliente_login_required
 @filiado_ativo_required
@@ -1527,6 +1762,8 @@ def marketplace():
     empresa_id = empresa_atual()
     categoria_filtro = (request.args.get("categoria") or "").strip()
     anuncios = listar_anuncios(empresa_id, status=STATUS_APROVADO)
+    pausados = _donos_fora_da_vitrine(empresa_id, [a["cliente_id"] for a in anuncios])
+    anuncios = [a for a in anuncios if a["cliente_id"] not in pausados]
     if categoria_filtro:
         anuncios = [a for a in anuncios if a["categoria"] == categoria_filtro]
     for a in anuncios:
@@ -1672,7 +1909,7 @@ def marketplace_foto(anuncio_id, indice):
     if not anuncio:
         return jsonify(erro="Anúncio não encontrado."), 404
     dono = anuncio["cliente_id"] == session["cliente_id"]
-    if anuncio["status"] != STATUS_APROVADO and not dono:
+    if not dono and not _anuncio_na_vitrine(empresa_id, anuncio):
         return jsonify(erro="Anúncio não encontrado."), 404
     if indice < 0 or indice >= len(anuncio["fotos"]):
         return jsonify(erro="Foto não encontrada."), 404
@@ -1694,7 +1931,8 @@ def marketplace_documentacao(anuncio_id):
     vendedor e comprador."""
     empresa_id = empresa_atual()
     anuncio = obter_anuncio(empresa_id, anuncio_id)
-    if not anuncio:
+    dono = bool(anuncio) and anuncio["cliente_id"] == session["cliente_id"]
+    if not anuncio or (not dono and not _anuncio_na_vitrine(empresa_id, anuncio)):
         flash("Anúncio não encontrado.", "erro")
         return redirect(url_for("marketplace"))
 

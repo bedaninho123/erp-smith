@@ -156,6 +156,21 @@ def test_email_traz_o_codigo_no_assunto_e_antes_do_link(banco, anonimo, resend, 
     assert "Use o link abaixo" not in dados["text"]
 
 
+def test_tela_do_codigo_avisa_do_spam_e_diz_o_remetente(banco, anonimo, resend, gmail):
+    html = _pedir(anonimo, "ninguem@example.com").get_data(as_text=True)
+    assert "Olhe o Spam ou o Lixo eletrônico" in html
+    assert "acesso@envio.exemplo.com" in html
+    assert html.index("Olhe o Spam") < html.index("Pedir um novo código")
+
+
+def test_sem_resend_a_tela_nao_cita_remetente(banco, anonimo, monkeypatch, gmail):
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.setenv("EMAIL_ACESSO_REMETENTE", "acesso@envio.exemplo.com")
+    html = _pedir(anonimo, "ninguem@example.com").get_data(as_text=True)
+    assert "Olhe o Spam ou o Lixo eletrônico" in html
+    assert "acesso@envio.exemplo.com" not in html
+
+
 def test_sem_configurar_continua_pelo_gmail(banco, anonimo, monkeypatch, gmail):
     monkeypatch.delenv("RESEND_API_KEY", raising=False)
     _pedir(anonimo)

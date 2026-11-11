@@ -1,0 +1,52 @@
+{% extends "_portal_layout.html" %}
+{% block titulo %}Anuidade vencida{% endblock %}
+{# Duas portas chegam aqui (2026-11-10, ver domain/clube_tiro/regra_anuidade.py):
+   - tela_unica: passou da carência e não tem nada com o despachante. É o
+     Início inteiro dessa pessoa, e o menu some (ver _portal_layout.html).
+   - sem tela_unica: é cliente do despachante e tentou abrir Habitualidade
+     Acervo ou Marketplace (link salvo, app aberto de antes). O menu continua.
+   Nenhum telefone ou valor aqui: o sistema não tem o contato da
+   secretaria cadastrado nem sabe quanto custa a anuidade, e não se inventa. #}
+{% block conteudo %}
+<div class="ficha aviso-anuidade">
+  <span class="selo selo--signal">Anuidade vencida</span>
+  <h1 class="aviso-anuidade-titulo">
+    {% if validade %}Sua anuidade venceu em {{ validade }}{% else %}Sua anuidade está vencida{% endif %}
+  </h1>
+  <p class="aviso-anuidade-texto">
+    O prazo para renovar{% if prazo %} terminou em {{ prazo }}{% else %} terminou{% endif %}.
+    {% if tela_unica %}
+    Enquanto ela estiver vencida, o app fica fora do ar para você.
+    {% else %}
+    Enquanto ela estiver vencida, a Habitualidade, o Acervo e o
+    Marketplace ficam fora do ar para você. O que você tem com o despachante continua
+    funcionando normalmente.
+    {% endif %}
+  </p>
+  <p class="aviso-anuidade-texto">
+    Renove com a secretaria do clube. Assim que a renovação aparecer no
+    sistema do clube, tudo volta a funcionar sozinho, sem precisar pedir.
+  </p>
+  {% if tem_anuncio_pausado %}
+  <p class="aviso-anuidade-nota">
+    Seus anúncios do Marketplace estão pausados: não aparecem para ninguém
+    agora, mas nada foi apagado. Eles voltam quando você renovar.
+  </p>
+  {% endif %}
+  {% if not tela_unica %}
+  <a href="{{ url_for('dashboard') }}" class="botao">Voltar ao início</a>
+  {% endif %}
+</div>
+{% endblock %}
+{% block estilo_extra %}
+<style>
+  /* Bloco de aviso da tela de renovação. Classe com nome, não style solto
+     na marcação (mesma régua do painel). */
+  .aviso-anuidade { max-width: 560px; padding: 1.6rem 1.5rem; }
+  .aviso-anuidade-titulo { font-size: 1.15rem; margin: .9rem 0 .6rem; line-height: 1.35; }
+  .aviso-anuidade-texto { margin: 0 0 .8rem; line-height: 1.5; }
+  .aviso-anuidade-nota { margin: 0 0 1.2rem; font-size: .85rem; color: var(--steel); line-height: 1.5; }
+  /* .botao é estilo de <button>; num <a> o sublinhado do link aparecia. */
+  .aviso-anuidade .botao { display: inline-block; text-decoration: none; }
+</style>
+{% endblock %}
