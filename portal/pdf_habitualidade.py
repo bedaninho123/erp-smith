@@ -125,6 +125,50 @@ def _rotulo_valor(pdf: FPDF, x: float, y: float, rotulo: str, valor: str):
     pdf.cell(90, 6, _t(valor))
 
 
+def _titulo_secao(pdf: FPDF, titulo: str, complemento: str = ""):
+    pdf.set_font("Helvetica", "B", 9.5)
+    pdf.set_text_color(*AZUL_FUNDO)
+    pdf.cell(130, 6, _t(titulo))
+    if complemento:
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(*ACO)
+        pdf.cell(0, 6, _t(complemento), align="R")
+    pdf.ln(7)
+
+
+def _tabela_por_modalidade(pdf: FPDF, dados: dict):
+    """Participações por modalidade nos quatro períodos, como na folha.
+    A coluna do período desta folha vai em negrito."""
+    linhas = dados.get("por_modalidade") or []
+    if not linhas:
+        return
+    periodos = dados["periodos"]
+    _titulo_secao(pdf, "Participações por modalidade")
+    pdf.set_font("Helvetica", "", 8.5)
+    pdf.set_text_color(*TINTA)
+    pdf.set_draw_color(*LINHA)
+    largura_num = 20
+    with pdf.table(
+        col_widths=(pdf.w - 24 - largura_num * len(periodos), *([largura_num] * len(periodos))),
+        text_align=("LEFT", *(["RIGHT"] * len(periodos))),
+        borders_layout="HORIZONTAL_LINES",
+        line_height=4.6,
+        padding=(1.4, 1.5),
+        headings_style=FontFace(emphasis="BOLD", color=AZUL_FUNDO, size_pt=8.5),
+    ) as tabela:
+        cabecalho = tabela.row()
+        cabecalho.cell("Modalidade")
+        for p in periodos:
+            cabecalho.cell(f"{p} meses")
+        destaque = FontFace(emphasis="BOLD")
+        for linha in linhas:
+            fila = tabela.row()
+            fila.cell(_t(linha["modalidade"]))
+            for p in periodos:
+                fila.cell(str(linha["contagens"][p]), style=destaque if p == dados["meses"] else None)
+    pdf.ln(5)
+
+
 def gerar_pdf(dados: dict) -> bytes:
     """`dados` é o mesmo contexto que desenha a folha HTML. Só chamar
     quando a folha tem o que emitir (CPF achado e consulta respondida):
@@ -139,9 +183,10 @@ def gerar_pdf(dados: dict) -> bytes:
     _rotulo_valor(pdf, 12, y + 12, "Período", f"Últimos {dados['meses']} meses")
     _rotulo_valor(pdf, 108, y + 12, "De / até",
                   f"{dados['inicio_periodo']} a {dados['emitido_em'][:10]}")
+    _rotulo_valor(pdf, 12, y + 24, "Relação", dados.get("recorte") or "Todas as participações")
 
     # Resumo: quatro quadros lado a lado, como na folha.
-    y += 28
+    y += 40
     participacoes = dados["participacoes_periodo"]
     quadros = [
         (str(participacoes if participacoes is not None else 0), "participações"),
@@ -165,11 +210,17 @@ def gerar_pdf(dados: dict) -> bytes:
         pdf.cell(largura - 6, 4, _t(rotulo))
     pdf.set_y(y + 23)
 
+    _tabela_por_modalidade(pdf, dados)
+
     eventos = dados["eventos"]
+    recorte = dados.get("recorte")
+    _titulo_secao(pdf, f"{recorte or 'Participações'} nos últimos {dados['meses']} meses",
+                  f"{len(eventos)} registro{'' if len(eventos) == 1 else 's'}")
     if not eventos:
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(*TINTA)
-        pdf.multi_cell(0, 6, _t(f"Nenhuma participação registrada nos últimos {dados['meses']} meses."))
+        inicio = f"Nenhum registro de {recorte}" if recorte else "Nenhuma participação registrada"
+        pdf.multi_cell(0, 6, _t(f"{inicio} nos últimos {dados['meses']} meses."))
         return bytes(pdf.output())
 
     pdf.set_font("Helvetica", "", 8.5)

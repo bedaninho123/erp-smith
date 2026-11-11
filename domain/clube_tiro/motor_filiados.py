@@ -275,6 +275,67 @@ def _e_treino(evento: dict) -> bool:
     return not competicao or competicao.upper() == "TREINO"
 
 
+def e_treino(evento: dict) -> bool:
+    """A mesma regra de `_e_treino`, para quem filtra eventos fora daqui
+    (a folha do Portal que lista só os treinos ou só as provas). Uma regra
+    só: se o Portal reimplementasse, a folha "só treinos" e o número
+    "20 treinos" do cartão poderiam discordar."""
+    return _e_treino(evento)
+
+
+# Rótulo de evento que veio sem modalidade. Aparece na tabela por
+# modalidade em vez de sumir: sumir faria a soma da tabela dar menos que o
+# total de participações, e a pessoa acharia que faltou registro.
+SEM_MODALIDADE = "Modalidade não informada"
+
+
+def rotulo_modalidade(evento: dict) -> str:
+    """O nome da modalidade como a tabela e o filtro da folha usam. O
+    texto é o que o Shooting House manda (ex.: "Provas Nacionais",
+    "Provas Especiais", que são modalidades do catálogo do clube) -- não
+    classificamos nada: cada nome é uma linha."""
+    return (evento.get("modalidade") or "").strip() or SEM_MODALIDADE
+
+
+def contar_por_modalidade(habitualidade: dict, hoje=None,
+                          periodos=PERIODOS_MESES) -> list[dict]:
+    """Quantas participações a pessoa tem em cada modalidade, em cada um
+    dos períodos que o Portal oferece (6, 12, 24 e 36 meses) -- pedido do
+    usuário (2026-11-10): "quantas provas especiais, nacionais a pessoa
+    tem em 6, 12, 24, 36 meses".
+
+    Mesma janela de `contar_participacoes` (`limite_janela`), para a soma
+    de uma coluna bater com o cartão "participações" daquele período.
+    Conta em Python, nunca na IA.
+
+    Devolve [{"modalidade": str, "contagens": {6: n, 12: n, ...}}], da
+    modalidade mais frequente no maior período para a menos frequente."""
+    limites = {meses: limite_janela(meses, hoje) for meses in periodos}
+    contagens: dict[str, dict] = {}
+    for grupo in (habitualidade.get("habitualidades") or {}).values():
+        for evento in grupo.get("eventos", []):
+            bruto = evento.get("data_participacao")
+            if not bruto:
+                continue
+            try:
+                data = datetime.strptime(bruto, "%d/%m/%Y").date()
+            except ValueError:
+                continue
+            linha = contagens.setdefault(rotulo_modalidade(evento), {m: 0 for m in periodos})
+            for meses, limite in limites.items():
+                if data >= limite:
+                    linha[meses] += 1
+
+    maior = max(periodos)
+    linhas = [
+        {"modalidade": nome, "contagens": por_periodo}
+        for nome, por_periodo in contagens.items()
+        if any(por_periodo.values())
+    ]
+    linhas.sort(key=lambda l: (-l["contagens"][maior], l["modalidade"].lower()))
+    return linhas
+
+
 def contar_treinos_e_provas(habitualidade: dict, hoje=None,
                             meses: int = JANELA_MESES) -> dict:
     """Mesma janela de `contar_participacoes`, mas separando

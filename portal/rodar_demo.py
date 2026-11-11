@@ -107,6 +107,47 @@ def _anuidades_de_exemplo() -> list[tuple[str, str]]:
     return links
 
 
+CPF_HELENA = "10000000006"
+
+
+def _habitualidade_da_helena(*_args, **_kwargs) -> dict:
+    """Histórico inventado da Helena, com as MESMAS modalidades que o
+    Shooting House manda de verdade (Treino, Arma Curta, Arma Longa,
+    Provas Nacionais, Provas Especiais, Silhueta Metálica) -- a lista
+    simulada da integração só tem "Tiro Prático", e a tabela por
+    modalidade da tela de Habitualidade não tinha o que mostrar. Datas
+    contadas a partir de hoje, para cair nos quatro períodos."""
+    from datetime import date, timedelta
+
+    # (dias atrás, modalidade, grupo, competição)
+    registros = [
+        (8, "Treino", "ACRR", "TREINO"), (21, "Treino", "ACRR", "TREINO"),
+        (35, "Arma Curta", "ACRR", "Copa do Clube"), (35, "Arma Longa", "ALRP", "Copa do Clube"),
+        (52, "Treino", "ACRR", "TREINO"), (70, "Provas Nacionais", "ACRR", "Prova Nacional"),
+        (95, "Treino", "ACRR", "TREINO"), (110, "Silhueta Metálica", "ACRR", "Etapa Silhueta"),
+        (110, "Silhueta Metálica", "ALRP", "Etapa Silhueta"), (150, "Treino", "ACRR", "TREINO"),
+        (190, "Provas Especiais", "ACRR", "Prova Especial"), (190, "Provas Especiais", "ACRR", "Prova Especial"),
+        (240, "Treino", "ACRR", "TREINO"), (300, "Treino", "ACRR", "TREINO"),
+        (330, "Provas Nacionais", "ACRR", "Prova Nacional"), (420, "Arma Curta", "ACRR", "Copa do Clube"),
+        (480, "Treino", "ACRR", "TREINO"), (560, "Provas Especiais", "ACRR", "Prova Especial"),
+        (650, "Provas Nacionais", "ACRR", "Prova Nacional"), (800, "Treino", "ACRR", "TREINO"),
+        (900, "Arma Longa", "ALRP", "Copa do Clube"), (1000, "Silhueta Metálica", "ACRR", "Etapa Silhueta"),
+    ]
+    grupos: dict = {}
+    for dias, modalidade, grupo, competicao in registros:
+        grupos.setdefault(grupo, {"eventos": []})["eventos"].append({
+            "data_participacao": (date.today() - timedelta(days=dias)).strftime("%d/%m/%Y"),
+            "hora_participacao": "10:00",
+            "modalidade": modalidade,
+            "competicao": competicao,
+            "arma": "Pistola 9mm (exemplo)" if grupo == "ACRR" else "Carabina .22 (exemplo)",
+            "local": "Estande do clube (exemplo)",
+        })
+    for dados in grupos.values():
+        dados["count"] = len(dados["eventos"])
+    return {"simulado": True, "habitualidades": grupos}
+
+
 def main() -> None:
     base._criar_banco_core()
     base._criar_banco_dominio()
@@ -134,7 +175,19 @@ def main() -> None:
     print("=" * 68)
     print()
 
+    import portal.app as portal_app
     from portal.app import app
+
+    # Só na demonstração e só para a Helena: as outras pessoas seguem no
+    # simulado da integração, como sempre.
+    consulta_original = portal_app.consultar_habitualidade
+
+    def consultar_habitualidade_demo(cpf, *args, **kwargs):
+        if cpf == CPF_HELENA:
+            return _habitualidade_da_helena()
+        return consulta_original(cpf, *args, **kwargs)
+
+    portal_app.consultar_habitualidade = consultar_habitualidade_demo
 
     try:
         app.run(host="127.0.0.1", port=PORTA, debug=False, use_reloader=False)

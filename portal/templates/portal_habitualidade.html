@@ -47,6 +47,34 @@
   .acao-imprimir-dica { display: none; margin: .4rem 0 0; color: var(--steel); font-size: .82rem; }
   .acao-imprimir-dica.visivel { display: block; }
   @keyframes acao-imprimir-giro { to { transform: rotate(360deg); } }
+
+  /* Cartão que abre a folha do recorte (2026-11-10). */
+  .stat-card--link { text-decoration: none; color: inherit; }
+  .stat-card--link:hover { border-color: var(--blue); text-decoration: none; color: inherit; }
+  .stat-abrir { display: block; margin-top: .35rem; font-size: .75rem; font-weight: 600; color: var(--blue-deep); }
+
+  /* Tabela por modalidade: nome + quatro números, cabe no celular sem
+     rolar para o lado (o nome quebra linha, os números não). */
+  .tabela-modalidade { padding: .3rem 1rem; margin-bottom: 1.6rem; }
+  .tabela-modalidade table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .tabela-modalidade th, .tabela-modalidade td { padding: .55rem .3rem; border-bottom: 1px solid var(--line); text-align: left; }
+  .tabela-modalidade tbody tr:last-child th, .tabela-modalidade tbody tr:last-child td { border-bottom: 0; }
+  .tabela-modalidade thead th { font-size: .75rem; font-weight: 600; color: var(--steel); }
+  .tabela-modalidade tbody th { font-weight: 500; overflow-wrap: anywhere; }
+  .tabela-modalidade .num { width: 2.6rem; text-align: right; white-space: nowrap; font-family: 'IBM Plex Mono', monospace; }
+  .tabela-modalidade .num.atual { background: var(--blue-soft); }
+  .tabela-modalidade thead .num.atual { color: var(--blue-deep); }
+  .tabela-modalidade td a { display: inline-block; min-width: 1.6rem; padding: .1rem .2rem; font-weight: 600; color: var(--blue-deep); }
+  .tabela-modalidade .zero { color: var(--steel); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* Aviso de "preparando a folha" para qualquer link que abre a folha. */
+  .aviso-folha {
+    display: none; position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 30;
+    padding: .8rem 1rem; border-radius: 10px; background: var(--ink); color: #fff; font-size: .85rem;
+    box-shadow: 0 4px 18px rgba(0,0,0,.2);
+  }
+  .aviso-folha.visivel { display: block; }
 </style>
 {% endblock %}
 {% block conteudo %}
@@ -95,25 +123,76 @@
   {# Com 12 meses, é o mesmo número da ficha de Filiado do painel
      administrativo (bloco "NO CLUBE" -> "Participações (12 meses)") --
      mesma função de contagem, ver portal/app.py::habitualidade(). Cartão
-     em vez de linha de texto porque é o dado que mais importa nesta tela. #}
+     em vez de linha de texto porque é o dado que mais importa nesta tela.
+
+     Os três números abrem a folha (que vira PDF) só com aquilo (pedido do
+     usuário, 2026-11-10: tocar em "20 treinos" abre a lista dos 20). Na
+     MESMA janela, como o botão "Salvar ou imprimir": no app do iPhone,
+     aba nova é o Safari, com outro cookie, e cairia no login. Zero não
+     vira link -- abriria uma folha vazia. #}
+  {% set cartoes = [
+    (participacoes_periodo or 0, "participações", None),
+    (treinos_provas_periodo.treinos, "treinos", "treinos"),
+    (treinos_provas_periodo.provas, "provas", "provas"),
+  ] %}
   <div class="stats-grid" style="margin-bottom:1.6rem;">
+    {% for numero, rotulo, tipo_cartao in cartoes %}
+    {% if numero %}
+    <a class="ficha stat-card stat-card--link" data-folha
+       href="{{ url_for('habitualidade_imprimir', periodo=meses, tipo=tipo_cartao) }}">
+      <span class="stat-numero">{{ numero }}</span>
+      <span class="stat-rotulo">{{ rotulo }} nos últimos {{ meses }} meses</span>
+      <span class="stat-abrir">Ver lista</span>
+    </a>
+    {% else %}
     <div class="ficha stat-card">
-      <span class="stat-numero">{{ participacoes_periodo if participacoes_periodo is not none else 0 }}</span>
-      <span class="stat-rotulo">participações nos últimos {{ meses }} meses</span>
+      <span class="stat-numero">0</span>
+      <span class="stat-rotulo">{{ rotulo }} nos últimos {{ meses }} meses</span>
     </div>
-    <div class="ficha stat-card">
-      <span class="stat-numero">{{ treinos_provas_periodo.treinos }}</span>
-      <span class="stat-rotulo">treinos nos últimos {{ meses }} meses</span>
-    </div>
-    <div class="ficha stat-card">
-      <span class="stat-numero">{{ treinos_provas_periodo.provas }}</span>
-      <span class="stat-rotulo">provas nos últimos {{ meses }} meses</span>
-    </div>
+    {% endif %}
+    {% endfor %}
     <div class="ficha stat-card">
       <span class="stat-numero" style="font-size:1.3rem;">{{ ultima_participacao or "—" }}</span>
       <span class="stat-rotulo">última participação</span>
     </div>
   </div>
+
+  {# Participações por modalidade nos quatro períodos (pedido do usuário,
+     2026-11-10: "quantas provas especiais, nacionais a pessoa tem em 6,
+     12, 24, 36 meses"). "Provas Nacionais" e "Provas Especiais" são
+     MODALIDADES do catálogo do clube, então cada nome que o Shooting
+     House manda é uma linha -- não classificamos nada. Cada número abre a
+     folha daquela modalidade naquele período. #}
+  {% if por_modalidade %}
+  <div class="secao-titulo" style="margin-top:0;">
+    <h2>Por modalidade</h2>
+  </div>
+  <div class="ficha tabela-modalidade">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Modalidade</th>
+          {% for p in periodos %}<th scope="col" class="num{{ ' atual' if p == meses }}">{{ p }}<span class="sr-only"> meses</span><span aria-hidden="true">m</span></th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for linha in por_modalidade %}
+        <tr>
+          <th scope="row">{{ linha.modalidade }}</th>
+          {% for p in periodos %}
+          <td class="num{{ ' atual' if p == meses }}">
+            {% if linha.contagens[p] %}
+            <a data-folha href="{{ url_for('habitualidade_imprimir', periodo=p, modalidade=linha.modalidade) }}"
+               aria-label="{{ linha.contagens[p] }} em {{ linha.modalidade }} nos últimos {{ p }} meses: ver lista">{{ linha.contagens[p] }}</a>
+            {% else %}<span class="zero">0</span>{% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 
   <div class="secao-titulo" style="margin-top:0;">
     <h2>Histórico dos últimos {{ meses }} meses</h2>
@@ -130,6 +209,7 @@
     </a>
     <span class="acao-imprimir-dica" id="dica-folha" role="status">Consultando seus registros no sistema do clube. Pode levar alguns segundos.</span>
   </p>
+  <div class="aviso-folha" id="aviso-folha" role="status">Preparando a lista. Consultando seus registros no sistema do clube, pode levar alguns segundos.</div>
   <script>
     (function () {
       var botao = document.getElementById("botao-folha");
@@ -142,6 +222,12 @@
         texto.textContent = "Preparando a folha…";
         dica.classList.add("visivel");
       });
+      // Cartões e números da tabela por modalidade também abrem a folha,
+      // com a mesma espera: sem aviso, o toque parece não ter feito nada.
+      var aviso = document.getElementById("aviso-folha");
+      document.querySelectorAll("a[data-folha]").forEach(function (link) {
+        link.addEventListener("click", function () { aviso.classList.add("visivel"); });
+      });
       // Voltar da folha pelo "← Voltar" ou pelo gesto do iPhone pode
       // reexibir esta tela da memória, com o botão ainda girando.
       window.addEventListener("pageshow", function () {
@@ -149,6 +235,7 @@
         botao.removeAttribute("aria-busy");
         texto.textContent = original;
         dica.classList.remove("visivel");
+        aviso.classList.remove("visivel");
       });
     })();
   </script>

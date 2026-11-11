@@ -80,12 +80,15 @@ from domain.clube_tiro.motor_campeonatos import listar_campeonatos, obter_campeo
 from domain.clube_tiro.motor_filiados import (
     PERIODOS_MESES,
     contar_participacoes,
+    contar_por_modalidade,
     contar_treinos_e_provas,
     cpfs_com_anuidade_bloqueada,
+    e_treino,
     limite_janela,
     localizar_ativo_por_cpf_ou_email,
     obter_por_cpf as obter_filiado_por_cpf,
     periodo_valido,
+    rotulo_modalidade,
 )
 from domain.clube_tiro.regra_anuidade import (
     BLOQUEADA,
@@ -1039,10 +1042,21 @@ def processos():
     return redirect(url_for("despachante"))
 
 
-def _dados_habitualidade(meses: int) -> dict:
+# Recortes da folha de habitualidade (2026-11-10): tocar em "20 treinos"
+# abre a folha só com os treinos. Lista controlada: o valor vem da URL, e
+# qualquer outra coisa vira a folha completa.
+RECORTES_FOLHA = {"treinos": "Treinos", "provas": "Provas"}
+
+
+def _dados_habitualidade(meses: int, tipo: Optional[str] = None,
+                         modalidade: Optional[str] = None) -> dict:
     """Consulta ao vivo + recorte por período, para a tela e para a folha
     de impressão. Uma função só de propósito: o papel impresso não pode
-    dizer um número diferente da tela que a pessoa acabou de ver."""
+    dizer um número diferente da tela que a pessoa acabou de ver.
+
+    `tipo` ("treinos"/"provas") e `modalidade` recortam só a LISTA da
+    folha; os números do resumo continuam sendo os do período inteiro,
+    para a folha "só treinos" ainda mostrar quantas provas a pessoa tem."""
     cliente_id = session["cliente_id"]
     empresa_id = empresa_atual()
     con = conectar(empresa_id)
@@ -1091,6 +1105,14 @@ def _dados_habitualidade(meses: int) -> dict:
         # sobre número de série.
         for grupo, dados in (hab.get("habitualidades") or {}).items():
             for ev in dados.get("eventos", []):
+                # Data que não se lê fica fora da lista, como já fica fora
+                # das contagens (motor_filiados) -- antes ela derrubava a
+                # tela inteira no sort abaixo, e a lista teria uma linha a
+                # mais que o cartão.
+                try:
+                    datetime.strptime(ev.get("data_participacao") or "", "%d/%m/%Y")
+                except ValueError:
+                    continue
                 eventos.append({**ev, "grupo": grupo})
         eventos.sort(key=lambda e: datetime.strptime(e["data_participacao"], "%d/%m/%Y"), reverse=True)
         total_eventos = len(eventos)
@@ -1112,8 +1134,24 @@ def _dados_habitualidade(meses: int) -> dict:
         # pergunta de cliente é sempre consulta ao vivo).
         participacoes_periodo, ultima_participacao = contar_participacoes(hab, meses=meses)
         treinos_provas_periodo = contar_treinos_e_provas(hab, meses=meses)
+        por_modalidade = contar_por_modalidade(hab)
     else:
         treinos_provas_periodo = {"treinos": 0, "provas": 0, "total": 0}
+        por_modalidade = []
+
+    # Recorte da lista. Modalidade só vale se for uma que a pessoa tem --
+    # texto da URL que não bate com nada vira a folha completa, não uma
+    # folha vazia dizendo "nenhuma participação".
+    tipo = tipo if tipo in RECORTES_FOLHA else None
+    nomes_modalidade = {linha["modalidade"] for linha in por_modalidade}
+    modalidade = modalidade if modalidade in nomes_modalidade else None
+    if tipo == "treinos":
+        eventos = [e for e in eventos if e_treino(e)]
+    elif tipo == "provas":
+        eventos = [e for e in eventos if not e_treino(e)]
+    if modalidade:
+        eventos = [e for e in eventos if rotulo_modalidade(e) == modalidade]
+    recorte = modalidade or RECORTES_FOLHA.get(tipo)
 
     return {
         "atirador_nome": cliente["nome"] if cliente else session.get("cliente_nome"),
@@ -1128,6 +1166,12 @@ def _dados_habitualidade(meses: int) -> dict:
         "ultima_participacao": _data_br(ultima_participacao),
         "tem_cpf": bool(cpf),
         "indisponivel": indisponivel,
+        "por_modalidade": por_modalidade,
+        "tipo": tipo,
+        "modalidade_filtro": modalidade,
+        # None = folha completa; senão o nome do recorte ("Treinos",
+        # "Provas Nacionais"), que vai no título da folha e do PDF.
+        "recorte": recorte,
     }
 
 
@@ -1171,7 +1215,9 @@ def habitualidade_imprimir():
     uma relação vazia -- papel timbrado dizendo "nenhuma participação"
     para quem treinou seria o pior documento que esta tela pode emitir."""
     meses = periodo_valido(request.args.get("periodo"))
-    dados = _dados_habitualidade(meses)
+    dados = _dados_habitualidade(
+        meses, tipo=request.args.get("tipo"), modalidade=request.args.get("modalidade"),
+    )
     cpf = dados["atirador_cpf"] or ""
     agora = datetime.now(_FUSO_BRASILIA)
     contexto = {
@@ -1193,8 +1239,10 @@ def habitualidade_imprimir():
     if dados["tem_cpf"] and not (dados["indisponivel"] and not dados["eventos"]):
         try:
             pdf_base64 = base64.b64encode(gerar_pdf_habitualidade(contexto)).decode("ascii")
-            nome = "".join(c for c in (contexto["atirador_nome"] or "") if c not in '\\/:*?"<>|').strip()
-            pdf_nome = f"Habitualidade {nome} {agora.strftime('%Y-%m-%d')}.pdf"
+            limpo = lambda s: "".join(c for c in (s or "") if c not in '\\/:*?"<>|').strip()
+            recorte = f" {limpo(contexto['recorte'])}" if contexto["recorte"] else ""
+            pdf_nome = (f"Habitualidade {limpo(contexto['atirador_nome'])}{recorte} "
+                        f"{meses} meses {agora.strftime('%Y-%m-%d')}.pdf")
         except Exception:
             # Falha no PDF não pode tirar a folha do ar: o botão cai na
             # impressão do navegador, que é o que existia antes.

@@ -961,6 +961,23 @@ existe; no do painel, `/portal...` redireciona pro Portal; o endereço
 já enviado e a política de privacidade cadastrada no Google apontam pra
 ele. Variáveis vazias = comportamento antigo inteiro.
 
+### Habitualidade por modalidade e folha do recorte
+
+(2026-11-10.) Na tela
+de Habitualidade, os cartões "N participações / treinos / provas" abrem a
+folha (que vira PDF) só com aquilo (`?tipo=treinos|provas`), e uma tabela
+mostra quantas participações a pessoa tem em cada modalidade em 6, 12, 24
+e 36 meses; cada número abre a folha daquela modalidade naquele período
+(`?modalidade=`). A folha e o PDF trazem a mesma tabela. "Provas
+Nacionais" e "Provas Especiais" são **modalidades** do catálogo do clube
+(grupo Tiro de Precisão), então cada nome que o Shooting House manda é uma
+linha: não existe classificação nossa. A contagem é
+`motor_filiados.contar_por_modalidade`, na mesma janela de
+`contar_participacoes` (a soma de uma coluna bate com o cartão). Recorte
+da URL que não existe vira a folha completa, nunca uma folha vazia. Abre
+na mesma janela, como o "Salvar ou imprimir": no app do iPhone, aba nova é
+o Safari, sem o login. Coberto por `tests/test_habitualidade_por_modalidade.py`.
+
 ### Quando o e-mail de acesso não chega (2026-11-04)
 
 No dia do anúncio ao clube, o Google bloqueou a conta de e-mail às 15:09,

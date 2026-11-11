@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 {# O título vira o nome sugerido do arquivo quando a pessoa escolhe
    "Salvar como PDF" no diálogo de impressão. #}
-<title>Relação de habitualidade - {{ atirador_nome }}</title>
+<title>Relação de habitualidade - {{ atirador_nome }}{% if recorte %} - {{ recorte }}{% endif %} - {{ meses }} meses</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -85,6 +85,14 @@
 
   .aviso { padding: 14px 16px; border: 1px solid var(--line); border-radius: 6px; }
 
+  /* Participações por modalidade nos quatro períodos (2026-11-10). A
+     coluna do período desta folha vai em destaque. */
+  .secao-titulo { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--blue-deep); }
+  .por-modalidade { margin-bottom: 18px; }
+  .por-modalidade th.num, .por-modalidade td.num { text-align: right; width: 64px; white-space: nowrap; }
+  .por-modalidade .atual { font-weight: 600; background: #F1F5FB; }
+  .lista-titulo { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+
   .rodape {
     margin-top: 22px; padding-top: 10px; border-top: 1px solid var(--line);
     color: var(--steel); font-size: 10.5px;
@@ -103,6 +111,14 @@
     thead { display: none; }
     tbody tr { padding: 8px 0; border-bottom: 1px solid var(--line); }
     tbody td { padding: 1px 0; border: 0; }
+    /* A tabela por modalidade continua tabela no celular: são só números,
+       e virar lista faria perder qual número é de qual período. */
+    .por-modalidade table { display: table; }
+    .por-modalidade thead { display: table-header-group; }
+    .por-modalidade tbody { display: table-row-group; }
+    .por-modalidade tr { display: table-row; }
+    .por-modalidade th, .por-modalidade td { display: table-cell; padding: 5px 4px; border-bottom: 1px solid var(--line); }
+    .por-modalidade th.num, .por-modalidade td.num { width: 40px; }
   }
 
   @page { size: A4; margin: 12mm 12mm 14mm; }
@@ -156,6 +172,7 @@
     <div><span>CPF</span><b class="mono">{{ cpf_formatado }}</b></div>
     <div><span>Período</span><b>Últimos {{ meses }} meses</b></div>
     <div><span>De / até</span><b class="mono">{{ inicio_periodo }} a {{ emitido_em[:10] }}</b></div>
+    <div><span>Relação</span><b>{{ recorte or "Todas as participações" }}</b></div>
   </section>
 
   <section class="resumo">
@@ -165,8 +182,34 @@
     <div><b class="mono" style="font-size:15px;">{{ ultima_participacao or "—" }}</b><span>última participação</span></div>
   </section>
 
+  {% if por_modalidade %}
+  <section class="por-modalidade">
+    <h2 class="secao-titulo">Participações por modalidade</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Modalidade</th>
+          {% for p in periodos %}<th class="num{{ ' atual' if p == meses }}">{{ p }} meses</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for linha in por_modalidade %}
+        <tr>
+          <td>{{ linha.modalidade }}</td>
+          {% for p in periodos %}<td class="num mono{{ ' atual' if p == meses }}">{{ linha.contagens[p] }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  <div class="lista-titulo">
+    <h2 class="secao-titulo">{{ recorte or "Participações" }} nos últimos {{ meses }} meses</h2>
+    <span class="pequeno">{{ eventos|length }} registro{{ '' if eventos|length == 1 else 's' }}</span>
+  </div>
   {% if not eventos %}
-  <div class="aviso">Nenhuma participação registrada nos últimos {{ meses }} meses.</div>
+  <div class="aviso">{% if recorte %}Nenhum registro de {{ recorte }}{% else %}Nenhuma participação registrada{% endif %} nos últimos {{ meses }} meses.</div>
   {% else %}
   <table>
     <thead>

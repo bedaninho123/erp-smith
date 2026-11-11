@@ -52,10 +52,13 @@ def portal_filiado(portal):
 ])
 def test_lista_e_cartao_seguem_o_periodo(banco, portal_filiado, habitualidade_falsa, periodo, visiveis):
     html = portal_filiado.get(f"/portal/habitualidade?periodo={periodo}").get_data(as_text=True)
+    # Só a LISTA: a tabela por modalidade, acima dela, mostra os quatro
+    # períodos lado a lado de propósito (2026-11-10).
+    lista = html.split("Histórico dos últimos", 1)[1]
 
     todas = ["Mod Recente", "Mod Oito Meses", "Mod Dezesseis Meses", "Mod Trinta Meses"]
     for modalidade in todas:
-        assert (modalidade in html) == (modalidade in visiveis), modalidade
+        assert (modalidade in lista) == (modalidade in visiveis), modalidade
     assert f"participações nos últimos {periodo} meses" in html
     assert f"{len(visiveis)} de 4 no total" in html
 
@@ -75,8 +78,9 @@ def test_sem_periodo_ou_periodo_invalido_mostra_12_meses(banco, portal_filiado, 
     for url in ("/portal/habitualidade", "/portal/habitualidade?periodo=999"):
         html = portal_filiado.get(url).get_data(as_text=True)
         assert "participações nos últimos 12 meses" in html
-        assert "Mod Oito Meses" in html
-        assert "Mod Dezesseis Meses" not in html
+        lista = html.split("Histórico dos últimos", 1)[1]
+        assert "Mod Oito Meses" in lista
+        assert "Mod Dezesseis Meses" not in lista
 
 
 # --------------------------------------------------------------------
@@ -90,8 +94,9 @@ def test_folha_impressa_segue_o_periodo_e_identifica_o_atirador(banco, portal_fi
     assert "Ana Teste" in html
     assert "111.111.111-11" in html
     assert "Últimos 24 meses" in html
-    assert "Mod Dezesseis Meses" in html
-    assert "Mod Trinta Meses" not in html
+    lista = html.split("Participações nos últimos 24 meses", 1)[1]
+    assert "Mod Dezesseis Meses" in lista
+    assert "Mod Trinta Meses" not in lista
     assert "logo_smith.png" in html
     assert 'id="botao-imprimir"' in html
 
@@ -165,8 +170,10 @@ def test_pdf_da_folha_diz_o_mesmo_que_a_folha(banco, portal_filiado, habitualida
     texto = _texto_do_pdf(pdf)
     assert "Ana Teste" in texto
     assert "111.111.111-11" in texto
-    assert "Mod Dezesseis Meses" in texto
-    assert "Mod Trinta Meses" not in texto
+    # Só a lista: a tabela por modalidade mostra os quatro períodos.
+    lista = texto.split("Participações nos últimos 24 meses", 1)[1]
+    assert "Mod Dezesseis Meses" in lista
+    assert "Mod Trinta Meses" not in lista
     # Uma consulta só para tela e PDF -- o PDF não chama a API de novo.
     assert len(habitualidade_falsa) == 1
 
