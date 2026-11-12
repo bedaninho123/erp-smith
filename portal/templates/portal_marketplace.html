@@ -5,9 +5,23 @@
   .anuncio-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
   @media (min-width: 700px) { .anuncio-grid { grid-template-columns: 1fr 1fr; } }
   .anuncio-card { padding: 1rem 1.2rem; }
-  .anuncio-foto {
-    width: 100%; height: 170px; object-fit: cover;
-    border-radius: var(--radius); margin-bottom: .8rem; background: var(--paper);
+  /* Fotos do anúncio (2026-11-12): a vitrine mostrava só a primeira, e o
+     anunciante tinha mandado quatro. A capa e as miniaturas são botões que
+     abrem a foto inteira no visualizador do Portal (_portal_visor.html) --
+     por cima da vitrine, nunca em aba nova: no app do iPhone a aba nova é
+     o Safari, sem o login. */
+  .anuncio-fotos { margin-bottom: .8rem; }
+  .anuncio-foto-botao {
+    display: block; width: 100%; padding: 0; border: 0; background: var(--paper);
+    border-radius: var(--radius); overflow: hidden; cursor: zoom-in;
+  }
+  .anuncio-foto { display: block; width: 100%; height: 170px; object-fit: cover; }
+  .anuncio-miniaturas { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .4rem; }
+  .anuncio-miniaturas .anuncio-foto-botao { width: 56px; height: 56px; border-radius: 4px; }
+  .anuncio-miniaturas .anuncio-foto { height: 56px; }
+  .anuncio-miniatura-pdf {
+    display: flex; align-items: center; justify-content: center; height: 100%;
+    font-size: .72rem; font-weight: 700; color: var(--steel); border: 1px solid var(--line); border-radius: 4px;
   }
   .anuncio-titulo { font-size: 1.05rem; margin: 0 0 .2rem; }
   .anuncio-valor { font-family: 'Big Shoulders', system-ui, sans-serif; font-weight: 700; font-size: 1.2rem; color: var(--blue-deep); }
@@ -50,7 +64,40 @@
   {% for a in anuncios %}
   <div class="ficha anuncio-card">
     {% if a.fotos %}
-    <img class="anuncio-foto" src="{{ url_for('marketplace_foto', anuncio_id=a.anuncio_id, indice=0) }}" alt="{{ a.titulo }}">
+    {# O campo de envio aceita PDF também: PDF não vira <img>, então a capa
+       é a primeira IMAGEM, e o PDF aparece só como miniatura com rótulo. #}
+    {% set ns = namespace(capa=None) %}
+    {% for caminho in a.fotos %}
+      {% if ns.capa is none and caminho.lower().endswith(extensoes_imagem) %}{% set ns.capa = loop.index0 %}{% endif %}
+    {% endfor %}
+    <div class="anuncio-fotos">
+      {% if ns.capa is not none %}
+      <button type="button" class="anuncio-foto-botao btn-ver"
+              data-url="{{ url_for('marketplace_foto', anuncio_id=a.anuncio_id, indice=ns.capa) }}"
+              data-nome="{{ a.titulo }} — foto {{ ns.capa + 1 }} de {{ a.fotos|length }}" data-imagem="1"
+              aria-label="Ver a foto {{ ns.capa + 1 }} de {{ a.titulo }} em tela cheia">
+        <img class="anuncio-foto" src="{{ url_for('marketplace_foto', anuncio_id=a.anuncio_id, indice=ns.capa) }}" alt="{{ a.titulo }}">
+      </button>
+      {% endif %}
+      {% if a.fotos|length > 1 or ns.capa is none %}
+      <div class="anuncio-miniaturas">
+        {% for caminho in a.fotos %}
+        {% set e_imagem = caminho.lower().endswith(extensoes_imagem) %}
+        <button type="button" class="anuncio-foto-botao btn-ver"
+                data-url="{{ url_for('marketplace_foto', anuncio_id=a.anuncio_id, indice=loop.index0) }}"
+                data-nome="{{ a.titulo }} — {{ 'foto' if e_imagem else 'arquivo' }} {{ loop.index }} de {{ a.fotos|length }}"
+                data-imagem="{{ '1' if e_imagem else '0' }}"
+                aria-label="Ver {{ 'a foto' if e_imagem else 'o arquivo' }} {{ loop.index }} de {{ a.titulo }}">
+          {% if e_imagem %}
+          <img class="anuncio-foto" src="{{ url_for('marketplace_foto', anuncio_id=a.anuncio_id, indice=loop.index0) }}" alt="" loading="lazy">
+          {% else %}
+          <span class="anuncio-miniatura-pdf">PDF</span>
+          {% endif %}
+        </button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
     {% endif %}
     <span class="badge-item badge-item--sim">{{ a.categoria }}</span>
     {% if a.e_meu %}<span class="badge-item badge-item--aguardando">Meu anúncio</span>{% endif %}
@@ -71,5 +118,6 @@
   </div>
   {% endfor %}
 </div>
+{% include "_portal_visor.html" %}
 {% endif %}
 {% endblock %}

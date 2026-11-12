@@ -37,6 +37,25 @@ PORTA = 5012
 CLIENTE_DEMO = "CLI-000001"  # Helena Costa, a que tem dossiê montado
 
 
+def _fotos_de_exemplo() -> list[tuple[bytes, str]]:
+    """Quatro "fotos" de cores lisas, numeradas, geradas na hora -- para a
+    vitrine mostrar um anúncio com várias fotos (2026-11-12: a vitrine só
+    exibia a primeira, e foi um anúncio real com quatro que mostrou isso).
+    Nenhuma imagem de verdade entra na demonstração."""
+    import io
+
+    from PIL import Image, ImageDraw
+
+    fotos = []
+    for numero, cor in enumerate(["#7a5a3a", "#5a6b7a", "#4f6b4a", "#8a8070"], start=1):
+        imagem = Image.new("RGB", (800, 600), cor)
+        ImageDraw.Draw(imagem).text((30, 30), f"Foto {numero}", fill="white")
+        saida = io.BytesIO()
+        imagem.save(saida, format="PNG")
+        fotos.append((saida.getvalue(), f"foto_{numero}.png"))
+    return fotos
+
+
 def _anuidades_de_exemplo() -> list[tuple[str, str]]:
     """Os três jeitos de estar com a anuidade (2026-11-10, ver
     domain/clube_tiro/regra_anuidade.py), cada um numa pessoa inventada
@@ -101,6 +120,7 @@ def _anuidades_de_exemplo() -> list[tuple[str, str]]:
             anuncio_id = motor_marketplace.criar_anuncio(
                 base.EMPRESA, cliente_id, categoria="Arma", titulo=anuncio,
                 contato_telefone="(14) 99999-0000",
+                fotos=_fotos_de_exemplo() if numero == 60 else None,
             )
             motor_marketplace.aprovar(base.EMPRESA, anuncio_id, revisado_por="Demonstração")
         links.append((cliente_id, f"{nome} -- {descricao}"))

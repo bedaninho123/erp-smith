@@ -68,7 +68,11 @@
       elemento.src = url;
       corpo.appendChild(elemento);
       nome.textContent = titulo;
-      baixar.setAttribute("href", botao.getAttribute("data-baixar"));
+      // Foto de anúncio do Marketplace não tem "Salvar": o arquivo é de
+      // outra pessoa, e o botão só existe onde data-baixar foi dado.
+      var urlBaixar = botao.getAttribute("data-baixar");
+      baixar.style.display = urlBaixar ? "" : "none";
+      baixar.setAttribute("href", urlBaixar || "#");
       focoAnterior = document.activeElement;
       visor.classList.add("aberto");
       document.getElementById("visor-fechar").focus();

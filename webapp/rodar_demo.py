@@ -34,6 +34,10 @@ os.environ["ERP_DOMAIN_DB"] = str(PASTA / "dominio_demo.db")
 # de cliente de verdade -- empresa_id e cliente_id se repetem nos dois
 # bancos --, sobreviviam ao fim da demonstração e entravam no backup.
 os.environ["ERP_DOCUMENTOS_DIR"] = str(PASTA / "documentos_recebidos")
+# Mesma razão para as fotos de anúncio do Marketplace (2026-11-10): sem
+# isto, anúncio com foto criado na demonstração gravava na pasta real
+# atendimento/marketplace_fotos, que vai para o backup.
+os.environ["ERP_ANUNCIOS_DIR"] = str(PASTA / "marketplace_fotos")
 # Chaves de sessão próprias: sem isto o painel geraria uma chave nova e a
 # gravaria no .env de verdade.
 os.environ.setdefault("WEBAPP_SECRET_KEY", "chave-de-demonstracao-nao-usar-em-producao")

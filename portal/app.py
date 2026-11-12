@@ -1828,6 +1828,9 @@ def marketplace():
         categoria_filtro=categoria_filtro,
         categoria_arma=CATEGORIA_ARMA,
         mostra_cta_documentacao=bool(_servico_transferencia_arma(empresa_id)),
+        # O envio aceita PDF junto das fotos; a tela precisa saber quais
+        # arquivos viram <img> e quais abrem como documento no visualizador.
+        extensoes_imagem=(".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"),
     )
 
 
