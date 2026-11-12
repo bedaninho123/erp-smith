@@ -300,3 +300,23 @@ def test_botao_documentacao_cria_caso_de_transferencia(banco, portal):
     ]
     con.close()
     assert any("Transferência" in t for t in titulos)
+
+
+# --------------------------------------------------------------------
+# Nome de quem anuncia (2026-11-12)
+# --------------------------------------------------------------------
+
+def test_vitrine_mostra_o_nome_do_anunciante_e_nada_mais_do_cadastro(banco, portal):
+    """O nome sai do cadastro do dono; CPF e e-mail do cadastro, não. O
+    contato que aparece é só o que a pessoa escreveu no anúncio."""
+    _tornar_filiado_ativo(portal)
+    anuncio_id = motor_marketplace.criar_anuncio(
+        EMPRESA_A, "CLI-000002", categoria="Arma", titulo="Carabina 38",
+        contato_telefone="14988887777",
+    )
+    motor_marketplace.aprovar(EMPRESA_A, anuncio_id, revisado_por="Gestor Teste")
+
+    html = portal.get("/portal/marketplace").get_data(as_text=True)
+    assert "Anunciado por <strong>Bruno Teste</strong>" in html
+    assert "22222222222" not in html
+    assert "bruno@example.com" not in html

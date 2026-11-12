@@ -1794,6 +1794,24 @@ def _donos_fora_da_vitrine(empresa_id: str, cliente_ids) -> set:
     return {l["cliente_id"] for l in linhas if l["cpf"] in bloqueados}
 
 
+def _nomes_dos_anunciantes(empresa_id: str, cliente_ids) -> dict:
+    """{cliente_id: nome} de quem anuncia, para a vitrine dizer de quem é o
+    anúncio (pedido do usuário, 2026-11-12). Só o nome: CPF e e-mail do
+    cadastro ficam de fora -- o contato que aparece é o que a pessoa
+    escreveu no próprio anúncio."""
+    ids = sorted(set(cliente_ids))
+    if not ids:
+        return {}
+    con = conectar(empresa_id)
+    marcas = ",".join("?" * len(ids))
+    linhas = con.execute(
+        f"SELECT cliente_id, nome FROM cliente WHERE empresa_id = ? AND cliente_id IN ({marcas})",
+        (empresa_id, *ids),
+    ).fetchall()
+    con.close()
+    return {l["cliente_id"]: (l["nome"] or "").strip() for l in linhas}
+
+
 def _anuncio_na_vitrine(empresa_id: str, anuncio: dict) -> bool:
     """O que um filiado que NÃO é o dono pode abrir: aprovado e com o dono
     fora da pausa da anuidade."""
@@ -1814,7 +1832,9 @@ def marketplace():
     anuncios = [a for a in anuncios if a["cliente_id"] not in pausados]
     if categoria_filtro:
         anuncios = [a for a in anuncios if a["categoria"] == categoria_filtro]
+    nomes = _nomes_dos_anunciantes(empresa_id, [a["cliente_id"] for a in anuncios])
     for a in anuncios:
+        a["anunciante_nome"] = nomes.get(a["cliente_id"]) or None
         a["criado_em_fmt"] = _data_br(a["criado_em"])
         a["valor_fmt"] = _valor_br(a["valor"])
         a["e_meu"] = a["cliente_id"] == session["cliente_id"]

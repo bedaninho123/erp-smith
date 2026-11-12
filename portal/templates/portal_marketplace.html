@@ -105,6 +105,7 @@
     <div class="anuncio-valor">{{ a.valor_fmt or "A combinar" }}</div>
     {% if a.descricao %}<p class="anuncio-descricao">{{ a.descricao }}</p>{% endif %}
     <div class="anuncio-contato">
+      {% if a.anunciante_nome %}<div class="anuncio-anunciante">Anunciado por <strong>{{ a.anunciante_nome }}</strong></div>{% endif %}
       {% if a.contato_telefone %}<div>📞 {{ a.contato_telefone }}</div>{% endif %}
       {% if a.contato_email %}<div>✉️ {{ a.contato_email }}</div>{% endif %}
     </div>
