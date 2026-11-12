@@ -28,6 +28,16 @@
   .anuncio-descricao { font-size: .88rem; color: var(--steel); margin: .5rem 0; }
   .anuncio-contato { font-size: .85rem; margin-top: .6rem; }
   .anuncio-contato div { margin-bottom: .15rem; }
+  /* Botão do WhatsApp (2026-11-12): abre a conversa com o anunciante já
+     com o nome do anúncio na mensagem. Só aparece quando o telefone tem
+     formato que dá para usar -- ver _link_whatsapp em portal/app.py. */
+  .anuncio-telefone { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+  .botao-whatsapp {
+    display: inline-flex; align-items: center; height: 30px; padding: 0 .75rem;
+    border-radius: 999px; background: #1f8a4c; color: #fff; font-size: .8rem; font-weight: 600;
+    text-decoration: none;
+  }
+  .botao-whatsapp:hover { background: #18703d; color: #fff; text-decoration: none; }
   .filtro-categorias { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
   .filtro-categorias a {
     display: inline-block; padding: .35rem .8rem; border-radius: 999px;
@@ -106,7 +116,15 @@
     {% if a.descricao %}<p class="anuncio-descricao">{{ a.descricao }}</p>{% endif %}
     <div class="anuncio-contato">
       {% if a.anunciante_nome %}<div class="anuncio-anunciante">Anunciado por <strong>{{ a.anunciante_nome }}</strong></div>{% endif %}
-      {% if a.contato_telefone %}<div>📞 {{ a.contato_telefone }}</div>{% endif %}
+      {% if a.contato_telefone %}
+      <div class="anuncio-telefone">
+        <span>📞 {{ a.contato_telefone }}</span>
+        {% if a.whatsapp_url %}
+        <a class="botao-whatsapp" href="{{ a.whatsapp_url }}" target="_blank" rel="noopener"
+           aria-label="Chamar {{ a.anunciante_nome or 'o anunciante' }} no WhatsApp">WhatsApp</a>
+        {% endif %}
+      </div>
+      {% endif %}
       {% if a.contato_email %}<div>✉️ {{ a.contato_email }}</div>{% endif %}
     </div>
     {% if a.categoria == categoria_arma and mostra_cta_documentacao %}

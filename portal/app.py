@@ -28,6 +28,7 @@ passa a enxergar dado de outra empresa.
 """
 import base64
 import os
+import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
@@ -35,6 +36,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from functools import wraps
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from dotenv import load_dotenv, set_key
 from flask import (
@@ -1794,6 +1796,25 @@ def _donos_fora_da_vitrine(empresa_id: str, cliente_ids) -> set:
     return {l["cliente_id"] for l in linhas if l["cpf"] in bloqueados}
 
 
+def _link_whatsapp(telefone: Optional[str], titulo: str) -> Optional[str]:
+    """Link wa.me para o telefone do anúncio, com a mensagem já dizendo de
+    qual anúncio se trata (pedido do usuário, 2026-11-12).
+
+    O telefone é texto livre digitado pelo anunciante. Só vira link o que
+    tem cara de telefone brasileiro -- DDD + 8 ou 9 dígitos, com ou sem o
+    55 na frente. O resto devolve None e a tela mostra só o número: um
+    botão que abre conversa com o número errado é pior que botão nenhum."""
+    digitos = re.sub(r"\D", "", telefone or "").lstrip("0")
+    if len(digitos) in (12, 13) and digitos.startswith("55"):
+        digitos = digitos[2:]
+    if len(digitos) not in (10, 11) or digitos[0] == "0":
+        return None
+    if len(digitos) == 11 and digitos[2] != "9":
+        return None  # 11 dígitos só existe no celular, que começa com 9
+    texto = f'Olá! Vi seu anúncio "{titulo}" no Marketplace do Smith Clube de Tiro.'
+    return f"https://wa.me/55{digitos}?text={quote(texto)}"
+
+
 def _nomes_dos_anunciantes(empresa_id: str, cliente_ids) -> dict:
     """{cliente_id: nome} de quem anuncia, para a vitrine dizer de quem é o
     anúncio (pedido do usuário, 2026-11-12). Só o nome: CPF e e-mail do
@@ -1838,6 +1859,9 @@ def marketplace():
         a["criado_em_fmt"] = _data_br(a["criado_em"])
         a["valor_fmt"] = _valor_br(a["valor"])
         a["e_meu"] = a["cliente_id"] == session["cliente_id"]
+        # No próprio anúncio o botão não aparece: ninguém manda mensagem
+        # para si mesmo.
+        a["whatsapp_url"] = None if a["e_meu"] else _link_whatsapp(a["contato_telefone"], a["titulo"])
 
     return render_template(
         "portal_marketplace.html",

@@ -320,3 +320,50 @@ def test_vitrine_mostra_o_nome_do_anunciante_e_nada_mais_do_cadastro(banco, port
     assert "Anunciado por <strong>Bruno Teste</strong>" in html
     assert "22222222222" not in html
     assert "bruno@example.com" not in html
+
+
+# --------------------------------------------------------------------
+# Botão do WhatsApp (2026-11-12)
+# --------------------------------------------------------------------
+
+@pytest.mark.parametrize("telefone, esperado", [
+    ("(14) 99999-0000", "5514999990000"),
+    ("14 3433-1234", "551434331234"),       # fixo: pode ser WhatsApp Business
+    ("+55 (14) 99999-0000", "5514999990000"),
+    ("014 99999-0000", "5514999990000"),    # zero do interurbano
+])
+def test_link_whatsapp_aceita_os_formatos_de_telefone_brasileiro(telefone, esperado):
+    from portal.app import _link_whatsapp
+
+    link = _link_whatsapp(telefone, "Carabina 38")
+    assert link.startswith(f"https://wa.me/{esperado}?text=")
+    assert "Carabina%2038" in link
+
+
+@pytest.mark.parametrize("telefone", [
+    None, "", "falar com o Zé", "99999-0000",  # sem DDD
+    "14 89999-0000",                           # 11 dígitos sem o 9 do celular
+    "1499999000012345",                        # dígito demais
+])
+def test_link_whatsapp_recusa_o_que_nao_e_telefone_utilizavel(telefone):
+    from portal.app import _link_whatsapp
+
+    assert _link_whatsapp(telefone, "Carabina 38") is None
+
+
+def test_botao_whatsapp_aparece_no_anuncio_dos_outros_e_nao_no_proprio(banco, portal):
+    _tornar_filiado_ativo(portal)
+    do_bruno = motor_marketplace.criar_anuncio(
+        EMPRESA_A, "CLI-000002", categoria="Arma", titulo="Carabina 38",
+        contato_telefone="(14) 98888-7777",
+    )
+    da_ana = motor_marketplace.criar_anuncio(
+        EMPRESA_A, "CLI-000001", categoria="Arma", titulo="Pistola 9mm",
+        contato_telefone="(14) 97777-6666",
+    )
+    for anuncio_id in (do_bruno, da_ana):
+        motor_marketplace.aprovar(EMPRESA_A, anuncio_id, revisado_por="Gestor Teste")
+
+    html = portal.get("/portal/marketplace").get_data(as_text=True)
+    assert "https://wa.me/5514988887777" in html
+    assert "https://wa.me/5514977776666" not in html  # a Ana é quem está logada
