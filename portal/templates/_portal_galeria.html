@@ -1,0 +1,137 @@
+{# Galeria de fotos do anúncio: foto de capa + miniaturas de todas, e um
+   visualizador por cima da página com setas. Antes o cartão da vitrine
+   mostrava só a primeira foto (indice=0) e o resto era invisível para
+   quem via o anúncio. Incluído uma vez, no fim da página; cada cartão
+   leva a lista no `data-galeria` do seu `.anuncio-galeria`. #}
+<style>
+  .anuncio-galeria { margin-bottom: .8rem; }
+  .anuncio-foto-btn {
+    position: relative; display: block; width: 100%; padding: 0; border: 0;
+    background: none; cursor: zoom-in; border-radius: var(--radius);
+  }
+  .anuncio-foto-btn .anuncio-foto { margin-bottom: 0; display: block; }
+  .anuncio-foto--pdf {
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: var(--steel);
+  }
+  .anuncio-foto-contagem {
+    position: absolute; right: .5rem; bottom: .5rem;
+    padding: .1rem .5rem; border-radius: 999px; font-size: .75rem;
+    background: rgba(0, 0, 0, .65); color: #fff;
+  }
+  .anuncio-miniaturas { display: flex; gap: .4rem; margin-top: .4rem; overflow-x: auto; }
+  .anuncio-miniatura {
+    flex: 0 0 auto; width: 56px; height: 56px; padding: 0;
+    border: 2px solid transparent; border-radius: 6px; overflow: hidden;
+    background: var(--paper); cursor: pointer;
+  }
+  .anuncio-miniatura img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .anuncio-miniatura:focus-visible, .anuncio-foto-btn:focus-visible { outline: 2px solid var(--blue-deep); outline-offset: 2px; }
+  .anuncio-miniatura-pdf { font-size: .7rem; font-weight: 700; color: var(--steel); }
+
+  .galeria-visualizador {
+    position: fixed; inset: 0; z-index: 2000; display: none;
+    flex-direction: column; background: rgba(10, 11, 13, .92);
+  }
+  .galeria-visualizador.aberto { display: flex; }
+  .galeria-barra {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .6rem 1rem; color: #fff; background: rgba(0, 0, 0, .45);
+  }
+  .galeria-contador { flex: 1; font-size: .9rem; }
+  .galeria-corpo {
+    flex: 1; min-height: 0; position: relative;
+    display: flex; align-items: center; justify-content: center; padding: 1rem;
+  }
+  .galeria-corpo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .galeria-corpo iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+  .galeria-botao {
+    border: 0; border-radius: 8px; padding: .5rem .9rem; font-size: 1rem;
+    background: rgba(255, 255, 255, .18); color: #fff; cursor: pointer;
+  }
+  .galeria-botao:hover { background: rgba(255, 255, 255, .3); }
+  .galeria-seta {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    font-size: 1.6rem; padding: .6rem .9rem;
+  }
+  .galeria-seta--ant { left: .5rem; }
+  .galeria-seta--prox { right: .5rem; }
+</style>
+
+<div id="galeria-visualizador" class="galeria-visualizador" role="dialog" aria-modal="true" aria-label="Fotos do anúncio">
+  <div class="galeria-barra">
+    <span class="galeria-contador" id="galeria-contador"></span>
+    <button type="button" class="galeria-botao" id="galeria-fechar" title="Fechar (Esc)">Fechar ✕</button>
+  </div>
+  <div class="galeria-corpo" id="galeria-corpo">
+    <button type="button" class="galeria-botao galeria-seta galeria-seta--ant" id="galeria-anterior" aria-label="Foto anterior">‹</button>
+    <div id="galeria-conteudo" style="display:contents"></div>
+    <button type="button" class="galeria-botao galeria-seta galeria-seta--prox" id="galeria-proxima" aria-label="Próxima foto">›</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var visualizador = document.getElementById("galeria-visualizador");
+  var conteudo = document.getElementById("galeria-conteudo");
+  var contador = document.getElementById("galeria-contador");
+  var anterior = document.getElementById("galeria-anterior");
+  var proxima = document.getElementById("galeria-proxima");
+  var fotos = [];
+  var atual = 0;
+  var focoAntes = null;
+
+  function mostrar() {
+    var f = fotos[atual];
+    conteudo.textContent = "";
+    var el = document.createElement(f.pdf ? "iframe" : "img");
+    el.src = f.url;
+    if (f.pdf) el.title = "Arquivo do anúncio"; else el.alt = "Foto do anúncio";
+    conteudo.appendChild(el);
+    contador.textContent = fotos.length > 1 ? "Foto " + (atual + 1) + " de " + fotos.length : "";
+    anterior.style.display = proxima.style.display = fotos.length > 1 ? "" : "none";
+  }
+
+  function abrir(lista, indice) {
+    fotos = lista;
+    atual = indice;
+    focoAntes = document.activeElement;
+    mostrar();
+    visualizador.classList.add("aberto");
+    document.getElementById("galeria-fechar").focus();
+  }
+
+  function fechar() {
+    visualizador.classList.remove("aberto");
+    conteudo.textContent = "";
+    if (focoAntes) focoAntes.focus();
+  }
+
+  function andar(passo) {
+    atual = (atual + passo + fotos.length) % fotos.length;
+    mostrar();
+  }
+
+  document.querySelectorAll(".anuncio-galeria").forEach(function (galeria) {
+    var lista = JSON.parse(galeria.dataset.galeria);
+    galeria.querySelectorAll("[data-indice]").forEach(function (botao) {
+      botao.addEventListener("click", function () {
+        abrir(lista, parseInt(botao.dataset.indice, 10));
+      });
+    });
+  });
+
+  document.getElementById("galeria-fechar").addEventListener("click", fechar);
+  anterior.addEventListener("click", function () { andar(-1); });
+  proxima.addEventListener("click", function () { andar(1); });
+  document.getElementById("galeria-corpo").addEventListener("click", function (e) {
+    if (e.target.id === "galeria-corpo") fechar();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (!visualizador.classList.contains("aberto")) return;
+    if (e.key === "Escape") fechar();
+    else if (e.key === "ArrowLeft" && fotos.length > 1) andar(-1);
+    else if (e.key === "ArrowRight" && fotos.length > 1) andar(1);
+  });
+})();
+</script>

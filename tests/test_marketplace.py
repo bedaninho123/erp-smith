@@ -301,3 +301,50 @@ def test_botao_documentacao_cria_caso_de_transferencia(banco, portal):
     ]
     con.close()
     assert any("Transferência" in t for t in titulos)
+
+
+# --------------------------------------------------------------------
+# Fotos: a vitrine mostra todas, não só a primeira
+# --------------------------------------------------------------------
+
+def _anuncio_aprovado_com_fotos(nomes: list[str]) -> str:
+    anuncio_id = motor_marketplace.criar_anuncio(
+        EMPRESA_A, "CLI-000001", categoria="Arma", titulo="Carabina 38",
+        contato_telefone="14999990000",
+        fotos=[(b"conteudo", nome) for nome in nomes],
+    )
+    motor_marketplace.aprovar(EMPRESA_A, anuncio_id, revisado_por="Gestor Teste")
+    return anuncio_id
+
+
+def test_vitrine_leva_todas_as_fotos_do_anuncio(banco, portal):
+    """Antes o cartão mostrava só a foto 0 e as outras ficavam invisíveis
+    para quem via o anúncio."""
+    anuncio_id = _anuncio_aprovado_com_fotos(["a.jpg", "b.jpg", "c.jpg", "d.jpg"])
+    _tornar_filiado_ativo(portal)
+
+    html = portal.get("/portal/marketplace").get_data(as_text=True)
+
+    for indice in range(4):
+        assert f"/portal/marketplace/{anuncio_id}/foto/{indice}" in html
+    assert "4 fotos" in html
+
+
+def test_vitrine_trata_pdf_como_arquivo_e_nao_como_imagem(banco, portal):
+    anuncio_id = _anuncio_aprovado_com_fotos(["a.jpg", "laudo.pdf"])
+    _tornar_filiado_ativo(portal)
+
+    html = portal.get("/portal/marketplace").get_data(as_text=True)
+
+    # O PDF não vai em <img src=...> (ficaria quebrado): só a foto 0 vira <img>.
+    assert f'src="/portal/marketplace/{anuncio_id}/foto/0"' in html
+    assert f'src="/portal/marketplace/{anuncio_id}/foto/1"' not in html
+
+
+def test_vitrine_nao_expoe_caminho_de_arquivo_do_servidor(banco, portal):
+    _anuncio_aprovado_com_fotos(["a.jpg", "b.jpg"])
+    _tornar_filiado_ativo(portal)
+
+    html = portal.get("/portal/marketplace").get_data(as_text=True)
+
+    assert "marketplace_fotos" not in html

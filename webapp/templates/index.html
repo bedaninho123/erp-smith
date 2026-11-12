@@ -2256,6 +2256,8 @@
 <div id="visualizador" class="visualizador" style="display:none" role="dialog" aria-modal="true" aria-label="Documento">
   <div class="visualizador-barra">
     <span class="visualizador-nome" id="visualizador-nome"></span>
+    <button type="button" class="btn btn-light btn-sm" id="visualizador-anterior" style="display:none" aria-label="Foto anterior">&#8249;</button>
+    <button type="button" class="btn btn-light btn-sm" id="visualizador-proxima" style="display:none" aria-label="Próxima foto">&#8250;</button>
     <a class="btn btn-light btn-sm" id="visualizador-baixar" href="#" download>
       <i class="fas fa-download mr-1" aria-hidden="true"></i>Baixar
     </a>
@@ -2390,7 +2392,45 @@ function abrirVisualizador(documentoId, nome) {
   $("#visualizador-fechar").focus();
 }
 
+// Fotos de anúncio do Marketplace usam o mesmo visualizador, com setas
+// entre as fotos do anúncio. `null` quando o que está aberto é documento.
+let galeriaVisualizador = null;  // { fotos: [{ url, pdf }], indice }
+
+function mostrarFotoDoAnuncio() {
+  const { fotos, indice } = galeriaVisualizador;
+  const f = fotos[indice];
+  $("#visualizador-corpo").innerHTML = f.pdf
+    ? `<iframe src="${f.url}" title="Arquivo do anúncio"></iframe>`
+    : `<img src="${f.url}" alt="Foto ${indice + 1} do anúncio">`;
+  $("#visualizador-nome").textContent = `Foto ${indice + 1} de ${fotos.length}`;
+  $("#visualizador-baixar").href = f.url;
+}
+
+function abrirVisualizadorFotos(fotos, indice) {
+  galeriaVisualizador = { fotos, indice };
+  mostrarFotoDoAnuncio();
+  const varias = fotos.length > 1;
+  $("#visualizador-anterior").style.display = varias ? "" : "none";
+  $("#visualizador-proxima").style.display = varias ? "" : "none";
+  focoAntesDoVisualizador = document.activeElement;
+  $("#visualizador").style.display = "flex";
+  $("#visualizador-fechar").focus();
+}
+
+function andarFotoDoAnuncio(passo) {
+  if (!galeriaVisualizador || galeriaVisualizador.fotos.length < 2) return;
+  const { fotos, indice } = galeriaVisualizador;
+  galeriaVisualizador.indice = (indice + passo + fotos.length) % fotos.length;
+  mostrarFotoDoAnuncio();
+}
+
+$("#visualizador-anterior").addEventListener("click", () => andarFotoDoAnuncio(-1));
+$("#visualizador-proxima").addEventListener("click", () => andarFotoDoAnuncio(1));
+
 function fecharVisualizador() {
+  galeriaVisualizador = null;
+  $("#visualizador-anterior").style.display = "none";
+  $("#visualizador-proxima").style.display = "none";
   $("#visualizador").style.display = "none";
   // Esvaziar o corpo para o vídeo/PDF parar de consumir recurso e para
   // a próxima abertura nunca mostrar por um instante o documento
@@ -2411,6 +2451,10 @@ $("#visualizador").addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && $("#visualizador").style.display !== "none") {
     fecharVisualizador();
+  } else if (e.key === "ArrowLeft") {
+    andarFotoDoAnuncio(-1);
+  } else if (e.key === "ArrowRight") {
+    andarFotoDoAnuncio(1);
   }
 });
 
@@ -6900,8 +6944,12 @@ async function carregarMarketplace() {
         <p class="mb-1"><b>Contato:</b> ${escapeHtml(a.contato_telefone || "")} ${a.contato_telefone && a.contato_email ? "&middot;" : ""} ${escapeHtml(a.contato_email || "")}</p>
         <p class="mb-1"><b>Publicado em:</b> <span class="mono">${dataHoraBr(a.criado_em)}</span></p>
         ${a.motivo_recusa ? `<p class="mb-1 text-danger"><b>Motivo da recusa:</b> ${escapeHtml(a.motivo_recusa)}</p>` : ""}
-        ${(a.fotos || []).length ? `<div class="d-flex flex-wrap" style="gap:0.6rem">${a.fotos.map((_, i) =>
-          `<img src="/api/marketplace/${escapeHtml(a.anuncio_id)}/foto/${i}" style="height:90px; border-radius:4px" alt="Foto do anúncio">`
+        ${(a.fotos || []).length ? `<div class="d-flex flex-wrap" style="gap:0.6rem">${a.fotos.map((caminho, i) =>
+          EXTENSOES_IMAGEM.test(caminho)
+            ? `<button type="button" class="btn miniatura btn-foto-anuncio" data-indice="${i}" title="Ampliar foto ${i + 1} de ${a.fotos.length}">
+                 <img src="/api/marketplace/${escapeHtml(a.anuncio_id)}/foto/${i}" style="height:90px; border-radius:4px" alt="Foto ${i + 1} do anúncio">
+               </button>`
+            : `<button type="button" class="btn btn-outline-secondary btn-sm btn-foto-anuncio" data-indice="${i}">Ver PDF ${i + 1}</button>`
         ).join("")}</div>` : ""}
         ${a.status === "Pendente" ? `
         <div class="mt-3 d-flex align-items-center flex-wrap" style="gap:0.6rem">
@@ -6956,6 +7004,16 @@ async function carregarMarketplace() {
     btn.addEventListener("click", () => {
       const a = JSON.parse(btn.closest(".card").dataset.anuncio);
       editarAnuncio(a);
+    });
+  });
+  el.querySelectorAll(".btn-foto-anuncio").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const a = JSON.parse(btn.closest(".card").dataset.anuncio);
+      const fotos = a.fotos.map((caminho, i) => ({
+        url: `/api/marketplace/${encodeURIComponent(a.anuncio_id)}/foto/${i}`,
+        pdf: !EXTENSOES_IMAGEM.test(caminho),
+      }));
+      abrirVisualizadorFotos(fotos, parseInt(btn.dataset.indice, 10));
     });
   });
 }

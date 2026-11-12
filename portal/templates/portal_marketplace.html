@@ -49,8 +49,26 @@
 <div class="anuncio-grid">
   {% for a in anuncios %}
   <div class="ficha anuncio-card">
-    {% if a.fotos %}
-    <img class="anuncio-foto" src="{{ url_for('marketplace_foto', anuncio_id=a.anuncio_id, indice=0) }}" alt="{{ a.titulo }}">
+    {% if a.fotos_ui %}
+    <div class="anuncio-galeria" data-galeria='{{ a.fotos_ui|tojson }}'>
+      <button type="button" class="anuncio-foto-btn" data-indice="0" aria-label="Ampliar as fotos de {{ a.titulo }}">
+        {% if a.fotos_ui[0].pdf %}
+        <span class="anuncio-foto anuncio-foto--pdf">PDF</span>
+        {% else %}
+        <img class="anuncio-foto" src="{{ a.fotos_ui[0].url }}" alt="{{ a.titulo }}" loading="lazy">
+        {% endif %}
+        {% if a.fotos_ui|length > 1 %}<span class="anuncio-foto-contagem">{{ a.fotos_ui|length }} fotos</span>{% endif %}
+      </button>
+      {% if a.fotos_ui|length > 1 %}
+      <div class="anuncio-miniaturas">
+        {% for f in a.fotos_ui %}
+        <button type="button" class="anuncio-miniatura" data-indice="{{ loop.index0 }}" aria-label="Ver foto {{ loop.index }} de {{ a.fotos_ui|length }}">
+          {% if f.pdf %}<span class="anuncio-miniatura-pdf">PDF</span>{% else %}<img src="{{ f.url }}" alt="" loading="lazy">{% endif %}
+        </button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
     {% endif %}
     <span class="badge-item badge-item--sim">{{ a.categoria }}</span>
     {% if a.e_meu %}<span class="badge-item badge-item--aguardando">Meu anúncio</span>{% endif %}
@@ -71,5 +89,6 @@
   </div>
   {% endfor %}
 </div>
+{% include "_portal_galeria.html" %}
 {% endif %}
 {% endblock %}

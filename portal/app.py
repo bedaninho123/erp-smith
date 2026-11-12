@@ -1436,6 +1436,19 @@ def _servico_transferencia_arma(empresa_id: str) -> Optional[str]:
     return None
 
 
+def _fotos_para_tela(anuncio: dict) -> list[dict]:
+    """Uma entrada por foto, com o endereço da rota `marketplace_foto` e se
+    é PDF (o upload aceita os dois, e `<img>` não abre PDF). O caminho em
+    disco nunca vai para a tela."""
+    return [
+        {
+            "url": url_for("marketplace_foto", anuncio_id=anuncio["anuncio_id"], indice=i),
+            "pdf": Path(caminho).suffix.lower() == ".pdf",
+        }
+        for i, caminho in enumerate(anuncio["fotos"])
+    ]
+
+
 @app.route("/portal/marketplace")
 @cliente_login_required
 @filiado_ativo_required
@@ -1449,6 +1462,7 @@ def marketplace():
         a["criado_em_fmt"] = _data_br(a["criado_em"])
         a["valor_fmt"] = _valor_br(a["valor"])
         a["e_meu"] = a["cliente_id"] == session["cliente_id"]
+        a["fotos_ui"] = _fotos_para_tela(a)
 
     return render_template(
         "portal_marketplace.html",
