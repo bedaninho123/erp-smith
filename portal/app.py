@@ -70,7 +70,7 @@ from core.motor_portal_auth import (
     validar_e_consumir_codigo,
     validar_e_consumir_token,
 )
-from domain.clube_tiro.categorias_marketplace import CATEGORIA_ARMA, CATEGORIAS
+from domain.clube_tiro.categorias_marketplace import CATEGORIAS
 from integracoes.email_acesso import (
     CotaEsgotada,
     EnvioAcessoFalhou,
@@ -1870,7 +1870,6 @@ def marketplace():
         anuncios=anuncios,
         categorias=CATEGORIAS,
         categoria_filtro=categoria_filtro,
-        categoria_arma=CATEGORIA_ARMA,
         mostra_cta_documentacao=bool(_servico_transferencia_arma(empresa_id)),
         # O envio aceita PDF junto das fotos; a tela precisa saber quais
         # arquivos viram <img> e quais abrem como documento no visualizador.
@@ -2014,38 +2013,79 @@ def marketplace_foto(anuncio_id, indice):
     return send_file(caminho)
 
 
-@app.route("/portal/marketplace/<anuncio_id>/documentacao", methods=["POST"])
+TITULO_CASO_MARKETPLACE = "Transferência de arma -- via Marketplace"
+
+
+def _pedido_marketplace_em_aberto(empresa_id: str, cliente_id: str) -> bool:
+    """Já existe caso vivo aberto por este caminho para esta pessoa? Toque
+    repetido não pode virar fila de casos iguais para o despachante."""
+    con = conectar(empresa_id)
+    linha = con.execute(
+        "SELECT 1 FROM caso WHERE empresa_id = ? AND cliente_id = ? "
+        "AND titulo LIKE ? AND status NOT IN ('Encerrado', 'Cancelado') LIMIT 1",
+        (empresa_id, cliente_id, TITULO_CASO_MARKETPLACE + "%"),
+    ).fetchone()
+    con.close()
+    return linha is not None
+
+
+@app.route("/portal/marketplace/despachante", methods=["GET", "POST"])
 @cliente_login_required
 @filiado_ativo_required
-def marketplace_documentacao(anuncio_id):
-    """Botão "Preciso de ajuda com a documentação" -- abre um Caso de
-    verdade pro despachante, pelo mesmo caminho que "abrir caso à mão"
-    usa no painel (core/motor_casos.criar_caso). Pedido do usuário
-    (2026-09-02): o marketplace precisa puxar quem anuncia/compra arma
-    pra tratar da Transferência com o despachante, não só conectar
-    vendedor e comprador."""
-    empresa_id = empresa_atual()
-    anuncio = obter_anuncio(empresa_id, anuncio_id)
-    dono = bool(anuncio) and anuncio["cliente_id"] == session["cliente_id"]
-    if not anuncio or (not dono and not _anuncio_na_vitrine(empresa_id, anuncio)):
-        flash("Anúncio não encontrado.", "erro")
-        return redirect(url_for("marketplace"))
+def marketplace_despachante():
+    """Pedir ao despachante ajuda com a transferência da arma -- abre um
+    Caso de verdade, pelo mesmo criar_caso que o painel usa para abrir
+    caso à mão. Pedido do usuário (2026-09-02): o Marketplace precisa puxar
+    quem compra/vende arma para o despachante.
 
+    Até 2026-11-12 era um botão azul em CADA anúncio de arma, logo abaixo
+    do WhatsApp, que abria o caso no primeiro toque -- e muita gente
+    apertava sem querer. Agora é um aviso só, no topo da vitrine, que traz
+    para ESTA tela: o caso só nasce no POST, depois do "Sim" explícito."""
+    empresa_id = empresa_atual()
     nome_servico = _servico_transferencia_arma(empresa_id)
     if not nome_servico:
         flash("Este serviço não está disponível nesta empresa.", "erro")
         return redirect(url_for("marketplace"))
 
-    criar_caso(
-        empresa_id, session["cliente_id"],
-        titulo=f"Transferência de arma -- via Marketplace ({anuncio['titulo']})",
-        categoria=nome_servico,
-        origem="Portal", canal_origem="Portal",
-        criado_por=session.get("cliente_nome") or "Portal",
-        descricao=f"Aberto a partir do Marketplace, anúncio {anuncio_id}: \"{anuncio['titulo']}\".",
+    ja_pediu = _pedido_marketplace_em_aberto(empresa_id, session["cliente_id"])
+
+    if request.method == "POST" and not ja_pediu:
+        detalhe = (request.form.get("detalhe") or "").strip()[:500]
+        descricao = "Pedido feito pelo Marketplace do Portal."
+        if detalhe:
+            descricao += f"\n\nO que a pessoa escreveu: {detalhe}"
+        criar_caso(
+            empresa_id, session["cliente_id"],
+            titulo=TITULO_CASO_MARKETPLACE,
+            categoria=nome_servico,
+            origem="Portal", canal_origem="Portal",
+            criado_por=session.get("cliente_nome") or "Portal",
+            descricao=descricao,
+        )
+        flash("Pedido enviado. O despachante vai entrar em contato com você.", "sucesso")
+        return redirect(url_for("marketplace"))
+    if request.method == "POST":
+        # Já tinha pedido em aberto (dois toques, duas abas): não abre outro.
+        flash("Você já tem um pedido em aberto. O despachante vai entrar em contato.", "sucesso")
+        return redirect(url_for("marketplace"))
+
+    return render_template(
+        "portal_marketplace_despachante.html",
+        ativo="marketplace",
+        cliente_nome=session.get("cliente_nome"),
+        ja_pediu=ja_pediu,
     )
-    flash("Prontinho -- o despachante vai entrar em contato pra tratar a documentação.", "sucesso")
-    return redirect(url_for("marketplace"))
+
+
+@app.route("/portal/marketplace/<anuncio_id>/documentacao", methods=["POST"])
+@cliente_login_required
+@filiado_ativo_required
+def marketplace_documentacao(anuncio_id):
+    """O botão antigo de cada anúncio. Quem estava com a vitrine aberta
+    antes da troca (2026-11-12) ainda pode tocar nele: em vez de abrir o
+    caso direto, leva à confirmação."""
+    return redirect(url_for("marketplace_despachante"))
 
 
 if __name__ == "__main__":

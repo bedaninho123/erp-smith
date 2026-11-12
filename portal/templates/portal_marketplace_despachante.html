@@ -1,0 +1,50 @@
+{% extends "_portal_layout.html" %}
+{% block titulo %}Falar com o despachante{% endblock %}
+{# Confirmação antes de abrir caso pelo Marketplace (2026-11-12). O caso só
+   nasce no POST deste formulário -- o botão que abria direto, em cada
+   anúncio, era apertado sem querer. Ver marketplace_despachante. #}
+{% block conteudo %}
+<div class="ficha pedido-despachante">
+  <h1 class="pedido-despachante-titulo">Falar com o despachante</h1>
+
+  {% if ja_pediu %}
+  <p class="pedido-despachante-texto">
+    Você já tem um pedido em aberto. O despachante vai entrar em contato
+    com você, não precisa pedir de novo.
+  </p>
+  <a href="{{ url_for('marketplace') }}" class="botao">Voltar ao Marketplace</a>
+  {% else %}
+  <p class="pedido-despachante-texto">
+    Comprou ou vai vender uma arma? O despachante do clube cuida da
+    documentação da transferência.
+  </p>
+  <p class="pedido-despachante-texto">
+    Quer que ele entre em contato com você?
+  </p>
+  <form method="post" action="{{ url_for('marketplace_despachante') }}">
+    <div class="campo">
+      <label for="detalhe">Sobre qual arma? (opcional)</label>
+      <textarea id="detalhe" name="detalhe" rows="2" maxlength="500"
+                placeholder="Ex.: comprei a Carabina 38 anunciada pelo Fulano"></textarea>
+    </div>
+    <div class="pedido-despachante-acoes">
+      <button type="submit" class="botao">Sim, quero que entre em contato</button>
+      <a href="{{ url_for('marketplace') }}" class="pedido-despachante-voltar">Voltar</a>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+{% block estilo_extra %}
+<style>
+  .pedido-despachante { max-width: 560px; padding: 1.6rem 1.5rem; }
+  .pedido-despachante-titulo { font-size: 1.25rem; margin: 0 0 .8rem; }
+  .pedido-despachante-texto { margin: 0 0 .8rem; line-height: 1.5; }
+  .pedido-despachante .campo { margin-top: 1rem; }
+  .pedido-despachante textarea { width: 100%; }
+  .pedido-despachante-acoes { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; margin-top: 1rem; }
+  /* .botao é estilo de <button>; num <a> o sublinhado do link aparecia. */
+  .pedido-despachante .botao { display: inline-block; text-decoration: none; }
+  .pedido-despachante-voltar { color: var(--steel); }
+</style>
+{% endblock %}

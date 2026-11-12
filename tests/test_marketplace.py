@@ -275,31 +275,71 @@ def test_login_nao_duplica_cliente_ja_existente(banco):
 
 
 # --------------------------------------------------------------------
-# CTA "Preciso de ajuda com a documentação"
+# Chamar o despachante (2026-11-12: era um botão em cada anúncio que
+# abria caso no primeiro toque; agora é aviso único + confirmação)
 # --------------------------------------------------------------------
 
-def test_botao_documentacao_cria_caso_de_transferencia(banco, portal):
+def _casos_do_marketplace(cliente_id: str = "CLI-000001") -> list:
+    from core.conexao import conectar
+    con = conectar(EMPRESA_A)
+    linhas = con.execute(
+        "SELECT titulo, descricao FROM caso WHERE empresa_id = ? AND cliente_id = ? "
+        "AND titulo LIKE 'Transferência de arma -- via Marketplace%'",
+        (EMPRESA_A, cliente_id),
+    ).fetchall()
+    con.close()
+    return [dict(l) for l in linhas]
+
+
+def test_vitrine_nao_tem_mais_botao_de_caso_em_cada_anuncio(banco, portal):
+    _tornar_filiado_ativo(portal)
+    anuncio_id = motor_marketplace.criar_anuncio(
+        EMPRESA_A, "CLI-000002", categoria="Arma", titulo="Carabina 38",
+        contato_telefone="14988887777",
+    )
+    motor_marketplace.aprovar(EMPRESA_A, anuncio_id, revisado_por="Gestor Teste")
+
+    html = portal.get("/portal/marketplace").get_data(as_text=True)
+    assert f"/portal/marketplace/{anuncio_id}/documentacao" not in html
+    assert html.count("/portal/marketplace/despachante") == 1
+
+
+def test_abrir_a_confirmacao_nao_cria_caso(banco, portal):
     """O fixture `banco` já cadastra o serviço "Transferência de Arma"
     pra toda empresa -- ver tests/conftest.py."""
+    _tornar_filiado_ativo(portal)
+    resposta = portal.get("/portal/marketplace/despachante")
+    assert resposta.status_code == 200
+    assert "Sim, quero que entre em contato" in resposta.get_data(as_text=True)
+    assert _casos_do_marketplace() == []
+
+
+def test_confirmar_cria_um_caso_e_repetir_nao_cria_outro(banco, portal):
+    _tornar_filiado_ativo(portal)
+    portal.post("/portal/marketplace/despachante", data={"detalhe": "comprei a Carabina 38"})
+    portal.post("/portal/marketplace/despachante", data={"detalhe": "de novo"})
+
+    casos = _casos_do_marketplace()
+    assert len(casos) == 1
+    assert "comprei a Carabina 38" in casos[0]["descricao"]
+
+    html = portal.get("/portal/marketplace/despachante").get_data(as_text=True)
+    assert "já tem um pedido em aberto" in html
+    assert "Sim, quero que entre em contato" not in html
+
+
+def test_botao_antigo_leva_a_confirmacao_sem_criar_caso(banco, portal):
+    """Quem estava com a vitrine aberta antes da troca ainda tem o botão
+    velho na tela."""
     _tornar_filiado_ativo(portal)
     anuncio_id = motor_marketplace.criar_anuncio(
         EMPRESA_A, "CLI-000001", categoria="Arma", titulo="Pistola 9mm",
         contato_telefone="14999990000",
     )
-
     resposta = portal.post(f"/portal/marketplace/{anuncio_id}/documentacao")
-    assert resposta.status_code in (200, 302)
-
-    from core.conexao import conectar
-    con = conectar(EMPRESA_A)
-    titulos = [
-        l["titulo"] for l in con.execute(
-            "SELECT titulo FROM caso WHERE empresa_id = ? AND cliente_id = ?",
-            (EMPRESA_A, "CLI-000001"),
-        ).fetchall()
-    ]
-    con.close()
-    assert any("Transferência" in t for t in titulos)
+    assert resposta.status_code == 302
+    assert resposta.headers["Location"].endswith("/portal/marketplace/despachante")
+    assert _casos_do_marketplace() == []
 
 
 # --------------------------------------------------------------------

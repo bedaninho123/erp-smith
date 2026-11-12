@@ -44,8 +44,16 @@
     border: 1px solid var(--line); font-size: .82rem; text-decoration: none; color: var(--steel);
   }
   .filtro-categorias a.ativo { background: var(--blue-deep); color: #fff; border-color: var(--blue-deep); }
-  .cta-documentacao { margin-top: .8rem; padding-top: .8rem; border-top: 1px solid var(--line); }
-  .cta-documentacao button { width: 100%; }
+  /* Chamada para o despachante (2026-11-12): UM aviso no topo, não um
+     botão em cada anúncio -- o botão grande ao lado do WhatsApp era
+     apertado sem querer e cada toque abria um caso. O link leva a uma
+     tela de confirmação; o caso só nasce lá. */
+  .aviso-despachante {
+    display: flex; align-items: center; justify-content: space-between; gap: .4rem 1rem; flex-wrap: wrap;
+    padding: .7rem 1rem; margin-bottom: 1.2rem; font-size: .88rem;
+    border: 1px solid var(--line); border-radius: var(--radius); background: #fff; color: var(--steel);
+  }
+  .aviso-despachante a { font-weight: 600; white-space: nowrap; }
 </style>
 {% endblock %}
 {% block conteudo %}
@@ -54,6 +62,13 @@
 {% for categoria, mensagem in get_flashed_messages(with_categories=true) %}
 <div class="msg-flash msg-flash--{{ categoria }}">{{ mensagem }}</div>
 {% endfor %}
+
+{% if mostra_cta_documentacao %}
+<div class="aviso-despachante">
+  <span>Comprou ou vendeu arma aqui? O despachante do clube cuida da transferência.</span>
+  <a href="{{ url_for('marketplace_despachante') }}">Falar com o despachante →</a>
+</div>
+{% endif %}
 
 <div class="secao-titulo" style="margin-top:0;">
   <h2>Anúncios dos filiados</h2>
@@ -129,13 +144,6 @@
       {% endif %}
       {% if a.contato_email %}<div>✉️ {{ a.contato_email }}</div>{% endif %}
     </div>
-    {% if a.categoria == categoria_arma and mostra_cta_documentacao %}
-    <div class="cta-documentacao">
-      <form method="post" action="{{ url_for('marketplace_documentacao', anuncio_id=a.anuncio_id) }}">
-        <button type="submit" class="botao">Preciso de ajuda com a documentação</button>
-      </form>
-    </div>
-    {% endif %}
   </div>
   {% endfor %}
 </div>
