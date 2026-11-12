@@ -85,6 +85,7 @@
       <button type="button" class="anuncio-foto-botao btn-ver"
               data-url="{{ url_for('marketplace_foto', anuncio_id=a.anuncio_id, indice=ns.capa) }}"
               data-nome="{{ a.titulo }} — foto {{ ns.capa + 1 }} de {{ a.fotos|length }}" data-imagem="1"
+              data-galeria="{{ a.anuncio_id }}"
               aria-label="Ver a foto {{ ns.capa + 1 }} de {{ a.titulo }} em tela cheia">
         <img class="anuncio-foto" src="{{ url_for('marketplace_foto', anuncio_id=a.anuncio_id, indice=ns.capa) }}" alt="{{ a.titulo }}">
       </button>
@@ -97,6 +98,7 @@
                 data-url="{{ url_for('marketplace_foto', anuncio_id=a.anuncio_id, indice=loop.index0) }}"
                 data-nome="{{ a.titulo }} — {{ 'foto' if e_imagem else 'arquivo' }} {{ loop.index }} de {{ a.fotos|length }}"
                 data-imagem="{{ '1' if e_imagem else '0' }}"
+                {% if e_imagem %}data-galeria="{{ a.anuncio_id }}"{% endif %}
                 aria-label="Ver {{ 'a foto' if e_imagem else 'o arquivo' }} {{ loop.index }} de {{ a.titulo }}">
           {% if e_imagem %}
           <img class="anuncio-foto" src="{{ url_for('marketplace_foto', anuncio_id=a.anuncio_id, indice=loop.index0) }}" alt="" loading="lazy">

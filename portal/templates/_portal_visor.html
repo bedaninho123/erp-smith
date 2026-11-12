@@ -32,6 +32,24 @@
                  background: transparent; color: #fff; font-size: .82rem; font-weight: 600; cursor: pointer;
                  display: inline-flex; align-items: center; gap: .35rem; text-decoration: none; }
   .visor-botao:hover { background: rgba(255,255,255,.12); color: #fff; text-decoration: none; }
+
+  /* Galeria (2026-11-12): botões com o mesmo data-galeria viram uma
+     sequência -- arrastar o dedo para o lado troca de foto, e no computador
+     as setas fazem o mesmo. pan-y deixa o navegador cuidar só do vertical
+     e da pinça; o horizontal é nosso. */
+  .visor-corpo { position: relative; touch-action: pan-y pinch-zoom; }
+  .visor-corpo img { transition: transform .2s ease; }
+  .visor-corpo img.arrastando { transition: none; }
+  .visor-seta {
+    position: absolute; top: 50%; transform: translateY(-50%); z-index: 1;
+    width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer;
+    background: rgba(0,0,0,.45); color: #fff; font-size: 1.4rem; line-height: 1;
+    display: none; align-items: center; justify-content: center;
+  }
+  .visor-seta--anterior { left: .6rem; }
+  .visor-seta--proxima { right: .6rem; }
+  .visor.galeria .visor-seta { display: flex; }
+  .visor-seta:disabled { opacity: .25; cursor: default; }
 </style>
 
 <div class="visor" id="visor" role="dialog" aria-modal="true" aria-label="Visualizador de documento">
@@ -41,6 +59,8 @@
     <button type="button" class="visor-botao" id="visor-fechar">Fechar</button>
   </div>
   <div class="visor-corpo" id="visor-corpo"></div>
+  <button type="button" class="visor-seta visor-seta--anterior" id="visor-anterior" aria-label="Foto anterior">&#8249;</button>
+  <button type="button" class="visor-seta visor-seta--proxima" id="visor-proxima" aria-label="Próxima foto">&#8250;</button>
 </div>
 
 <script>
@@ -52,8 +72,51 @@
     // Guarda quem tinha o foco antes de abrir, para devolver ao fechar --
     // quem navega por teclado volta ao mesmo lugar da lista.
     var focoAnterior = null;
+    var anterior = document.getElementById("visor-anterior");
+    var proxima = document.getElementById("visor-proxima");
+    // Galeria aberta agora: os botões do mesmo data-galeria, sem repetir
+    // endereço (a capa do anúncio e a primeira miniatura são a mesma foto).
+    var galeria = [];
+    var posicao = 0;
+
+    function montarGaleria(botao) {
+      var nomeGaleria = botao.getAttribute("data-galeria");
+      if (!nomeGaleria) return [botao];
+      var vistos = {};
+      var lista = [];
+      Array.prototype.forEach.call(document.querySelectorAll(".btn-ver"), function (b) {
+        var url = b.getAttribute("data-url");
+        if (b.getAttribute("data-galeria") === nomeGaleria && !vistos[url]) {
+          vistos[url] = true;
+          lista.push(b);
+        }
+      });
+      return lista;
+    }
+
+    function irPara(indice) {
+      if (indice < 0 || indice >= galeria.length) return false;
+      posicao = indice;
+      mostrar(galeria[posicao]);
+      anterior.disabled = posicao === 0;
+      proxima.disabled = posicao === galeria.length - 1;
+      // Já pede a vizinha ao servidor, para a troca não piscar em branco.
+      [posicao - 1, posicao + 1].forEach(function (i) {
+        if (galeria[i]) (new Image()).src = galeria[i].getAttribute("data-url");
+      });
+      return true;
+    }
 
     function abrir(botao) {
+      galeria = montarGaleria(botao);
+      visor.classList.toggle("galeria", galeria.length > 1);
+      focoAnterior = document.activeElement;
+      visor.classList.add("aberto");
+      irPara(Math.max(0, galeria.indexOf(botao)));
+      document.getElementById("visor-fechar").focus();
+    }
+
+    function mostrar(botao) {
       var url = botao.getAttribute("data-url");
       var titulo = botao.getAttribute("data-nome");
       corpo.innerHTML = "";
@@ -73,10 +136,39 @@
       var urlBaixar = botao.getAttribute("data-baixar");
       baixar.style.display = urlBaixar ? "" : "none";
       baixar.setAttribute("href", urlBaixar || "#");
-      focoAnterior = document.activeElement;
-      visor.classList.add("aberto");
-      document.getElementById("visor-fechar").focus();
     }
+
+    // Deslizar o dedo: a foto acompanha o dedo enquanto arrasta e, se
+    // passou de 50px na horizontal, troca. Menos que isso (ou arrasto mais
+    // vertical que horizontal) volta para o lugar -- é toque, não gesto.
+    var inicioX = null, inicioY = 0, deslocamento = 0;
+    corpo.addEventListener("touchstart", function (e) {
+      if (galeria.length < 2 || e.touches.length !== 1) { inicioX = null; return; }
+      inicioX = e.touches[0].clientX;
+      inicioY = e.touches[0].clientY;
+      deslocamento = 0;
+    }, { passive: true });
+    corpo.addEventListener("touchmove", function (e) {
+      if (inicioX === null) return;
+      if (e.touches.length !== 1) { inicioX = null; return; }  // virou pinça
+      deslocamento = e.touches[0].clientX - inicioX;
+      if (Math.abs(deslocamento) < Math.abs(e.touches[0].clientY - inicioY)) return;
+      var img = corpo.querySelector("img");
+      if (img) {
+        img.classList.add("arrastando");
+        img.style.transform = "translateX(" + deslocamento + "px)";
+      }
+    }, { passive: true });
+    corpo.addEventListener("touchend", function () {
+      if (inicioX === null) return;
+      inicioX = null;
+      var img = corpo.querySelector("img");
+      if (img) { img.classList.remove("arrastando"); img.style.transform = ""; }
+      if (Math.abs(deslocamento) > 50) irPara(posicao + (deslocamento < 0 ? 1 : -1));
+    });
+
+    anterior.addEventListener("click", function () { irPara(posicao - 1); });
+    proxima.addEventListener("click", function () { irPara(posicao + 1); });
 
     function fechar() {
       visor.classList.remove("aberto");
@@ -94,7 +186,10 @@
       if (e.target === visor || e.target === corpo) fechar();
     });
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && visor.classList.contains("aberto")) fechar();
+      if (!visor.classList.contains("aberto")) return;
+      if (e.key === "Escape") fechar();
+      if (e.key === "ArrowLeft") irPara(posicao - 1);
+      if (e.key === "ArrowRight") irPara(posicao + 1);
     });
   })();
 </script>
